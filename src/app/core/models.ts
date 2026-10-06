@@ -74,4 +74,32 @@ export interface Issue {
   labelIds: string[];
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  statusReason?: string;      // 直近の保留・却下などの理由
+  cause?: string;
+  countermeasure?: string;
+  causeCategory?: CauseCategory;
+  doneCriteriaMet?: boolean;
+  effect?: Effect;
+  learning?: string;
+  resolvedAt?: Timestamp;
+  closedAt?: Timestamp;
+}
+export const CAUSE_CATEGORIES = [
+  'requirements', 'design', 'testing', 'operation', 'communication', 'external', 'other',
+] as const;
+export type CauseCategory = (typeof CAUSE_CATEGORIES)[number];
+export type Effect = 'yes' | 'partial' | 'no';
+
+/** 経緯（履歴とコメントを時系列に並べたもの） */
+export interface TimelineItem {
+  id: string;
+  kind: 'event' | 'comment';
+  type?: 'created' | 'status';
+  from?: IssueStatus;
+  to?: IssueStatus;
+  reason?: string;
+  body?: string;
+  by: string;
+  tz?: string;  // 書いた人のタイムゾーン
+  at: Timestamp;
 }

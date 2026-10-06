@@ -36,7 +36,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
               <li class="issue">
                 <span class="prio" [attr.data-p]="priority(i)" [attr.title]="'priority.' + priority(i) | t"></span>
                 <span class="num">#{{ i.number }}</span>
-                <span class="name">{{ i.title }}</span>
+                <a class="name" [routerLink]="['/p', pid, 'i', i.id]">{{ i.title }}</a>
                 <span class="meta">{{ memberName(i.assigneeId) }}</span>
                 <span class="due" [class.overdue]="isOverdue(i)">{{ remaining(i) }}</span>
               </li>

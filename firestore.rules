@@ -32,6 +32,46 @@ service cloud.firestore {
         && get(memberPath(pid)).data.role in ['admin', 'member']
         && get(projectPath(pid)).data.archived == false;
     }
+        function myRole(pid) { return get(memberPath(pid)).data.role; }
+
+    function resolutionOk() {
+      let d = request.resource.data;
+      return d.cause is string && d.cause.size() > 0
+        && d.countermeasure is string && d.countermeasure.size() > 0
+        && d.causeCategory in ['requirements', 'design', 'testing', 'operation', 'communication', 'external', 'other']
+        && d.doneCriteriaMet == true
+        && d.resolvedAt == request.time;
+    }
+
+    function closeOk() {
+      let d = request.resource.data;
+      return d.effect in ['yes', 'partial', 'no']
+        && d.learning is string
+        && d.doneCriteriaMet == true
+        && d.closedAt == request.time;
+    }
+
+    function hasReason() {
+      return request.resource.data.statusReason is string
+        && request.resource.data.statusReason.size() > 0;
+    }
+
+    // 確定した変更の表と同じ決まり
+    function statusChangeAllowed(pid) {
+      let admin = myRole(pid) == 'admin';
+      let worker = admin || resource.data.assigneeId == request.auth.uid;
+      let owner = admin || resource.data.reporterId == request.auth.uid;
+      let from = resource.data.status;
+      let to = request.resource.data.status;
+      return (worker && from == 'open' && to == 'in_progress')
+        || (worker && from in ['open', 'in_progress'] && to == 'on_hold' && hasReason())
+        || (worker && from == 'on_hold' && to == 'in_progress')
+        || (worker && from == 'in_progress' && to == 'resolved' && resolutionOk())
+        || (owner && from == 'resolved' && to == 'in_progress' && hasReason())
+        || (owner && from == 'resolved' && to == 'closed' && closeOk())
+        || (admin && from in ['open', 'in_progress', 'on_hold', 'resolved'] && to == 'rejected' && hasReason())
+        || (admin && from == 'closed' && to == 'in_progress' && hasReason());
+    }
 
     match /projects/{pid} {
       allow read: if isMember(pid);
@@ -106,10 +146,29 @@ service cloud.firestore {
           // 番号は、採番した値と一致
           && request.resource.data.number == getAfter(projectPath(pid)).data.issueSeq
           && getAfter(projectPath(pid)).data.issueSeq == get(projectPath(pid)).data.issueSeq + 1;
+                  allow update: if canWrite(pid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+               'status', 'statusReason', 'updatedAt', 'cause', 'countermeasure', 'causeCategory',
+               'doneCriteriaMet', 'resolvedAt', 'effect', 'learning', 'closedAt'])
+          && request.resource.data.updatedAt == request.time
+          && statusChangeAllowed(pid);
 
         match /events/{eid} {
           allow read: if isMember(pid);
           allow create: if canWrite(pid) && request.resource.data.by == request.auth.uid;
+        }
+
+                // コメントは閲覧者もできる（アーカイブ中は不可）
+        match /comments/{cid} {
+          allow read: if isMember(pid);
+          allow create: if isMember(pid)
+            && get(projectPath(pid)).data.archived == false
+            && request.resource.data.keys().hasOnly(['body', 'by', 'tz', 'at'])
+            && request.resource.data.by == request.auth.uid
+            && request.resource.data.body is string
+            && request.resource.data.body.size() > 0
+            && request.resource.data.body.size() <= 5000
+            && request.resource.data.at == request.time;
         }
       }
     }

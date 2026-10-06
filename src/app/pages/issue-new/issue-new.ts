@@ -196,7 +196,7 @@ export class IssueNew implements OnInit {
         assigneeId: this.assigneeId(),
         doneCriteria: this.doneCriteria.trim(),
         description: this.description,
-      }, this.myUid);
+      }, this.myUid, this.tz());
       await this.router.navigate(['/p', this.pid]);
     } catch (e) {
       console.error(e);

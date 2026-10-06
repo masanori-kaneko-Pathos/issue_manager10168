@@ -1,0 +1,361 @@
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { auth } from '../../core/firebase';
+import { AuthService } from '../../core/auth.service';
+import { ProjectService } from '../../core/project.service';
+import { IssueService } from '../../core/issue.service';
+import { CAUSE_CATEGORIES, CauseCategory, Effect, Issue, Member, Role, TimelineItem } from '../../core/models';
+import { priorityOf } from '../../core/priority';
+import { formatDateTime, remainingOf } from '../../core/time';
+import { Transition, availableTransitions } from '../../core/workflow';
+import { I18nService, TPipe } from '../../i18n/i18n';
+
+@Component({
+  selector: 'app-issue-detail',
+  imports: [FormsModule, RouterLink, TPipe],
+  template: `
+    <header class="bar"><a [routerLink]="['/p', pid]" class="link">{{ 'common.back' | t }}</a></header>
+    <main>
+      @if (loading()) {
+        <p>{{ 'common.loading' | t }}</p>
+      } @else if (!issue()) {
+        <p>{{ 'project.notFound' | t }}</p>
+      } @else {
+        @let i = issue()!;
+        <p class="num">#{{ i.number }} · {{ 'issueTypes.' + i.type | t }}</p>
+        <h1>{{ i.title }}</h1>
+        <div class="badges">
+          <span class="status" [attr.data-s]="i.status">{{ 'status.' + i.status | t }}</span>
+          <span class="prio" [attr.data-p]="priority()">{{ 'issue.priority' | t }}：{{ 'priority.' + priority() | t }}</span>
+          @if (i.status !== 'closed' && i.status !== 'rejected') {
+            <span class="due" [class.overdue]="overdue()">{{ dueText() }}</span>
+          }
+        </div>
+        @if (i.statusReason && (i.status === 'on_hold' || i.status === 'rejected')) {
+          <p class="reason">{{ i.statusReason }}</p>
+        }
+
+        <dl class="fields">
+          <dt>{{ 'issue.assignee' | t }}</dt><dd>{{ memberName(i.assigneeId) }}</dd>
+          <dt>{{ 'detail.reporter' | t }}</dt><dd>{{ memberName(i.reporterId) }}</dd>
+          <dt>{{ 'issue.importance' | t }}</dt><dd>{{ 'importance.' + i.importance | t }}</dd>
+          <dt>{{ 'issue.due' | t }}</dt><dd>{{ dueLabel() }}</dd>
+          <dt>{{ 'issue.doneCriteria' | t }}</dt><dd class="pre">{{ i.doneCriteria }}</dd>
+          @if (i.description.trim()) {
+            <dt>{{ 'issue.description' | t }}</dt><dd class="pre">{{ i.description }}</dd>
+          }
+          @if (i.cause) {
+            <dt>{{ 'workflow.cause' | t }}</dt><dd class="pre">{{ i.cause }}</dd>
+            <dt>{{ 'workflow.countermeasure' | t }}</dt><dd class="pre">{{ i.countermeasure }}</dd>
+            <dt>{{ 'workflow.causeCategory' | t }}</dt><dd>{{ 'causeCategories.' + i.causeCategory | t }}</dd>
+          }
+          @if (i.effect) {
+            <dt>{{ 'workflow.effect' | t }}</dt><dd>{{ 'workflow.effectOpts.' + i.effect | t }}</dd>
+            @if (i.learning) { <dt>{{ 'workflow.learning' | t }}</dt><dd class="pre">{{ i.learning }}</dd> }
+          }
+        </dl>
+
+        <section class="actions">
+          @for (a of transitions(); track a.t.key) {
+            <button type="button" [disabled]="!a.allowed || busy()" [class.on]="active()?.key === a.t.key"
+              (click)="click(a.t)">{{ 'workflow.' + a.t.key | t }}</button>
+          }
+        </section>
+        @for (key of deniedReasons(); track key) { <p class="help">{{ key | t }}</p> }
+
+        @if (active(); as t) {
+          <section class="panel">
+            <h2>{{ 'workflow.' + t.key | t }}</h2>
+            @if (t.needs === 'reason') {
+              <label class="field">{{ 'workflow.reason' | t }}
+                <textarea [(ngModel)]="reason" rows="3" [placeholder]="'workflow.reasonHint.' + t.key | t"></textarea>
+              </label>
+            }
+            @if (t.needs === 'resolve') {
+              <label class="field">{{ 'workflow.cause' | t }}
+                <textarea [(ngModel)]="cause" rows="2"></textarea>
+              </label>
+              <label class="field">{{ 'workflow.countermeasure' | t }}
+                <textarea [(ngModel)]="countermeasure" rows="2"></textarea>
+              </label>
+              <fieldset>
+                <legend>{{ 'workflow.causeCategory' | t }}</legend>
+                <div class="chips">
+                  @for (c of causeCategories; track c) {
+                    <button type="button" [class.on]="causeCategory() === c" (click)="causeCategory.set(c)">
+                      {{ 'causeCategories.' + c | t }}</button>
+                  }
+                </div>
+              </fieldset>
+            }
+            @if (t.needs === 'close') {
+              <fieldset>
+                <legend>{{ 'workflow.effect' | t }}</legend>
+                <div class="chips">
+                  @for (e of effects; track e) {
+                    <button type="button" [class.on]="effect() === e" (click)="effect.set(e)">
+                      {{ 'workflow.effectOpts.' + e | t }}</button>
+                  }
+                </div>
+                @if (effect() === 'no') { <p class="help">{{ 'workflow.closeHintNo' | t }}</p> }
+              </fieldset>
+              <label class="field">{{ 'workflow.learning' | t }}
+                <textarea [(ngModel)]="learning" rows="2"></textarea>
+              </label>
+            }
+            @if (t.needs === 'resolve' || t.needs === 'close') {
+              <div class="criteria">
+                <p class="pre">{{ i.doneCriteria }}</p>
+                <label class="check">
+                  <input type="checkbox" [checked]="doneMet()" (change)="doneMet.set(!doneMet())" />
+                  {{ 'workflow.doneCriteriaMet' | t }}
+                </label>
+              </div>
+            }
+            @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
+            <div class="row">
+              <button type="button" class="link" (click)="active.set(null)">{{ 'workflow.cancel' | t }}</button>
+              <button type="button" class="primary" [disabled]="busy() || !canConfirm()" (click)="confirm()">
+                {{ 'workflow.confirm' | t }}</button>
+            </div>
+          </section>
+        }
+
+        <section>
+          <h2>{{ 'detail.timeline' | t }}</h2>
+          <ul class="timeline">
+            @for (item of timeline(); track item.id) {
+              <li [class.comment]="item.kind === 'comment'">
+                <div class="meta">
+                  {{ item.kind === 'comment' ? memberName(item.by) : eventText(item) }} · {{ when(item) }}
+                </div>
+                @if (item.body) { <p class="pre">{{ item.body }}</p> }
+                @if (item.reason) { <p class="pre reason">{{ item.reason }}</p> }
+              </li>
+            }
+          </ul>
+          <div class="comment-box">
+            <textarea [(ngModel)]="comment" rows="3" [placeholder]="'detail.commentPlaceholder' | t"></textarea>
+            <button type="button" class="primary" [disabled]="busy() || !comment.trim()" (click)="sendComment()">
+              {{ 'detail.send' | t }}</button>
+          </div>
+        </section>
+      }
+    </main>
+  `,
+  styles: `
+    .bar { padding: 8px 16px; border-bottom: 1px solid #ddd; }
+    main { max-width: 720px; margin: 0 auto; padding: 16px 16px 48px; }
+    h1 { font-size: 20px; margin: 4px 0 8px; overflow-wrap: anywhere; }
+    h2 { font-size: 16px; margin-top: 24px; }
+    .num { color: #666; font-size: 13px; margin: 0; }
+    .badges { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .badges span { font-size: 12px; padding: 4px 10px; border-radius: 12px; background: #eee; }
+    .status[data-s='in_progress'] { background: #e3f2fd; }
+    .status[data-s='on_hold'] { background: #fff3e0; }
+    .status[data-s='resolved'] { background: #e8f5e9; }
+    .status[data-s='closed'], .status[data-s='rejected'] { background: #ddd; color: #555; }
+    .prio[data-p='high'] { background: #ffebee; color: #c62828; }
+    .prio[data-p='mid'] { background: #fff8e1; color: #8d6e00; }
+    .prio[data-p='low'] { background: #e8f5e9; color: #2e7d32; }
+    .due.overdue { background: #ffebee; color: #c62828; font-weight: bold; }
+    .reason { background: #fff8e1; padding: 8px 12px; border-radius: 8px; white-space: pre-wrap; }
+    .fields { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 16px 0; }
+    .fields dt { color: #666; font-size: 13px; }
+    .fields dd { margin: 0; }
+    .pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .actions button { min-height: 44px; padding: 0 16px; border: 1px solid #1565c0; color: #1565c0;
+      background: #fff; border-radius: 8px; font-size: 14px; }
+    .actions button.on { background: #1565c0; color: #fff; }
+    .actions button:disabled { border-color: #ccc; color: #aaa; }
+    .help { font-size: 12px; color: #666; margin: 4px 0; }
+    .panel { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-top: 12px;
+      display: flex; flex-direction: column; gap: 12px; }
+    .panel h2 { margin: 0; }
+    .field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: bold; }
+    fieldset { border: none; padding: 0; margin: 0; }
+    legend { font-size: 14px; font-weight: bold; }
+    textarea { font-size: 16px; padding: 8px 12px; font-weight: normal; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+    .chips button { min-height: 44px; padding: 0 14px; border: 1px solid #ccc; background: #fff;
+      border-radius: 22px; font-size: 14px; }
+    .chips button.on { background: #1565c0; color: #fff; border-color: #1565c0; }
+    .criteria { background: #f5f5f5; padding: 12px; border-radius: 8px; }
+    .check { display: flex; align-items: center; gap: 8px; margin-top: 8px; min-height: 44px; }
+    .check input { width: 22px; height: 22px; }
+    .row { display: flex; justify-content: flex-end; gap: 8px; }
+    .link { background: none; border: none; color: #1565c0; min-height: 44px; }
+    .primary { min-height: 44px; padding: 0 20px; background: #1565c0; color: #fff; border: none;
+      border-radius: 8px; font-size: 14px; }
+    .primary:disabled { background: #9e9e9e; }
+    .error { color: #c62828; }
+    .timeline { list-style: none; padding: 0; margin: 0; }
+    .timeline li { padding: 8px 0; border-bottom: 1px solid #eee; }
+    .timeline li.comment { background: #fafafa; padding: 8px 12px; }
+    .timeline .meta { font-size: 12px; color: #666; }
+    .comment-box { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+    .comment-box .primary { align-self: flex-end; }
+  `,
+})
+export class IssueDetail implements OnInit {
+  private route = inject(ActivatedRoute);
+  private ps = inject(ProjectService);
+  private issueService = inject(IssueService);
+  private authService = inject(AuthService);
+  protected i18n = inject(I18nService);
+
+  readonly pid = this.route.snapshot.paramMap.get('pid')!;
+  readonly iid = this.route.snapshot.paramMap.get('iid')!;
+  readonly myUid = auth.currentUser!.uid;
+  readonly causeCategories = CAUSE_CATEGORIES;
+  readonly effects: Effect[] = ['yes', 'partial', 'no'];
+
+  issue = signal<Issue | null>(null);
+  role = signal<Role | null>(null);
+  members = signal<Member[]>([]);
+  timeline = signal<TimelineItem[]>([]);
+  loading = signal(true);
+  busy = signal(false);
+  error = signal('');
+
+  // ステータス変更の入力
+  active = signal<Transition | null>(null);
+  reason = '';
+  cause = '';
+  countermeasure = '';
+  causeCategory = signal<CauseCategory | null>(null);
+  effect = signal<Effect | null>(null);
+  learning = '';
+  doneMet = signal(false);
+  comment = '';
+
+  tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
+  priority = computed(() => priorityOf(this.issue()!));
+  overdue = computed(() => this.issue()!.dueAt.toMillis() < Date.now());
+  dueText = computed(() => {
+    const r = remainingOf(this.issue()!.dueAt.toMillis());
+    return this.i18n.t(r.key, { n: String(r.n) });
+  });
+  dueLabel = computed(() => formatDateTime(this.issue()!.dueAt.toDate(), this.tz(), this.i18n.lang()));
+  transitions = computed(() => {
+    const i = this.issue();
+    const r = this.role();
+    return i && r ? availableTransitions(i, r, this.myUid) : [];
+  });
+  /** 押せないボタンがあるときの理由（重複なし） */
+  deniedReasons = computed(() => [
+    ...new Set(this.transitions().filter((a) => !a.allowed).map((a) => 'workflow.denied.' + a.t.who)),
+  ]);
+
+  async ngOnInit() {
+    await this.load();
+  }
+
+  async load() {
+    try {
+      this.role.set(await this.ps.myRole(this.pid, this.myUid));
+      const [issue, members, timeline] = await Promise.all([
+        this.issueService.get(this.pid, this.iid),
+        this.ps.listMembers(this.pid),
+        this.issueService.timeline(this.pid, this.iid),
+      ]);
+      this.issue.set(issue);
+      this.members.set(members);
+      this.timeline.set(timeline);
+    } catch (e) {
+      console.error(e);
+      this.issue.set(null);
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  click(t: Transition) {
+    if (t.needs === 'none') {
+      this.confirm(t);
+      return;
+    }
+    const i = this.issue()!;
+    this.active.set(t);
+    this.reason = '';
+    this.cause = i.cause ?? '';
+    this.countermeasure = i.countermeasure ?? '';
+    this.causeCategory.set(i.causeCategory ?? null);
+    this.effect.set(null);
+    this.learning = '';
+    this.doneMet.set(false);
+    this.error.set('');
+  }
+
+  canConfirm(): boolean {
+    const t = this.active();
+    if (!t) return false;
+    switch (t.needs) {
+      case 'reason': return !!this.reason.trim();
+      case 'resolve': return !!(this.cause.trim() && this.countermeasure.trim() && this.causeCategory() && this.doneMet());
+      case 'close': return !!(this.effect() && this.doneMet());
+      default: return true;
+    }
+  }
+
+  async confirm(t = this.active()!) {
+    this.busy.set(true);
+    this.error.set('');
+    try {
+      await this.issueService.changeStatus(this.pid, this.issue()!, t, {
+        reason: this.reason.trim(),
+        cause: this.cause.trim(),
+        countermeasure: this.countermeasure.trim(),
+        causeCategory: this.causeCategory(),
+        effect: this.effect(),
+        learning: this.learning.trim(),
+        doneCriteriaMet: this.doneMet(),
+      }, this.myUid, this.tz());
+      this.active.set(null);
+      await this.load();
+    } catch (e) {
+      console.error(e);
+      this.error.set('common.saveError');
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  async sendComment() {
+    const body = this.comment.trim();
+    if (!body) return;
+    this.busy.set(true);
+    try {
+      await this.issueService.addComment(this.pid, this.iid, body, this.myUid, this.tz());
+      this.comment = '';
+      this.timeline.set(await this.issueService.timeline(this.pid, this.iid));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  memberName(uid: string) {
+    return this.members().find((m) => m.uid === uid)?.displayName ?? '—';
+  }
+
+  eventText(item: TimelineItem) {
+    const name = this.memberName(item.by);
+    if (item.type === 'created') return this.i18n.t('detail.events.created', { name });
+    return this.i18n.t('detail.events.status', {
+      name,
+      from: this.i18n.t('status.' + item.from),
+      to: this.i18n.t('status.' + item.to),
+    });
+  }
+
+  /** 書いた人の現地時間で表示し、見ている人と違えば基準を併記する */
+  when(item: TimelineItem) {
+    const writerTz = item.tz ?? this.tz();
+    const text = formatDateTime(item.at.toDate(), writerTz, this.i18n.lang());
+    return writerTz === this.tz() ? text : `${text}（${writerTz}）`;
+  }
+}
