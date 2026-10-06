@@ -27,6 +27,11 @@ service cloud.firestore {
       return request.resource.data.uid == uid
         && request.resource.data.keys().hasOnly(['uid', 'role', 'displayName', 'photoURL', 'joinedAt']);
     }
+    function canWrite(pid) {
+      return isMember(pid)
+        && get(memberPath(pid)).data.role in ['admin', 'member']
+        && get(projectPath(pid)).data.archived == false;
+    }
 
     match /projects/{pid} {
       allow read: if isMember(pid);
@@ -39,9 +44,13 @@ service cloud.firestore {
         && request.resource.data.name.size() > 0
         && request.resource.data.name.size() <= 100
         && getAfter(memberPath(pid)).data.role == 'admin';
-      allow update: if isAdmin(pid)
+      allow update: if (isAdmin(pid)
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['name', 'archived', 'labels', 'settings']);
+           .hasOnly(['name', 'archived', 'labels', 'settings']))
+      // 課題の登録時の採番（1つ増やすだけ）
+        || (canWrite(pid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['issueSeq'])
+        && request.resource.data.issueSeq == resource.data.issueSeq + 1);
       allow delete: if false;
 
       match /members/{uid} {
@@ -72,6 +81,36 @@ service cloud.firestore {
         // 取り消し（管理者）と、承諾・辞退（招待された本人）
         allow delete: if isAdmin(pid)
           || (emailVerified() && email == request.auth.token.email.lower());
+      }
+
+      match /issues/{iid} {
+        allow read: if isMember(pid);
+        allow create: if canWrite(pid)
+          && request.resource.data.keys().hasOnly([
+               'number', 'title', 'type', 'status', 'importance', 'priorityOverride',
+               'dueAt', 'startAt', 'doneCriteria', 'description', 'assigneeId',
+               'reporterId', 'labelIds', 'createdAt', 'updatedAt'])
+          && request.resource.data.reporterId == request.auth.uid
+          && request.resource.data.status == 'open'
+          && request.resource.data.priorityOverride == null
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 200
+          && request.resource.data.type in ['bug', 'request', 'question', 'task', 'risk']
+          && request.resource.data.importance in ['high', 'mid', 'low']
+          && request.resource.data.dueAt is timestamp
+          && request.resource.data.doneCriteria is string
+          && request.resource.data.doneCriteria.size() > 0
+          // 担当者は、このプロジェクトの管理者かメンバー
+          && get(/databases/$(database)/documents/projects/$(pid)/members/$(request.resource.data.assigneeId)).data.role in ['admin', 'member']
+          // 番号は、採番した値と一致
+          && request.resource.data.number == getAfter(projectPath(pid)).data.issueSeq
+          && getAfter(projectPath(pid)).data.issueSeq == get(projectPath(pid)).data.issueSeq + 1;
+
+        match /events/{eid} {
+          allow read: if isMember(pid);
+          allow create: if canWrite(pid) && request.resource.data.by == request.auth.uid;
+        }
       }
     }
 

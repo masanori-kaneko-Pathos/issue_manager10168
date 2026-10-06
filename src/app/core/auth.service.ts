@@ -1,4 +1,4 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import {
   User, onAuthStateChanged, signInWithEmailAndPassword,
   createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut,
@@ -6,15 +6,32 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import { I18nService } from '../i18n/i18n';
+
+export interface UserProfile {
+  displayName: string;
+  email: string;
+  timeZone: string;
+  language: 'ja' | 'en';
+}
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   /** undefined = 確認中, null = 未ログイン */
   readonly user = signal<User | null | undefined>(undefined);
+  readonly profile = signal<UserProfile | null>(null);
+  private i18n = inject(I18nService);
 
   constructor() {
     onAuthStateChanged(auth, async (u) => {
-      if (u) await this.ensureProfile(u);
+      if (u) {
+        await this.ensureProfile(u);
+        const p = (await getDoc(doc(db, 'users', u.uid))).data() as UserProfile;
+        this.profile.set(p);
+        this.i18n.lang.set(p.language);
+      } else {
+        this.profile.set(null);
+      }
       this.user.set(u);
     });
   }
@@ -23,7 +40,7 @@ export class AuthService {
     await signInWithEmailAndPassword(auth, email, password);
   }
   async signUpWithEmail(email: string, password: string) {
-    const cred = await createUserWithEmailAndPassword(auth, email,password);
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
     await sendEmailVerification(cred.user);
   }
   async loginWithGoogle() {

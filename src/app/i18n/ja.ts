@@ -20,6 +20,7 @@ export const ja = {
   home: { welcome: 'ようこそ、{{name}} さん', logout: 'ログアウト' },
   common: {
     logout: 'ログアウト',
+    back: '← 戻る',
     loading: '読み込み中…',
     loadError: '読み込めませんでした。再読み込みしてください。',
     saveError: '保存できませんでした。もう一度お試しください。',
@@ -43,6 +44,9 @@ export const ja = {
       inviteError: '招待できませんでした。すでに招待済みの可能性があります。',
       pending: '招待中',
       cancelInvite: '取り消す',
+      issues: '課題',
+      newIssue: '＋ 課題を登録',
+      noIssues: '未完了の課題はありません。',
     },
     invitations: {
       title: '届いている招待',
@@ -56,6 +60,47 @@ export const ja = {
       done: '確認しました',
       sent: '確認メールを送りました。',
     },
-
+    issue: {
+      title: 'タイトル',
+      type: '種別',
+      importance: '重要度',
+      due: '期限',
+      assignee: '担当者',
+      doneCriteria: '完了条件',
+      description: '内容',
+    },
+    issueTypes: { bug: '不具合', request: '要望・改善', question: '質問・確認', task: '作業', risk: 'リスク・懸念' },
+    importance: { high: '大', mid: '中', low: '小' },
+    priority: { high: '高', mid: '中', low: '低' },
+    duePresets: { today: '今日中', tomorrow: '明日中', in3: '3日後', in7: '1週間後' },
+    due: { leftDays: 'あと{{n}}日', leftHours: 'あと{{n}}時間', overDays: '{{n}}日超過', overHours: '{{n}}時間超過' },
+    doneCriteria: {
+      bug: '再現手順で、不具合が起きないことを確認できた',
+      request: '要望の内容が反映され、依頼した人が確認できた',
+      question: '回答が得られ、質問した人が納得できた',
+      task: '作業が終わり、成果物を確認できた',
+      risk: '対策を決め、実施したか、受け入れることを判断した',
+    },
+    descTemplate: {
+      bug: '【起きていること】\n\n【再現手順】\n\n【本来の動き】\n',
+      request: '【要望】\n\n【理由・背景】\n',
+      question: '【知りたいこと】\n\n【背景】\n',
+      task: '【作業内容】\n\n【成果物】\n',
+      risk: '【懸念していること】\n\n【起きた場合の影響】\n',
+    },
+    help: {
+      importance: 'やらなかったとき、遅れたときに、どれだけ困るかで選びます。',
+      doneCriteria: '何ができたら「完了」と言えるかを書きます。種別を選ぶと例文が入ります。',
+      viewerCannotCreate: '閲覧者は課題を登録できません。必要な場合は、管理者に依頼してください。',
+    },
+    issueNew: {
+      title: '課題を登録',
+      titlePlaceholder: '何が起きている？ 何をする？',
+      showDetail: '＋ 詳細を入力',
+      hideDetail: '－ 詳細を閉じる',
+      submit: '登録する',
+      duePast: '期限が過去になっています。',
+      you: '（自分）',
+    },
 };
 export type Dict = typeof ja;
