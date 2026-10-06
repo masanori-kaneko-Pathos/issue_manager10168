@@ -50,3 +50,13 @@ export function remainingOf(dueMs: number, nowMs = Date.now()): { key: string; n
   if (days > 0) return { key: diff < 0 ? 'due.overDays' : 'due.leftDays', n: days };
   return { key: diff < 0 ? 'due.overHours' : 'due.leftHours', n: Math.max(1, Math.floor(abs / HOUR)) };
 }
+
+/** 瞬間を、timeZone での datetime-local の値（例 2026-10-09T18:00）にする */
+export function toLocalInput(date: Date, timeZone: string): string {
+    const p = new Intl.DateTimeFormat('en-CA', {
+      timeZone, hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    }).formatToParts(date);
+    const g = (t: string) => p.find((x) => x.type === t)!.value;
+    return `${g('year')}-${g('month')}-${g('day')}T${g('hour')}:${g('minute')}`;
+  }

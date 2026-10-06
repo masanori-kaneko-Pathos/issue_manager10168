@@ -73,6 +73,32 @@ service cloud.firestore {
         || (admin && from == 'closed' && to == 'in_progress' && hasReason());
     }
 
+        // 編集：提起者・担当者・管理者。クローズ後は不可
+    function editAllowed(pid) {
+      let d = request.resource.data;
+      return d.diff(resource.data).affectedKeys().hasOnly([
+               'title', 'type', 'importance', 'dueAt', 'assigneeId', 'doneCriteria', 'description', 'updatedAt'])
+        && resource.data.status != 'closed'
+        && (myRole(pid) == 'admin'
+            || resource.data.reporterId == request.auth.uid
+            || resource.data.assigneeId == request.auth.uid)
+        && d.title is string && d.title.size() > 0 && d.title.size() <= 200
+        && d.type in ['bug', 'request', 'question', 'task', 'risk']
+        && d.importance in ['high', 'mid', 'low']
+        && d.dueAt is timestamp
+        && d.doneCriteria is string && d.doneCriteria.size() > 0
+        && get(/databases/$(database)/documents/projects/$(pid)/members/$(d.assigneeId)).data.role in ['admin', 'member'];
+    }
+
+    // 優先度の手動変更：担当者と管理者。クローズ・却下は不可
+    function priorityAllowed(pid) {
+      let d = request.resource.data;
+      return d.diff(resource.data).affectedKeys().hasOnly(['priorityOverride', 'updatedAt'])
+        && !(resource.data.status in ['closed', 'rejected'])
+        && (myRole(pid) == 'admin' || resource.data.assigneeId == request.auth.uid)
+        && (d.priorityOverride == null || d.priorityOverride in ['high', 'mid', 'low']);
+    }
+
     match /projects/{pid} {
       allow read: if isMember(pid);
       // 作成は、自分を管理者にするメンバー文書と同時のときだけ
@@ -146,12 +172,16 @@ service cloud.firestore {
           // 番号は、採番した値と一致
           && request.resource.data.number == getAfter(projectPath(pid)).data.issueSeq
           && getAfter(projectPath(pid)).data.issueSeq == get(projectPath(pid)).data.issueSeq + 1;
-                  allow update: if canWrite(pid)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        allow update: if canWrite(pid)
+          && request.resource.data.updatedAt == request.time
+          && (
+            (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                'status', 'statusReason', 'updatedAt', 'cause', 'countermeasure', 'causeCategory',
                'doneCriteriaMet', 'resolvedAt', 'effect', 'learning', 'closedAt'])
-          && request.resource.data.updatedAt == request.time
-          && statusChangeAllowed(pid);
+             && statusChangeAllowed(pid))
+            || editAllowed(pid)
+            || priorityAllowed(pid)
+          );
 
         match /events/{eid} {
           allow read: if isMember(pid);

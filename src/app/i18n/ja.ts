@@ -156,7 +156,28 @@ export const ja = {
       events: {
         created: '{{name}} さんが登録',
         status: '{{name}} さんが「{{from}}」→「{{to}}」に変更',
+        edit: '{{name}} さんが編集（{{fields}}）',
+        priority: '{{name}} さんが優先度を「{{from}}」→「{{to}}」に変更',
       },
+    },
+    edit: {
+      open: '編集',
+      title: '課題を編集',
+      reason: '変更の理由',
+      reasonHint: '期限や担当者を変える理由（経緯に残ります）',
+      reasonRequired: '期限か担当者を変えるときは、理由を入力してください。',
+      required: 'タイトル・完了条件・期限は空にできません。',
+      save: '保存する',
+      denied: '編集できるのは、提起者・担当者・管理者です。クローズした課題は編集できません。',
+    },
+    priorityEdit: {
+      open: '優先度を変更',
+      manual: '（手動・自動では{{auto}}）',
+      auto: '自動に戻す',
+      autoLabel: '自動（{{p}}）',
+      reason: '変更の理由',
+      reasonHint: '例：作業に5日かかるため、実際の余裕が少ない',
+      denied: '優先度を変えられるのは、担当者と管理者です。',
     },
 };
 export type Dict = typeof ja;

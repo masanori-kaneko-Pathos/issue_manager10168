@@ -94,7 +94,16 @@ export type Effect = 'yes' | 'partial' | 'no';
 export interface TimelineItem {
   id: string;
   kind: 'event' | 'comment';
-  type?: 'created' | 'status';
+  type?: 'created' | 'status' | 'edit' | 'priority';
+  fields?: string[];  // 編集した項目
+  changes?: {
+    dueAt?: { from: Timestamp; to: Timestamp };
+    assigneeId?: { from: string; to: string };
+    doneCriteria?: { from: string; to: string };
+  };
+  fromPriority?: Level | null; // null は「自動」
+  toPriority?: Level | null;
+  autoPriority?: Level;        // 変更した時点の自動の値
   from?: IssueStatus;
   to?: IssueStatus;
   reason?: string;

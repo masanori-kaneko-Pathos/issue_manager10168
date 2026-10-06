@@ -159,6 +159,27 @@ export const en: Dict = {
     events: {
       created: '{{name}} created this',
       status: '{{name}} changed "{{from}}" → "{{to}}"',
+      edit: '{{name}} edited ({{fields}})',
+      priority: '{{name}} changed priority "{{from}}" → "{{to}}"',
     },
+  },
+  edit: {
+    open: 'Edit',
+    title: 'Edit issue',
+    reason: 'Reason for change',
+    reasonHint: 'Why the due date or assignee is changing (kept in history)',
+    reasonRequired: 'Please enter a reason when changing the due date or assignee.',
+    required: 'Title, definition of done, and due date cannot be empty.',
+    save: 'Save',
+    denied: 'Only the reporter, assignee, or an admin can edit. Closed issues cannot be edited.',
+  },
+  priorityEdit: {
+    open: 'Change priority',
+    manual: '(manual; auto would be {{auto}})',
+    auto: 'Back to auto',
+    autoLabel: 'Auto ({{p}})',
+    reason: 'Reason for change',
+    reasonHint: 'e.g. The work takes 5 days, so there is little real slack',
+    denied: 'Only the assignee or an admin can change priority.',
   },
 };

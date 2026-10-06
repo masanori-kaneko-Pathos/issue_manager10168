@@ -29,6 +29,16 @@ export interface StatusPayload {
   doneCriteriaMet: boolean;
 }
 
+export interface IssueEdits {
+  title?: string;
+  type?: IssueType;
+  importance?: Level;
+  dueAt?: Date;
+  assigneeId?: string;
+  doneCriteria?: string;
+  description?: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class IssueService {
   /** 課題番号の採番と、課題・履歴の作成を、1つのトランザクションで行う */
@@ -125,5 +135,46 @@ export class IssueService {
       ...comments.docs.map((d) => ({ ...(d.data() as Omit<TimelineItem, 'id' | 'kind'>), id: d.id, kind: 'comment' as const })),
     ];
     return items.sort((a, b) => a.at.toMillis() - b.at.toMillis());
+  }
+  /** 編集：変えた項目だけを更新し、経緯に「何を、何から何へ、なぜ」を残す */
+  async updateIssue(pid: string, issue: Issue, edits: IssueEdits, reason: string, uid: string, tz: string) {
+    const ref = doc(db, 'projects', pid, 'issues', issue.id);
+    const keys = (Object.keys(edits) as (keyof IssueEdits)[]).filter((k) => edits[k] !== undefined);
+
+    const update: Record<string, unknown> = { updatedAt: serverTimestamp() };
+    for (const k of keys) {
+      update[k] = k === 'dueAt' ? Timestamp.fromDate(edits.dueAt!) : edits[k];
+    }
+
+    const changes: Record<string, unknown> = {};
+    if (edits.dueAt) changes['dueAt'] = { from: issue.dueAt, to: Timestamp.fromDate(edits.dueAt) };
+    if (edits.assigneeId) changes['assigneeId'] = { from: issue.assigneeId, to: edits.assigneeId };
+    if (edits.doneCriteria !== undefined) {
+      changes['doneCriteria'] = { from: issue.doneCriteria, to: edits.doneCriteria };
+    }
+
+    const batch = writeBatch(db);
+    batch.update(ref, update);
+    batch.set(doc(collection(ref, 'events')), {
+      type: 'edit', fields: keys, changes, reason, by: uid, tz, at: serverTimestamp(),
+    });
+    await batch.commit();
+  }
+
+  /** 優先度の手動変更。value が null なら「自動に戻す」 */
+  async setPriority(
+    pid: string, issue: Issue, value: Level | null, auto: Level, reason: string, uid: string, tz: string,
+  ) {
+    const ref = doc(db, 'projects', pid, 'issues', issue.id);
+    const batch = writeBatch(db);
+    batch.update(ref, { priorityOverride: value, updatedAt: serverTimestamp() });
+    batch.set(doc(collection(ref, 'events')), {
+      type: 'priority',
+      fromPriority: issue.priorityOverride ?? null,
+      toPriority: value,
+      autoPriority: auto,
+      reason, by: uid, tz, at: serverTimestamp(),
+    });
+    await batch.commit();
   }
 }
