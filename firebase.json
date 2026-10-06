@@ -6,7 +6,8 @@
     "indexes": "firestore.indexes.json"
   },
   "hosting": {
-    "public": "dist/issuemanager/browser",
+    "public": "dist/issuemanager_10168/browser",
+    "predeploy": ["npm run build"],
     "ignore": [
       "firebase.json",
       "**/.*",

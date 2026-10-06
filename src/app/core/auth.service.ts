@@ -2,6 +2,7 @@ import { Injectable, signal } from '@angular/core';
 import {
   User, onAuthStateChanged, signInWithEmailAndPassword,
   createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut,
+  sendEmailVerification,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
@@ -22,7 +23,8 @@ export class AuthService {
     await signInWithEmailAndPassword(auth, email, password);
   }
   async signUpWithEmail(email: string, password: string) {
-    await createUserWithEmailAndPassword(auth, email, password);
+    const cred = await createUserWithEmailAndPassword(auth, email,password);
+    await sendEmailVerification(cred.user);
   }
   async loginWithGoogle() {
     await signInWithPopup(auth, new GoogleAuthProvider());

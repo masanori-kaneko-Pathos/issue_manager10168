@@ -6,6 +6,8 @@ export const routes: Routes = [
   { path: 'login', canActivate: [guestGuard],
     loadComponent: () => import('./pages/login/login').then((m) => m.Login) },
   { path: '', canActivate: [authGuard],
-    loadComponent: () => import('./pages/home/home').then((m) => m.Home) },
+    loadComponent: () => import('./pages/projects/projects').then((m) => m.Projects) },
+    { path: 'p/:pid', canActivate: [authGuard],
+    loadComponent: () => import('./pages/project-home/project-home').then((m) => m.ProjectHome) }, 
   { path: '**', redirectTo: '' },
 ];

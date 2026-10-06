@@ -1,22 +1,61 @@
 export const ja = {
-    app: { title: '課題管理' },
-    login: {
-      google: 'Googleでログイン',
-      or: 'または',
-      email: 'メールアドレス',
-      password: 'パスワード（6文字以上）',
-      submit: 'ログイン',
-      signup: 'アカウントを作成',
-      toSignup: 'はじめての方：アカウントを作成',
-      toLogin: 'ログインに戻る',
-      errors: {
-        'invalid-credential': 'メールアドレスまたはパスワードが違います。',
-        'email-already-in-use': 'このメールアドレスは登録済みです。',
-        'weak-password': 'パスワードは6文字以上にしてください。',
-        'invalid-email': 'メールアドレスの形式が正しくありません。',
-        default: 'ログインできませんでした。もう一度お試しください。',
-      },
+  app: { title: '課題管理' },
+  login: {
+    google: 'Googleでログイン',
+    or: 'または',
+    email: 'メールアドレス',
+    password: 'パスワード（6文字以上）',
+    submit: 'ログイン',
+    signup: 'アカウントを作成',
+    toSignup: 'はじめての方：アカウントを作成',
+    toLogin: 'ログインに戻る',
+    errors: {
+      'invalid-credential': 'メールアドレスまたはパスワードが違います。',
+      'email-already-in-use': 'このメールアドレスは登録済みです。',
+      'weak-password': 'パスワードは6文字以上にしてください。',
+      'invalid-email': 'メールアドレスの形式が正しくありません。',
+      default: 'ログインできませんでした。もう一度お試しください。',
     },
-    home: { welcome: 'ようこそ、{{name}} さん', logout: 'ログアウト' },
-  };
-  export type Dict = typeof ja;
+  },
+  home: { welcome: 'ようこそ、{{name}} さん', logout: 'ログアウト' },
+  common: {
+    logout: 'ログアウト',
+    loading: '読み込み中…',
+    loadError: '読み込めませんでした。再読み込みしてください。',
+    saveError: '保存できませんでした。もう一度お試しください。',
+  },
+  projects: {
+    title: 'プロジェクト',
+    namePlaceholder: '新しいプロジェクト名',
+    create: '作成',
+    empty: 'まだプロジェクトがありません。上の欄から作成するか、招待を受けてください。',
+    archived: 'アーカイブ済み',
+  },
+  roles: { admin: '管理者', member: 'メンバー', viewer: '閲覧者' },
+  labels: { customer: '顧客対応', internal: '社内対応', spec: '仕様設計', ops: '運用保守', quality: '品質' },
+     project: {
+      back: '← プロジェクト一覧',
+      notFound: 'プロジェクトが見つからないか、閲覧する権限がありません。',
+      members: 'メンバー',
+      invite: 'メンバーを招待',
+      inviteEmail: '招待する人のメールアドレス',
+      inviteSubmit: '招待する',
+      inviteError: '招待できませんでした。すでに招待済みの可能性があります。',
+      pending: '招待中',
+      cancelInvite: '取り消す',
+    },
+    invitations: {
+      title: '届いている招待',
+      from: '{{name}} さんから「{{project}}」に{{role}}として招待されています',
+      accept: '参加する',
+      decline: '辞退する',
+    },
+    verify: {
+      message: 'メールアドレスの確認が済んでいません。招待を受けるには、届いた確認メールのリンクを押してから「確認しました」を押してください。',
+      resend: '確認メールを再送',
+      done: '確認しました',
+      sent: '確認メールを送りました。',
+    },
+
+};
+export type Dict = typeof ja;
