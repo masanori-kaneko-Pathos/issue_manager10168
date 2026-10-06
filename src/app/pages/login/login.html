@@ -1,0 +1,32 @@
+<main class="login">
+    <h1>{{ 'app.title' | t }}</h1>
+  
+    <button type="button" class="primary" (click)="google()" [disabled]="busy()">
+      {{ 'login.google' | t }}
+    </button>
+    <p class="or">{{ 'login.or' | t }}</p>
+  
+    <form (ngSubmit)="submitEmail()">
+      <label>{{ 'login.email' | t }}
+        <input type="email" name="email" [(ngModel)]="email" required autocomplete="email" />
+      </label>
+      <label>{{ 'login.password' | t }}
+        <input type="password" name="password" [(ngModel)]="password" required minlength="6"
+          [attr.autocomplete]="mode() === 'login' ? 'current-password' : 'new-password'" />
+      </label>
+      @if (error()) {
+        <p class="error" role="alert">{{ error() | t }}</p>
+      }
+      <button type="submit" [disabled]="busy()">
+        {{ (mode() === 'login' ? 'login.submit' : 'login.signup') | t }}
+      </button>
+    </form>
+  
+    <button type="button" class="link" (click)="toggleMode()">
+      {{ (mode() === 'login' ? 'login.toSignup' : 'login.toLogin') | t }}
+    </button>
+    <div class="lang">
+      <button type="button" class="link" (click)="i18n.lang.set('ja')">日本語</button>
+      <button type="button" class="link" (click)="i18n.lang.set('en')">English</button>
+    </div>
+  </main>
