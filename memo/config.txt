@@ -1,0 +1,9 @@
+export const firebaseConfig = {
+  apiKey: "AIzaSyBFghMIAwh5ioqumGcTZnsP_YwY3FUF8uw",
+  authDomain: "kensyu10168.firebaseapp.com",
+  projectId: "kensyu10168",
+  storageBucket: "kensyu10168.firebasestorage.app",
+  messagingSenderId: "374326980405",
+  appId: "1:374326980405:web:2e14685b9c7330e5a6a67c",
+  measurementId: "G-0P46S6PC0J"
+};
