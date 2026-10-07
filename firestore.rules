@@ -210,5 +210,10 @@ service cloud.firestore {
     match /{path=**}/invitations/{inviteId} {
       allow read: if emailVerified() && resource.data.email == request.auth.token.email.lower();
     }
+    
+    // 「自分の課題」：所属するすべてのプロジェクトから、自分が担当の課題を探す
+    match /{path=**}/issues/{issueId} {
+      allow read: if signedIn() && resource.data.assigneeId == request.auth.uid;
+    }
   }
 }

@@ -1,11 +1,14 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { sendEmailVerification } from 'firebase/auth';
 import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth.service';
 import { ProjectService } from '../../core/project.service';
-import { Invitation, ProjectWithRole } from '../../core/models';
+import { Invitation, Issue, Level, ProjectWithRole } from '../../core/models';
+import { IssueService } from '../../core/issue.service';
+import { compareIssues, priorityOf } from '../../core/priority';
+import { remainingOf } from '../../core/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 
 @Component({
@@ -43,6 +46,34 @@ import { I18nService, TPipe } from '../../i18n/i18n';
           }
         </ul>
       }
+
+            <section class="mine">
+        <div class="mine-head">
+          <h2>{{ 'mine.title' | t }}</h2>
+          <label class="check">
+            <input type="checkbox" [checked]="showDone()" (change)="showDone.set(!showDone())" />
+            {{ 'mine.showDone' | t }}
+          </label>
+        </div>
+        <ul class="list">
+          @for (i of visibleMine(); track i.id) {
+            <li class="mine-item">
+              <span class="prio" [attr.data-p]="prio(i)"></span>
+              <a class="name" [routerLink]="['/p', i.projectId, 'i', i.id]">#{{ i.number }} {{ i.title }}</a>
+              <span class="small">{{ projectName(i.projectId) }}</span>
+              @if (isActive(i)) {
+                <span class="small" [class.overdue]="isOverdue(i)">{{ remaining(i) }}</span>
+              } @else {
+                <span class="small">{{ 'status.' + i.status | t }}</span>
+              }
+            </li>
+          } @empty {
+            <li class="empty">{{ 'mine.empty' | t }}</li>
+          }
+        </ul>
+      </section>
+
+      <h2>{{ 'projects.title' | t }}</h2>
 
       <form class="create" (ngSubmit)="create()">
         <input name="name" [(ngModel)]="newName" maxlength="100" required
@@ -89,16 +120,37 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     h2 { font-size: 16px; }
     .invitation { flex-wrap: wrap; padding: 8px 12px !important; }
     .invitation .name { flex-basis: 100%; }
+    .mine { margin-bottom: 24px; }
+    .mine-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    .check { display: flex; align-items: center; gap: 6px; font-size: 13px; min-height: 40px; }
+    .mine-item { flex-wrap: wrap; }
+    .mine-item .name { flex: 1; min-width: 50%; overflow-wrap: anywhere; }
+    .prio { width: 10px; height: 10px; border-radius: 50%; background: #9e9e9e; flex: none; }
+    .prio[data-p='high'] { background: #d32f2f; }
+    .prio[data-p='mid'] { background: #f9a825; }
+    .prio[data-p='low'] { background: #43a047; }
+    .small { font-size: 12px; color: #666; }
+    .small.overdue { color: #d32f2f; font-weight: bold; }
   `,
 })
 export class Projects implements OnInit {
   private authService = inject(AuthService);
   private projectService = inject(ProjectService);
+  private issueService = inject(IssueService);
   private router = inject(Router);
   protected i18n = inject(I18nService);
 
   projects = signal<ProjectWithRole[]>([]);
   invitations = signal<Invitation[]>([]);
+  myIssues = signal<(Issue & { projectId: string })[]>([]);
+  showDone = signal(false);
+  /** 初期は自分の手が必要なもの（未着手・対応中・保留）。切り替えで解決済み・クローズも表示 */
+  visibleMine = computed(() => {
+    const now = Date.now();
+    return this.myIssues()
+      .filter((i) => this.showDone() || this.isActive(i))
+      .sort((a, b) => compareIssues(a, b, now));
+  });
   needsVerify = signal(false);
   info = signal('');
   loading = signal(true);
@@ -116,15 +168,32 @@ export class Projects implements OnInit {
     this.loading.set(true);
     try {
       this.projects.set(await this.projectService.listMine(auth.currentUser!.uid));
-      const email = auth.currentUser!.email;
-      if (email && !this.needsVerify()) {
-        this.invitations.set(await this.projectService.listMyInvitations(email));
-      }
     } catch (e) {
       console.error(e);
       this.error.set('common.loadError');
     } finally {
       this.loading.set(false);
+    }
+    // 招待と自分の課題は、失敗しても一覧の表示を止めない
+    await this.loadInvitations();
+    await this.loadMyIssues();
+  }
+
+  private async loadInvitations() {
+    const email = auth.currentUser!.email;
+    if (!email || this.needsVerify()) return;
+    try {
+      this.invitations.set(await this.projectService.listMyInvitations(email));
+    } catch (e) {
+      console.error('招待の読み込みに失敗', e);
+    }
+  }
+
+  private async loadMyIssues() {
+    try {
+      this.myIssues.set(await this.issueService.listMine(auth.currentUser!.uid));
+    } catch (e) {
+      console.error('自分の課題の読み込みに失敗', e);
     }
   }
 
@@ -176,6 +245,22 @@ export class Projects implements OnInit {
     await this.load();
   }
 
+  projectName(pid: string) {
+    return this.projects().find((p) => p.id === pid)?.name ?? '';
+  }
+  isActive(i: Issue) {
+    return i.status === 'open' || i.status === 'in_progress' || i.status === 'on_hold';
+  }
+  isOverdue(i: Issue) {
+    return this.isActive(i) && i.dueAt.toMillis() < Date.now();
+  }
+  prio(i: Issue): Level {
+    return priorityOf(i);
+  }
+  remaining(i: Issue) {
+    const r = remainingOf(i.dueAt.toMillis());
+    return this.i18n.t(r.key, { n: String(r.n) });
+  }
 
   async logout() {
     await this.authService.logout();

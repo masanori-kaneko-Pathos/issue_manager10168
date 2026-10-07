@@ -60,3 +60,16 @@ export function toLocalInput(date: Date, timeZone: string): string {
     const g = (t: string) => p.find((x) => x.type === t)!.value;
     return `${g('year')}-${g('month')}-${g('day')}T${g('hour')}:${g('minute')}`;
   }
+
+  /** 「5時間前」「5 hours ago」のような相対的な表示 */
+export function relativeTime(ms: number, lang: 'ja' | 'en', nowMs = Date.now()): string {
+    const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' });
+    const sec = Math.round((ms - nowMs) / 1000); // 過去はマイナス
+    const abs = Math.abs(sec);
+    if (abs < 60) return rtf.format(sec, 'second');
+    if (abs < 3600) return rtf.format(Math.round(sec / 60), 'minute');
+    if (abs < 86400) return rtf.format(Math.round(sec / 3600), 'hour');
+    if (abs < 86400 * 30) return rtf.format(Math.round(sec / 86400), 'day');
+    if (abs < 86400 * 365) return rtf.format(Math.round(sec / (86400 * 30)), 'month');
+    return rtf.format(Math.round(sec / (86400 * 365)), 'year');
+  }

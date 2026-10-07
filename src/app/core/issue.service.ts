@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import {
-  Timestamp, collection, doc, getDoc, getDocs, orderBy, query, runTransaction,
+  Timestamp, collection, collectionGroup, doc, getDoc, getDocs, orderBy, query, runTransaction,
   serverTimestamp, where, writeBatch, addDoc,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -177,4 +177,20 @@ export class IssueService {
     });
     await batch.commit();
   }
+
+    /** クローズ・却下も含めたすべての課題（検索と「すべて」表示のときだけ使う） */
+    async listAll(pid: string): Promise<Issue[]> {
+      const s = await getDocs(collection(db, 'projects', pid, 'issues'));
+      return s.docs.map((d) => ({ ...(d.data() as Omit<Issue, 'id'>), id: d.id }));
+    }
+  
+    /** 所属するすべてのプロジェクトで、自分が担当している課題 */
+    async listMine(uid: string): Promise<(Issue & { projectId: string })[]> {
+      const s = await getDocs(query(collectionGroup(db, 'issues'), where('assigneeId', '==', uid)));
+      return s.docs.map((d) => ({
+        ...(d.data() as Omit<Issue, 'id'>),
+        id: d.id,
+        projectId: d.ref.parent.parent!.id,
+      }));
+    }
 }

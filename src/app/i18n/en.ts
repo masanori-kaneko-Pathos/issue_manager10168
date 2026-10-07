@@ -182,4 +182,25 @@ export const en: Dict = {
     reasonHint: 'e.g. The work takes 5 days, so there is little real slack',
     denied: 'Only the assignee or an admin can change priority.',
   },
+
+  list: {
+    searchPlaceholder: 'Search title, description, cause, fix, lessons, or #number',
+    searchNote: 'Closed and rejected issues are included while searching.',
+    filters: 'Filters',
+    sort: 'Sort',
+    flip: 'Reverse order',
+    sortKeys: { priority: 'Priority', due: 'Due', number: 'Number', updated: 'Updated', assignee: 'Assignee' },
+    scopeOpen: 'Not closed',
+    scopeAll: 'All (incl. closed)',
+    overdue: 'Overdue only',
+    clear: 'Clear filters',
+    count: '{{n}} issues',
+    noMatch: 'No issues match these conditions.',
+    updated: 'updated {{t}}',
+  },
+  mine: {
+    title: 'My issues',
+    showDone: 'Show resolved and closed',
+    empty: 'You have no assigned issues.',
+  },
 };

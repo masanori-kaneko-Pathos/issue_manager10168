@@ -3,15 +3,14 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { auth } from '../../core/firebase';
 import { ProjectService } from '../../core/project.service';
-import { Invitation, Issue, Level, Member, Project, Role } from '../../core/models';
+import { Invitation, Issue, Member, Project, Role } from '../../core/models';
 import { IssueService } from '../../core/issue.service';
-import { compareIssues, priorityOf } from '../../core/priority';
-import { remainingOf } from '../../core/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
+import { IssueList } from './issue-list/issue-list';
 
 @Component({
   selector: 'app-project-home',
-  imports: [FormsModule, RouterLink, TPipe],
+  imports: [FormsModule, RouterLink, TPipe, IssueList],
   template: `
     <header class="bar"><a routerLink="/" class="link">{{ 'project.back' | t }}</a></header>
     <main>
@@ -21,30 +20,8 @@ import { I18nService, TPipe } from '../../i18n/i18n';
         <p>{{ 'project.notFound' | t }}</p>
       } @else {
         <h1>{{ project()!.name }} <span class="role">{{ 'roles.' + role() | t }}</span></h1>
-                <section>
-          <div class="section-head">
-            <h2>{{ 'project.issues' | t }}</h2>
-            @if (canCreate()) {
-              <a class="primary" [routerLink]="['/p', pid, 'new']">{{ 'project.newIssue' | t }}</a>
-            } @else {
-              <button type="button" class="primary" disabled>{{ 'project.newIssue' | t }}</button>
-            }
-          </div>
-          @if (role() === 'viewer') { <p class="help">{{ 'help.viewerCannotCreate' | t }}</p> }
-          <ul class="list">
-            @for (i of issues(); track i.id) {
-              <li class="issue">
-                <span class="prio" [attr.data-p]="priority(i)" [attr.title]="'priority.' + priority(i) | t"></span>
-                <span class="num">#{{ i.number }}</span>
-                <a class="name" [routerLink]="['/p', pid, 'i', i.id]">{{ i.title }}</a>
-                <span class="meta">{{ memberName(i.assigneeId) }}</span>
-                <span class="due" [class.overdue]="isOverdue(i)">{{ remaining(i) }}</span>
-              </li>
-            } @empty {
-              <li class="empty">{{ 'project.noIssues' | t }}</li>
-            }
-          </ul>
-        </section>
+        <app-issue-list [pid]="pid" [members]="members()" [canCreate]="canCreate()"
+          [isViewer]="role() === 'viewer'" />
 
         <section>
           <h2>{{ 'project.members' | t }}</h2>
@@ -151,7 +128,6 @@ export class ProjectHome implements OnInit {
       this.role.set(await this.ps.myRole(this.pid, auth.currentUser!.uid));
       this.project.set(await this.ps.get(this.pid));
       this.members.set(await this.ps.listMembers(this.pid));
-      this.issues.set((await this.issueService.listOpen(this.pid)).sort((a, b) => compareIssues(a, b)));
       if (this.role() === 'admin') this.invitations.set(await this.ps.listInvitations(this.pid));
     } catch (e) {
       console.error(e);
@@ -183,20 +159,4 @@ export class ProjectHome implements OnInit {
     this.invitations.update((list) => list.filter((x) => x.email !== i.email));
   }
 
-  priority(i: Issue): Level {
-    return priorityOf(i);
-  }
-
-  isOverdue(i: Issue) {
-    return i.dueAt.toMillis() < Date.now();
-  }
-
-  remaining(i: Issue) {
-    const r = remainingOf(i.dueAt.toMillis());
-    return this.i18n.t(r.key, { n: String(r.n) });
-  }
-
-  memberName(uid: string) {
-    return this.members().find((m) => m.uid === uid)?.displayName ?? '—';
-  }
 }

@@ -179,5 +179,26 @@ export const ja = {
       reasonHint: '例：作業に5日かかるため、実際の余裕が少ない',
       denied: '優先度を変えられるのは、担当者と管理者です。',
     },
+
+    list: {
+      searchPlaceholder: 'タイトル・内容・原因・対策・学び・番号で検索',
+      searchNote: '検索中は、クローズ・却下した課題も対象です。',
+      filters: '絞り込み',
+      sort: '並べ替え',
+      flip: '並び順を反転',
+      sortKeys: { priority: '優先度', due: '期限', number: '番号', updated: '更新日', assignee: '担当者' },
+      scopeOpen: '未クローズ',
+      scopeAll: 'すべて（クローズ含む）',
+      overdue: '期限切れのみ',
+      clear: '条件をクリア',
+      count: '{{n}}件',
+      noMatch: '条件に合う課題はありません。',
+      updated: '更新 {{t}}',
+    },
+    mine: {
+      title: '自分の課題',
+      showDone: '解決済み・クローズも表示',
+      empty: '担当している課題はありません。',
+    },
 };
 export type Dict = typeof ja;
