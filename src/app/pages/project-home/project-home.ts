@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { ActivatedRoute, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ProjectContext } from '../../core/project-context';
@@ -18,7 +18,7 @@ import { TPipe } from '../../i18n/i18n';
       } @else {
         <h1>{{ ctx.project()!.name }} <span class="role">{{ 'roles.' + ctx.role() | t }}</span></h1>
         <nav class="tabs">
-          @for (t of tabs; track t) {
+          @for (t of tabs(); track t) {
             <a [routerLink]="t" routerLinkActive="on" queryParamsHandling="preserve">{{ 'tabs.' + t | t }}</a>
           }
         </nav>
@@ -42,8 +42,9 @@ export class ProjectHome {
   protected ctx = inject(ProjectContext);
   private route = inject(ActivatedRoute);
 
-  /** タブの並び。カレンダーなどは、作ったらここに足す */
-  readonly tabs = ['list', 'board', 'members'];
+  /** タブの並び。設定は管理者だけに出す */
+  tabs = computed(() =>
+    this.ctx.role() === 'admin' ? ['list', 'board', 'members', 'settings'] : ['list', 'board', 'members']);
 
   constructor() {
     // 別のプロジェクトに移ったときも読み直す

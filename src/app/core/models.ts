@@ -2,7 +2,22 @@ import { Timestamp } from 'firebase/firestore';
 
 export type Role = 'admin' | 'member' | 'viewer';
 
-export interface Label { id: string; name: string; }
+export const LABEL_COLORS = ['blue', 'green', 'orange', 'red', 'purple', 'gray'] as const;
+export type LabelColor = (typeof LABEL_COLORS)[number];
+
+export interface Label { id: string; name: string; color?: LabelColor; }
+
+export const MAX_LABELS_PER_ISSUE = 5;   // 1つの課題に付けられる数（仕様メモ）
+export const MAX_LABELS_PER_PROJECT = 30; // 1つのプロジェクトで作れる数
+
+/** 初期ラベルの色（色が未設定の古いプロジェクト用） */
+const DEFAULT_LABEL_COLORS: Record<string, LabelColor> = {
+  customer: 'blue', internal: 'green', spec: 'purple', ops: 'orange', quality: 'red',
+};
+
+export function labelColor(l: Label): LabelColor {
+  return l.color ?? DEFAULT_LABEL_COLORS[l.id] ?? 'gray';
+}
 
 export interface ProjectSettings {
   notifyHour: number;        // 通知時刻（受け取る人の現地時間）

@@ -32,4 +32,11 @@
     --success-text: #2e7d32;
     --success-bg: #e8f5e9;
     --hold-bg: #fff3e0;
+
+    --label-blue: #1565c0;   --label-blue-bg: #e3f2fd;
+    --label-green: #2e7d32;  --label-green-bg: #e8f5e9;
+    --label-orange: #e65100; --label-orange-bg: #fff3e0;
+    --label-red: #c62828;    --label-red-bg: #ffebee;
+    --label-purple: #6a1b9a; --label-purple-bg: #f3e5f5;
+    --label-gray: #555;      --label-gray-bg: #eeeeee;
   }

@@ -25,6 +25,8 @@ export const routes: Routes = [
             loadComponent: () => import('./pages/project-home/project-board').then((m) => m.ProjectBoard) },
         { path: 'members',
           loadComponent: () => import('./pages/project-home/project-members').then((m) => m.ProjectMembers) },
+        { path: 'settings', canDeactivate: [unsavedGuard],
+          loadComponent: () => import('./pages/project-home/project-settings').then((m) => m.ProjectSettings) },
       ] },
   { path: 'settings', canActivate: [authGuard], canDeactivate: [unsavedGuard],
     loadComponent: () => import('./pages/settings/settings').then((m) => m.Settings) },

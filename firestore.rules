@@ -112,8 +112,10 @@ service cloud.firestore {
         && request.resource.data.name.size() <= 100
         && getAfter(memberPath(pid)).data.role == 'admin';
       allow update: if (isAdmin(pid)
-        && request.resource.data.diff(resource.data).affectedKeys()
-           .hasOnly(['name', 'archived', 'labels', 'settings']))
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['name', 'archived', 'labels', 'settings'])
+          && request.resource.data.labels is list
+          && request.resource.data.labels.size() <= 30)
       // 課題の登録時の採番（1つ増やすだけ）
         || (canWrite(pid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['issueSeq'])

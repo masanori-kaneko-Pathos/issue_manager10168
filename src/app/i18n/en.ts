@@ -252,7 +252,7 @@ export const en: Dict = {
     defaultView: 'Default view when opening a project',
   },
   tip: { help: 'Show help', whyDisabled: 'Why is this disabled?' },
-  tabs: { list: 'List', board: 'Board', calendar: 'Calendar', gantt: 'Gantt', members: 'Members' },
+  tabs: { list: 'List', board: 'Board', calendar: 'Calendar', gantt: 'Gantt', members: 'Members', settings: 'Settings' },
   board: {
     all: 'Evreyone',
     dueAll: 'Any due date',
@@ -264,5 +264,19 @@ export const en: Dict = {
     empty: 'No issues',
     move: 'Change status',
     viewerCannotMove: 'Viewers cannot move cards to change status.',
+  },
+  projectSettings: {
+    adminOnly: 'Only admins can use this page.',
+    labels: 'Labels',
+    labelsHelp: 'Used to categorize issues. Up to 5 per issue. Renaming a label keeps it on its issues.',
+    labelName: 'Label name',
+    newLabel: 'New label name',
+    add: 'Add',
+    delete: 'Delete',
+    deleteConfirm: 'Delete "{{name}}"? It will no longer appear on issues.',
+    duplicate: 'A label with the same name already exists.',
+    emptyName: 'Label names cannot be empty.',
+    maxReached: 'Up to {{n}} labels.',
+    colors: { blue: 'Blue', green: 'Green', orange: 'Orange', red: 'Red', purple: 'Purple', gray: 'Gray' },
   },
 };

@@ -2,11 +2,13 @@ import { Injectable, inject } from '@angular/core';
 import { User } from 'firebase/auth';
 import {
     collection, collectionGroup, doc, getDoc, getDocs, query, where,
-    serverTimestamp, writeBatch, setDoc, deleteDoc,
+    serverTimestamp, writeBatch, setDoc, deleteDoc, updateDoc,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { I18nService } from '../i18n/i18n';
-import { DEFAULT_LABEL_IDS, DEFAULT_SETTINGS, Invitation, Member, Project, ProjectWithRole, Role } from './models';
+import {
+    DEFAULT_LABEL_IDS, DEFAULT_SETTINGS, Invitation, Label, Member, Project, ProjectWithRole, Role, labelColor,
+} from './models';
 
 @Injectable({ providedIn: 'root' })
 export class ProjectService {
@@ -21,7 +23,10 @@ export class ProjectService {
             archived: false,
             createdBy: user.uid,
             createdAt: serverTimestamp(),
-            labels: DEFAULT_LABEL_IDS.map((id) => ({ id, name: this.i18n.t(`labels.${id}`) })),
+            labels: DEFAULT_LABEL_IDS.map((id) => {
+                const l = { id, name: this.i18n.t(`labels.${id}`) };
+                return { ...l, color: labelColor(l) };
+            }),
             settings: DEFAULT_SETTINGS,
             issueSeq: 0,
         });
@@ -117,5 +122,9 @@ export class ProjectService {
 
     declineInvitation(inv: Invitation) {
         return deleteDoc(doc(db, 'projects', inv.projectId, 'invitations', inv.email));
+    }
+    /** ラベルの一覧をまるごと保存する（管理者のみ。ルールで確認） */
+    updateLabels(pid: string, labels: Label[]) {
+        return updateDoc(doc(db, 'projects', pid), { labels });
     }
 }

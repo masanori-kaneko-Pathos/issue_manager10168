@@ -1,6 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { auth } from './firebase';
-import { Member, Project, Role } from './models';
+import { Label, Member, Project, Role } from './models';
 import { ProjectService } from './project.service';
 
 /** プロジェクト画面の中で共有する情報。入れ物（project-home）ごとに1つ作られる */
@@ -36,4 +36,8 @@ export class ProjectContext {
       this.loading.set(false);
     }
   }
+    /** 保存したラベルを、ほかのタブにもすぐ反映する（読み直さずに済む） */
+    setLabels(labels: Label[]) {
+        this.project.update((p) => (p ? { ...p, labels } : p));
+      }
 }
