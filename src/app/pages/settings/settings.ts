@@ -4,12 +4,13 @@ import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
 import { COMMON_TIMEZONES, formatDateTime, tzOffset } from '../../core/time';
 import { I18nService, Lang, TPipe } from '../../i18n/i18n';
+import { HelpTip } from '../../shared/help-tip';
 
 type Section = 'general' | 'password';
 
 @Component({
   selector: 'app-settings',
-  imports: [FormsModule, RouterLink, TPipe],
+  imports: [FormsModule, RouterLink, TPipe, HelpTip],
   host: { '(window:beforeunload)': 'onBeforeUnload($event)' },
   template: `
     <header class="bar"><a routerLink="/" class="link">{{ 'common.back' | t }}</a></header>
@@ -32,8 +33,7 @@ type Section = 'general' | 'password';
       </section>
 
       <section>
-        <h2>{{ 'settings.timeZone' | t }}</h2>
-        <p class="help">{{ 'settings.tzHelp' | t }}</p>
+        <h2>{{ 'settings.timeZone' | t }} <app-help-tip [keys]="['settings.tzHelp']" /></h2>
         <select [ngModel]="timeZone()" (ngModelChange)="timeZone.set($event)">
           <optgroup [label]="'settings.tzCommon' | t">
             @for (z of commonZones; track z.value) { <option [value]="z.value">{{ z.label }}</option> }

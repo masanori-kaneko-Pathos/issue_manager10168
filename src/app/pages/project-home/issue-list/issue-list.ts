@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { IssueService } from '../../../core/issue.service';
 import { AuthService } from '../../../core/auth.service';
+import { HelpTip } from '../../../shared/help-tip';
 import { ISSUE_TYPES, Issue, IssueType, Level, Member, OPEN_STATUSES } from '../../../core/models';
 import { compareIssues, priorityOf } from '../../../core/priority';
 import { formatDateTime, relativeTime, remainingOf } from '../../../core/time';
@@ -21,7 +22,7 @@ const normalize = (s: string) => s.normalize('NFKC').toLowerCase();
 
 @Component({
   selector: 'app-issue-list',
-  imports: [FormsModule, RouterLink, TPipe],
+  imports: [FormsModule, RouterLink, TPipe, HelpTip],
   host: { '(document:keydown.escape)': 'showFilters.set(false)' },
   template: `
     <section>
@@ -29,11 +30,14 @@ const normalize = (s: string) => s.normalize('NFKC').toLowerCase();
         <h2>{{ 'project.issues' | t }}</h2>
         @if (canCreate()) {
           <a class="primary" [routerLink]="['/p', pid(), 'new']">{{ 'project.newIssue' | t }}</a>
-        } @else {
-          <button type="button" class="primary" disabled>{{ 'project.newIssue' | t }}</button>
+               } @else {
+          <span class="denied-wrap">
+            <button type="button" class="primary" disabled>{{ 'project.newIssue' | t }}</button>
+            <app-help-tip kind="denied" align="right"
+              [keys]="[isViewer() ? 'help.viewerCannotCreate' : 'help.archivedCannotCreate']" />
+          </span>
         }
       </div>
-      @if (isViewer()) { <p class="help">{{ 'help.viewerCannotCreate' | t }}</p> }
 
       <input type="search" class="search" [ngModel]="q()" (ngModelChange)="setQ($event)"
         [placeholder]="'list.searchPlaceholder' | t" />
@@ -211,6 +215,7 @@ const normalize = (s: string) => s.normalize('NFKC').toLowerCase();
     .meta, .due { font-size: 12px; color: var(--text-muted); }
     .due.overdue { color: var(--danger); font-weight: bold; }
     .empty { color: var(--text-muted); padding: 12px 8px; }
+    .denied-wrap { display: inline-flex; align-items: center; gap: 8px; }
   `,
 })
 export class IssueList implements OnInit {

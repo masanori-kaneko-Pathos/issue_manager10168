@@ -96,6 +96,11 @@ export const en: Dict = {
     importance: 'Choose by how much trouble it causes if not done or delayed.',
     doneCriteria: 'Describe what must be true to call this done. Picking a type fills in an example.',
     viewerCannotCreate: 'Viewers cannot create issues. Please ask an admin if needed.',
+    title: 'A short line is enough. You can add details to the description later.',
+    type: 'The kind of issue. Picking one fills in example text for the definition of done and description (editable).',
+    due: 'The due date is one shared moment for everyone. Buttons like "Today" mean 23:59 of that day in your time zone.',
+    assignee: 'Every issue has exactly one assignee, initially you. Teams or departments cannot be assigned.',
+    archivedCannotCreate: 'This project is archived, so issues cannot be created.',
   },
   issueNew: {
     title: 'New issue',
@@ -232,4 +237,5 @@ export const en: Dict = {
     saveChanges: 'Save changes',
     leaveConfirm: 'You have unsaved changes. Discard them and leave?',
   },
+  tip: { help: 'Show help', whyDisabled: 'Why is this disabled?' },
 };

@@ -9,6 +9,7 @@ import {
   CAUSE_CATEGORIES, CauseCategory, Effect, Issue, Level, Member, Role, TimelineItem,
 } from '../../core/models';
 import { IssueEdit } from './issue-edit/issue-edit';
+import { HelpTip } from '../../shared/help-tip';
 import { priorityOf } from '../../core/priority';
 import { formatDateTime, remainingOf } from '../../core/time';
 import { Transition, availableTransitions } from '../../core/workflow';
@@ -16,7 +17,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
 
 @Component({
   selector: 'app-issue-detail',
-  imports: [FormsModule, RouterLink, TPipe, IssueEdit],
+  imports: [FormsModule, RouterLink, TPipe, IssueEdit, HelpTip],
   template: `
     <header class="bar"><a [routerLink]="['/p', pid]" class="link">{{ 'common.back' | t }}</a></header>
     <main>
@@ -68,9 +69,8 @@ import { I18nService, TPipe } from '../../i18n/i18n';
           <button type="button" [disabled]="!canEdit()" (click)="editing.set(true)">{{ 'edit.open' | t }}</button>
           <button type="button" [disabled]="!canSetPriority()" (click)="openPriority()">
             {{ 'priorityEdit.open' | t }}</button>
+          @if (toolDenied().length) { <app-help-tip kind="denied" [keys]="toolDenied()" /> }
         </section>
-        @if (!canEdit()) { <p class="help">{{ 'edit.denied' | t }}</p> }
-        @if (!canSetPriority()) { <p class="help">{{ 'priorityEdit.denied' | t }}</p> }
 
         @if (prioPanel()) {
           <section class="panel">
@@ -107,8 +107,8 @@ import { I18nService, TPipe } from '../../i18n/i18n';
             <button type="button" [disabled]="!a.allowed || busy()" [class.on]="active()?.key === a.t.key"
               (click)="click(a.t)">{{ 'workflow.' + a.t.key | t }}</button>
           }
+          @if (deniedReasons().length) { <app-help-tip kind="denied" [keys]="deniedReasons()" /> }
         </section>
-        @for (key of deniedReasons(); track key) { <p class="help">{{ key | t }}</p> }
 
         @if (active(); as t) {
           <section class="panel">
@@ -220,7 +220,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .fields dt { color: var(--text-muted); font-size: 13px; }
     .fields dd { margin: 0; }
     .pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
-    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .actions button { min-height: 44px; padding: 0 16px; border: 1px solid var(--primary); color: var(--primary);
       background: var(--surface); border-radius: 8px; font-size: 14px; }
     .actions button.on { background: var(--primary); color: var(--on-primary); }
@@ -252,7 +252,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .timeline .meta { font-size: 12px; color: var(--text-muted); }
     .comment-box { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
     .comment-box .primary { align-self: flex-end; }
-        .tools { display: flex; gap: 8px; margin-bottom: 4px; }
+    .tools { display: flex; gap: 8px; margin-bottom: 4px; align-items: center; }
     .tools button { min-height: 44px; padding: 0 16px; border: 1px solid var(--border-strong); background: var(--surface);
       border-radius: 8px; font-size: 14px; }
     .tools button:disabled { color: var(--text-disabled); }
@@ -314,6 +314,10 @@ export class IssueDetail implements OnInit {
     if (!i || !r || i.status === 'closed' || i.status === 'rejected') return false;
     return r === 'admin' || (r === 'member' && i.assigneeId === this.myUid);
   });
+  toolDenied = computed(() => [
+    ...(this.canEdit() ? [] : ['edit.denied']),
+    ...(this.canSetPriority() ? [] : ['priorityEdit.denied']),
+  ]);
   overdue = computed(() => this.issue()!.dueAt.toMillis() < Date.now());
   dueText = computed(() => {
     const r = remainingOf(this.issue()!.dueAt.toMillis());

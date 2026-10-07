@@ -8,22 +8,24 @@ import { IssueService } from '../../core/issue.service';
 import { ISSUE_TYPES, IssueType, Level, Member } from '../../core/models';
 import { endOfDayIn, formatDateTime, parseLocalInput } from '../../core/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
+import { HelpTip } from '../../shared/help-tip';
 
 @Component({
   selector: 'app-issue-new',
-  imports: [FormsModule, RouterLink, TPipe],
+  imports: [FormsModule, RouterLink, TPipe, HelpTip],
   template: `
     <header class="bar"><a [routerLink]="['/p', pid]" class="link">{{ 'common.back' | t }}</a></header>
     <main>
       <h1>{{ 'issueNew.title' | t }}</h1>
       <form (ngSubmit)="save()">
-        <label class="field">{{ 'issue.title' | t }}
-          <input name="title" [(ngModel)]="title" maxlength="200" required autofocus
+        <div class="field">
+          <span><label for="f-title">{{ 'issue.title' | t }}</label> <app-help-tip [keys]="['help.title']" /></span>
+          <input id="f-title" name="title" [(ngModel)]="title" maxlength="200" required autofocus
             [placeholder]="'issueNew.titlePlaceholder' | t" />
-        </label>
+        </div>
 
         <fieldset>
-          <legend>{{ 'issue.type' | t }}</legend>
+          <legend>{{ 'issue.type' | t }} <app-help-tip [keys]="['help.type']" /></legend>
           <div class="chips">
             @for (t of types; track t) {
               <button type="button" [class.on]="type() === t" [attr.aria-pressed]="type() === t"
@@ -33,8 +35,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
         </fieldset>
 
         <fieldset>
-          <legend>{{ 'issue.importance' | t }}</legend>
-          <p class="help">{{ 'help.importance' | t }}</p>
+          <legend>{{ 'issue.importance' | t }} <app-help-tip [keys]="['help.importance']" /></legend>
           <div class="chips">
             @for (l of levels; track l) {
               <button type="button" [class.on]="importance() === l" [attr.aria-pressed]="importance() === l"
@@ -44,7 +45,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
         </fieldset>
 
         <fieldset>
-          <legend>{{ 'issue.due' | t }}</legend>
+          <legend>{{ 'issue.due' | t }} <app-help-tip [keys]="['help.due']" /></legend>
           <div class="chips">
             @for (p of duePresets; track p.key) {
               <button type="button" [class.on]="duePreset() === p.key" [attr.aria-pressed]="duePreset() === p.key"
@@ -67,10 +68,10 @@ import { I18nService, TPipe } from '../../i18n/i18n';
           </div>
         </fieldset>
 
-        <label class="field">{{ 'issue.doneCriteria' | t }}
-          <span class="help">{{ 'help.doneCriteria' | t }}</span>
-          <textarea name="doneCriteria" [(ngModel)]="doneCriteria" rows="2" required></textarea>
-        </label>
+        <div class="field">
+          <span><label for="f-done">{{ 'issue.doneCriteria' | t }}</label> <app-help-tip [keys]="['help.doneCriteria']" /></span>
+          <textarea id="f-done" name="doneCriteria" [(ngModel)]="doneCriteria" rows="2" required></textarea>
+        </div>
 
         <button type="button" class="link" (click)="showDetail.set(!showDetail())">
           {{ (showDetail() ? 'issueNew.hideDetail' : 'issueNew.showDetail') | t }}
