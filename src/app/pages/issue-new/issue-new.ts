@@ -87,24 +87,24 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     </main>
   `,
   styles: `
-    .bar { padding: 8px 16px; border-bottom: 1px solid #ddd; }
+    .bar { padding: 8px 16px; border-bottom: 1px solid var(--border); }
     main { max-width: 640px; margin: 0 auto; padding: 16px 16px 48px; }
     h1 { font-size: 20px; }
     form { display: flex; flex-direction: column; gap: 16px; }
     fieldset { border: none; padding: 0; margin: 0; }
     legend, .field { font-weight: bold; font-size: 14px; }
     .field { display: flex; flex-direction: column; gap: 4px; }
-    .help { font-weight: normal; font-size: 12px; color: #666; margin: 4px 0; }
+    .help { font-weight: normal; font-size: 12px; color: var(--text-muted); margin: 4px 0; }
     input, textarea, button { font-size: 16px; }
     input, button { min-height: 48px; }
     input, textarea { padding: 8px 12px; font-weight: normal; }
     .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; }
-    .chips button { padding: 0 16px; border: 1px solid #ccc; background: #fff; border-radius: 24px; }
-    .chips button.on { background: #1565c0; color: #fff; border-color: #1565c0; }
-    .link { background: none; border: none; color: #1565c0; align-self: flex-start; }
-    .primary { background: #1565c0; color: #fff; border: none; border-radius: 8px; }
-    .primary:disabled { background: #9e9e9e; }
-    .error { color: #c62828; }
+    .chips button { padding: 0 16px; border: 1px solid var(--border-strong); background: var(--surface); border-radius: 24px; }
+    .chips button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+    .link { background: none; border: none; color: var(--primary); align-self: flex-start; }
+    .primary { background: var(--primary); color: var(--on-primary); border: none; border-radius: 8px; }
+    .primary:disabled { background: var(--disabled); }
+    .error { color: var(--danger-text); }
   `,
 })
 export class IssueNew implements OnInit {

@@ -77,28 +77,28 @@ type Section = 'general' | 'password';
     </main>
   `,
   styles: `
-    .bar { padding: 8px 16px; border-bottom: 1px solid #ddd; }
+    .bar { padding: 8px 16px; border-bottom: 1px solid var(--border); }
     main { max-width: 560px; margin: 0 auto; padding: 16px 16px 48px; }
     h1 { font-size: 20px; }
-    section { border: 1px solid #eee; border-radius: 10px; padding: 16px; margin-bottom: 16px;
+    section { border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px;
       display: flex; flex-direction: column; gap: 10px; }
     h2 { font-size: 16px; margin: 0; }
     .field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
     input, select { min-height: 44px; font-size: 16px; padding: 0 12px; }
     .chips { display: flex; gap: 8px; }
-    .chips button { min-height: 44px; padding: 0 18px; border: 1px solid #ccc; background: #fff;
+    .chips button { min-height: 44px; padding: 0 18px; border: 1px solid var(--border-strong); background: var(--surface);
       border-radius: 22px; font-size: 14px; }
-    .chips button.on { background: #1565c0; color: #fff; border-color: #1565c0; }
+    .chips button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
     .row { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
-    .primary { min-height: 44px; padding: 0 20px; background: #1565c0; color: #fff; border: none;
+    .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
       border-radius: 8px; font-size: 14px; }
-    .primary:disabled { background: #9e9e9e; }
-    .help { font-size: 12px; color: #666; margin: 0; }
-    .msg { font-size: 13px; color: #2e7d32; margin: 0; }
-    .msg.ng { color: #c62828; }
-    .link { background: none; border: none; color: #1565c0; }
+    .primary:disabled { background: var(--disabled); }
+    .help { font-size: 12px; color: var(--text-muted); margin: 0; }
+    .msg { font-size: 13px; color: var(--success-text); margin: 0; }
+    .msg.ng { color: var(--danger-text); }
+    .link { background: none; border: none; color: var(--primary); }
     .savebar { position: sticky; bottom: 0; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-      padding: 12px 16px; margin: 0 -16px; background: #fff8e1; border-top: 1px solid #f0e0a0;
+      padding: 12px 16px; margin: 0 -16px; background: var(--warning-bg); border-top: 1px solid var(--warning-border);
       padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
     .savebar span { flex: 1; font-size: 13px; }
   `,

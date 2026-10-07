@@ -38,25 +38,25 @@ import { TPipe } from '../i18n/i18n';
   `,
   styles: `
     .app-header { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 8px;
-      height: 52px; padding: 0 12px; background: #1565c0; color: #fff; }
-    .brand { color: #fff; text-decoration: none; font-weight: bold; font-size: 16px; }
+      height: 52px; padding: 0 12px; background: var(--primary); color: var(--on-primary); }
+    .brand { color: var(--on-primary); text-decoration: none; font-weight: bold; font-size: 16px; }
     .spacer { flex: 1; }
     .account { position: relative; }
     .account-btn { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 8px;
-      background: rgba(255, 255, 255, 0.15); color: #fff; border: none; border-radius: 20px; cursor: pointer; }
+      background: rgba(255, 255, 255, 0.15); color: var(--on-primary); border: none; border-radius: 20px; cursor: pointer; }
     .account-btn img, .initial { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
-    .initial { display: flex; align-items: center; justify-content: center; background: #fff; color: #1565c0;
+    .initial { display: flex; align-items: center; justify-content: center; background: var(--surface); color: var(--primary);
       font-size: 14px; font-weight: bold; }
     .gear { font-size: 16px; }
     .backdrop { position: fixed; inset: 0; z-index: 51; }
     .menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 52; min-width: 220px;
-      background: #fff; color: #222; border-radius: 10px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+      background: var(--surface); color: var(--text); border-radius: 10px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
       padding: 6px 0; display: flex; flex-direction: column; }
-    .who { display: flex; flex-direction: column; gap: 2px; padding: 8px 16px 10px; border-bottom: 1px solid #eee; }
-    .who span { font-size: 12px; color: #666; overflow-wrap: anywhere; }
+    .who { display: flex; flex-direction: column; gap: 2px; padding: 8px 16px 10px; border-bottom: 1px solid var(--border); }
+    .who span { font-size: 12px; color: var(--text-muted); overflow-wrap: anywhere; }
     .menu a, .menu button { display: block; text-align: left; padding: 0 16px; min-height: 44px; line-height: 44px;
-      background: none; border: none; color: #222; text-decoration: none; font-size: 14px; cursor: pointer; }
-    .menu a:hover, .menu button:hover { background: #f5f5f5; }
+      background: none; border: none; color: var(--text); text-decoration: none; font-size: 14px; cursor: pointer; }
+    .menu a:hover, .menu button:hover { background: var(--surface-alt); }
   `,
 })
 export class AppHeader {

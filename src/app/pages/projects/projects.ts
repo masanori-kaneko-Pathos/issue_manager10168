@@ -94,22 +94,22 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     </main>
   `,
   styles: `
-    .bar { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid #ddd; }
+    .bar { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--border); }
     .bar h1 { font-size: 18px; margin: 0; flex: 1; }
     main { max-width: 640px; margin: 0 auto; padding: 16px; }
     .create { display: flex; gap: 8px; }
     .create input { flex: 1; min-width: 0; }
     input, button { min-height: 48px; font-size: 16px; }
     input { padding: 0 12px; }
-    .link { background: none; border: none; color: #1565c0; }
+    .link { background: none; border: none; color: var(--primary); }
     .list { list-style: none; padding: 0; }
-    .list li { display: flex; gap: 8px; align-items: center; min-height: 56px; padding: 0 12px; border-bottom: 1px solid #eee; }
+    .list li { display: flex; gap: 8px; align-items: center; min-height: 56px; padding: 0 12px; border-bottom: 1px solid var(--border); }
     .list .name { flex: 1; }
-    .list .role { font-size: 12px; padding: 2px 8px; border-radius: 12px; background: #eef; }
-    .archived { color: #888; }
-    .empty { color: #666; }
-    .error { color: #c62828; }
-    .notice { background: #fff8e1; padding: 12px; border-radius: 8px; margin-bottom: 16px; }
+    .list .role { font-size: 12px; padding: 2px 8px; border-radius: 12px; background: var(--chip-bg); }
+    .archived { color: var(--text-subtle); }
+    .empty { color: var(--text-muted); }
+    .error { color: var(--danger-text); }
+    .notice { background: var(--warning-bg); padding: 12px; border-radius: 8px; margin-bottom: 16px; }
     .notice p { margin: 0 0 8px; }
     h2 { font-size: 16px; }
     .invitation { flex-wrap: wrap; padding: 8px 12px !important; }
@@ -119,12 +119,12 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .check { display: flex; align-items: center; gap: 6px; font-size: 13px; min-height: 40px; }
     .mine-item { flex-wrap: wrap; }
     .mine-item .name { flex: 1; min-width: 50%; overflow-wrap: anywhere; }
-    .prio { width: 10px; height: 10px; border-radius: 50%; background: #9e9e9e; flex: none; }
-    .prio[data-p='high'] { background: #d32f2f; }
-    .prio[data-p='mid'] { background: #f9a825; }
-    .prio[data-p='low'] { background: #43a047; }
-    .small { font-size: 12px; color: #666; }
-    .small.overdue { color: #d32f2f; font-weight: bold; }
+    .prio { width: 10px; height: 10px; border-radius: 50%; background: var(--disabled); flex: none; }
+    .prio[data-p='high'] { background: var(--danger); }
+    .prio[data-p='mid'] { background: var(--warning); }
+    .prio[data-p='low'] { background: var(--success); }
+    .small { font-size: 12px; color: var(--text-muted); }
+    .small.overdue { color: var(--danger); font-weight: bold; }
   `,
 })
 export class Projects implements OnInit {

@@ -3,7 +3,7 @@ form { display: flex; flex-direction: column; gap: 12px; }
 label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
 input, button { min-height: 48px; font-size: 16px; } /* 16px未満だとiOSで拡大される */
 input { padding: 0 12px; }
-.or { text-align: center; color: #666; margin: 0; }
-.error { color: #c62828; margin: 0; }
-.link { background: none; border: none; color: #1565c0; min-height: 40px; }
+.or { text-align: center; color: var(--text-muted); margin: 0; }
+.error { color: var(--danger-text); margin: 0; }
+.link { background: none; border: none; color: var(--primary); min-height: 40px; }
 .lang { display: flex; justify-content: center; gap: 8px; }

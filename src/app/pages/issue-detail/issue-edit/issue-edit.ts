@@ -83,7 +83,7 @@ import { I18nService, TPipe } from '../../../i18n/i18n';
   styles: `
     :host { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; }
     .backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); }
-    .dialog { position: relative; background: #fff; width: min(600px, 100%); max-height: 90vh; overflow: auto;
+    .dialog { position: relative; background: var(--surface); width: min(600px, 100%); max-height: 90vh; overflow: auto;
       border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
     @media (max-width: 600px) {
       .dialog { height: 100%; max-height: none; border-radius: 0; }
@@ -95,17 +95,17 @@ import { I18nService, TPipe } from '../../../i18n/i18n';
     input, textarea { font-size: 16px; padding: 8px 12px; font-weight: normal; }
     input { min-height: 44px; }
     .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0; }
-    .chips button { min-height: 44px; padding: 0 14px; border: 1px solid #ccc; background: #fff;
+    .chips button { min-height: 44px; padding: 0 14px; border: 1px solid var(--border-strong); background: var(--surface);
       border-radius: 22px; font-size: 14px; }
-    .chips button.on { background: #1565c0; color: #fff; border-color: #1565c0; }
-    .help { font-size: 12px; color: #666; margin: 4px 0; font-weight: normal; }
-    .reason { background: #fff8e1; padding: 8px; border-radius: 8px; }
+    .chips button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+    .help { font-size: 12px; color: var(--text-muted); margin: 4px 0; font-weight: normal; }
+    .reason { background: var(--warning-bg); padding: 8px; border-radius: 8px; }
     .row { display: flex; justify-content: flex-end; gap: 8px; }
-    .link { background: none; border: none; color: #1565c0; min-height: 44px; }
-    .primary { min-height: 44px; padding: 0 20px; background: #1565c0; color: #fff; border: none;
+    .link { background: none; border: none; color: var(--primary); min-height: 44px; }
+    .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
       border-radius: 8px; font-size: 14px; }
-    .primary:disabled { background: #9e9e9e; }
-    .error { color: #c62828; }
+    .primary:disabled { background: var(--disabled); }
+    .error { color: var(--danger-text); }
   `,
 })
 export class IssueEdit implements OnInit {

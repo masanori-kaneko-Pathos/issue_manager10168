@@ -200,33 +200,33 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     </main>
   `,
   styles: `
-    .bar { padding: 8px 16px; border-bottom: 1px solid #ddd; }
+    .bar { padding: 8px 16px; border-bottom: 1px solid var(--border); }
     main { max-width: 720px; margin: 0 auto; padding: 16px 16px 48px; }
     h1 { font-size: 20px; margin: 4px 0 8px; overflow-wrap: anywhere; }
     h2 { font-size: 16px; margin-top: 24px; }
-    .num { color: #666; font-size: 13px; margin: 0; }
+    .num { color: var(--text-muted); font-size: 13px; margin: 0; }
     .badges { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .badges span { font-size: 12px; padding: 4px 10px; border-radius: 12px; background: #eee; }
-    .status[data-s='in_progress'] { background: #e3f2fd; }
-    .status[data-s='on_hold'] { background: #fff3e0; }
-    .status[data-s='resolved'] { background: #e8f5e9; }
-    .status[data-s='closed'], .status[data-s='rejected'] { background: #ddd; color: #555; }
-    .prio[data-p='high'] { background: #ffebee; color: #c62828; }
-    .prio[data-p='mid'] { background: #fff8e1; color: #8d6e00; }
-    .prio[data-p='low'] { background: #e8f5e9; color: #2e7d32; }
-    .due.overdue { background: #ffebee; color: #c62828; font-weight: bold; }
-    .reason { background: #fff8e1; padding: 8px 12px; border-radius: 8px; white-space: pre-wrap; }
+    .badges span { font-size: 12px; padding: 4px 10px; border-radius: 12px; background: var(--surface-muted); }
+    .status[data-s='in_progress'] { background: var(--primary-bg); }
+    .status[data-s='on_hold'] { background: var(--hold-bg); }
+    .status[data-s='resolved'] { background: var(--success-bg); }
+    .status[data-s='closed'], .status[data-s='rejected'] { background: var(--surface-muted); color: var(--text-secondary); }
+    .prio[data-p='high'] { background: var(--danger-bg); color: var(--danger-text); }
+    .prio[data-p='mid'] { background: var(--warning-bg); color: var(--warning-text); }
+    .prio[data-p='low'] { background: var(--success-bg); color: var(--success-text); }
+    .due.overdue { background: var(--danger-bg); color: var(--danger-text); font-weight: bold; }
+    .reason { background: var(--warning-bg); padding: 8px 12px; border-radius: 8px; white-space: pre-wrap; }
     .fields { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 16px 0; }
-    .fields dt { color: #666; font-size: 13px; }
+    .fields dt { color: var(--text-muted); font-size: 13px; }
     .fields dd { margin: 0; }
     .pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; }
-    .actions button { min-height: 44px; padding: 0 16px; border: 1px solid #1565c0; color: #1565c0;
-      background: #fff; border-radius: 8px; font-size: 14px; }
-    .actions button.on { background: #1565c0; color: #fff; }
-    .actions button:disabled { border-color: #ccc; color: #aaa; }
-    .help { font-size: 12px; color: #666; margin: 4px 0; }
-    .panel { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-top: 12px;
+    .actions button { min-height: 44px; padding: 0 16px; border: 1px solid var(--primary); color: var(--primary);
+      background: var(--surface); border-radius: 8px; font-size: 14px; }
+    .actions button.on { background: var(--primary); color: var(--on-primary); }
+    .actions button:disabled { border-color: var(--border-strong); color: var(--text-disabled); }
+    .help { font-size: 12px; color: var(--text-muted); margin: 4px 0; }
+    .panel { border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-top: 12px;
       display: flex; flex-direction: column; gap: 12px; }
     .panel h2 { margin: 0; }
     .field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: bold; }
@@ -234,29 +234,29 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     legend { font-size: 14px; font-weight: bold; }
     textarea { font-size: 16px; padding: 8px 12px; font-weight: normal; }
     .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-    .chips button { min-height: 44px; padding: 0 14px; border: 1px solid #ccc; background: #fff;
+    .chips button { min-height: 44px; padding: 0 14px; border: 1px solid var(--border-strong); background: var(--surface);
       border-radius: 22px; font-size: 14px; }
-    .chips button.on { background: #1565c0; color: #fff; border-color: #1565c0; }
-    .criteria { background: #f5f5f5; padding: 12px; border-radius: 8px; }
+    .chips button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+    .criteria { background: var(--surface-alt); padding: 12px; border-radius: 8px; }
     .check { display: flex; align-items: center; gap: 8px; margin-top: 8px; min-height: 44px; }
     .check input { width: 22px; height: 22px; }
     .row { display: flex; justify-content: flex-end; gap: 8px; }
-    .link { background: none; border: none; color: #1565c0; min-height: 44px; }
-    .primary { min-height: 44px; padding: 0 20px; background: #1565c0; color: #fff; border: none;
+    .link { background: none; border: none; color: var(--primary); min-height: 44px; }
+    .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
       border-radius: 8px; font-size: 14px; }
-    .primary:disabled { background: #9e9e9e; }
-    .error { color: #c62828; }
+    .primary:disabled { background: var(--disabled); }
+    .error { color: var(--danger-text); }
     .timeline { list-style: none; padding: 0; margin: 0; }
-    .timeline li { padding: 8px 0; border-bottom: 1px solid #eee; }
-    .timeline li.comment { background: #fafafa; padding: 8px 12px; }
-    .timeline .meta { font-size: 12px; color: #666; }
+    .timeline li { padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .timeline li.comment { background: var(--surface-alt); padding: 8px 12px; }
+    .timeline .meta { font-size: 12px; color: var(--text-muted); }
     .comment-box { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
     .comment-box .primary { align-self: flex-end; }
         .tools { display: flex; gap: 8px; margin-bottom: 4px; }
-    .tools button { min-height: 44px; padding: 0 16px; border: 1px solid #ccc; background: #fff;
+    .tools button { min-height: 44px; padding: 0 16px; border: 1px solid var(--border-strong); background: var(--surface);
       border-radius: 8px; font-size: 14px; }
-    .tools button:disabled { color: #aaa; }
-    .change { font-size: 13px; color: #444; margin: 4px 0 0; }
+    .tools button:disabled { color: var(--text-disabled); }
+    .change { font-size: 13px; color: var(--text-secondary); margin: 4px 0 0; }
   `,
 })
 export class IssueDetail implements OnInit {

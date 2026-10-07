@@ -69,35 +69,35 @@ import { IssueList } from './issue-list/issue-list';
     </main>
   `,
   styles: `
-    .bar { padding: 8px 16px; border-bottom: 1px solid #ddd; }
+    .bar { padding: 8px 16px; border-bottom: 1px solid var(--border); }
     main { max-width: 640px; margin: 0 auto; padding: 16px; }
     h1 { font-size: 20px; } h2 { font-size: 16px; margin-top: 24px; } h3 { font-size: 14px; }
     input, button { min-height: 48px; font-size: 16px; }
     input { padding: 0 12px; }
     .invite { display: flex; flex-direction: column; gap: 8px; }
     .roles { display: flex; gap: 8px; }
-    .roles button { flex: 1; border: 1px solid #ccc; background: #fff; border-radius: 8px; }
-    .roles button.on { background: #1565c0; color: #fff; border-color: #1565c0; }
-    .link { background: none; border: none; color: #1565c0; }
+    .roles button { flex: 1; border: 1px solid var(--border-strong); background: var(--surface); border-radius: 8px; }
+    .roles button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+    .link { background: none; border: none; color: var(--primary); }
     .list { list-style: none; padding: 0; }
-    .list li { display: flex; gap: 8px; align-items: center; min-height: 48px; border-bottom: 1px solid #eee; }
+    .list li { display: flex; gap: 8px; align-items: center; min-height: 48px; border-bottom: 1px solid var(--border); }
     .list .name { flex: 1; overflow-wrap: anywhere; }
-    .role { font-size: 12px; padding: 2px 8px; border-radius: 12px; background: #eef; font-weight: normal; }
-    .error { color: #c62828; }
+    .role { font-size: 12px; padding: 2px 8px; border-radius: 12px; background: var(--chip-bg); font-weight: normal; }
+    .error { color: var(--danger-text); }
         .section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .primary { display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px;
-      background: #1565c0; color: #fff; border: none; border-radius: 8px; text-decoration: none; font-size: 14px; }
-    .primary:disabled { background: #9e9e9e; }
-    .help { font-size: 12px; color: #666; }
+      background: var(--primary); color: var(--on-primary); border: none; border-radius: 8px; text-decoration: none; font-size: 14px; }
+    .primary:disabled { background: var(--disabled); }
+    .help { font-size: 12px; color: var(--text-muted); }
     .issue { flex-wrap: wrap; }
-    .prio { width: 10px; height: 10px; border-radius: 50%; background: #9e9e9e; flex: none; }
-    .prio[data-p='high'] { background: #d32f2f; }
-    .prio[data-p='mid'] { background: #f9a825; }
-    .prio[data-p='low'] { background: #43a047; }
-    .num { color: #666; font-size: 13px; }
-    .meta, .due { font-size: 12px; color: #666; }
-    .due.overdue { color: #d32f2f; font-weight: bold; }
-    .empty { color: #666; }
+    .prio { width: 10px; height: 10px; border-radius: 50%; background: var(--disabled); flex: none; }
+    .prio[data-p='high'] { background: var(--danger); }
+    .prio[data-p='mid'] { background: var(--warning); }
+    .prio[data-p='low'] { background: var(--success); }
+    .num { color: var(--text-muted); font-size: 13px; }
+    .meta, .due { font-size: 12px; color: var(--text-muted); }
+    .due.overdue { color: var(--danger); font-weight: bold; }
+    .empty { color: var(--text-muted); }
   `,
 })
 export class ProjectHome implements OnInit {
