@@ -251,4 +251,5 @@ export const en: Dict = {
     leaveConfirm: 'You have unsaved changes. Discard them and leave?',
   },
   tip: { help: 'Show help', whyDisabled: 'Why is this disabled?' },
+  tabs: { list: 'List', board: 'Board', calendar: 'Calendar', gantt: 'Gantt', members: 'Members' },
 };

@@ -157,6 +157,6 @@ export class AppHeader {
   invite() {
     const pid = this.ctx().pid;
     this.addOpen.set(false);
-    if (pid) this.router.navigate(['/p', pid], { fragment: 'invite' });
+    if (pid) this.router.navigate(['/p', pid, 'members'], { fragment: 'invite' });
   }
 }

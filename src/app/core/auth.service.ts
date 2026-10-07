@@ -15,6 +15,7 @@ export interface UserProfile {
   email: string;
   timeZone: string;
   language: 'ja' | 'en';
+  defaultView?: 'list' | 'board';
 }
 
 @Injectable({ providedIn: 'root' })

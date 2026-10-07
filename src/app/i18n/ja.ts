@@ -248,6 +248,7 @@ export const ja = {
       leaveConfirm: '保存していない変更があります。破棄して移動しますか？',
     },  
     tip: { help: '説明を見る', whyDisabled: '押せない理由を見る' },
+    tabs: { list: 'リスト', board: 'かんばん', calendar: 'カレンダー', gantt: 'ガント', members: 'メンバー' },
 
 };
 export type Dict = typeof ja;
