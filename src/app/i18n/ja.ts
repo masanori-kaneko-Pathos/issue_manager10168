@@ -224,6 +224,10 @@ export const ja = {
       pwWrong: '現在のパスワードが違います。',
       pwWeak: '新しいパスワードは6文字以上にしてください。',
       googleManaged: 'Googleアカウントでログインしているため、パスワードはGoogleで管理されています。',
+      unsaved: '未保存の変更があります',
+      discard: '取り消す',
+      saveChanges: '変更を保存',
+      leaveConfirm: '保存していない変更があります。破棄して移動しますか？',
     },
 };
 export type Dict = typeof ja;

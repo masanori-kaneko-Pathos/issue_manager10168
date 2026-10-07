@@ -227,5 +227,9 @@ export const en: Dict = {
     pwWrong: 'The current password is incorrect.',
     pwWeak: 'The new password must be at least 6 characters.',
     googleManaged: 'You signed in with Google, so your password is managed by your Google account.',
+    unsaved: 'You have unsaved changes',
+    discard: 'Discard',
+    saveChanges: 'Save changes',
+    leaveConfirm: 'You have unsaved changes. Discard them and leave?',
   },
 };

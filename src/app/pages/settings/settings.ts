@@ -5,41 +5,36 @@ import { AuthService } from '../../core/auth.service';
 import { COMMON_TIMEZONES, formatDateTime, tzOffset } from '../../core/time';
 import { I18nService, Lang, TPipe } from '../../i18n/i18n';
 
-type Section = 'profile' | 'language' | 'timeZone' | 'password';
+type Section = 'general' | 'password';
 
 @Component({
   selector: 'app-settings',
   imports: [FormsModule, RouterLink, TPipe],
+  host: { '(window:beforeunload)': 'onBeforeUnload($event)' },
   template: `
     <header class="bar"><a routerLink="/" class="link">{{ 'common.back' | t }}</a></header>
     <main>
       <h1>{{ 'settings.title' | t }}</h1>
 
-      <section>
+           <section>
         <h2>{{ 'settings.profile' | t }}</h2>
         <label class="field">{{ 'settings.displayName' | t }}
-          <input [(ngModel)]="displayName" maxlength="50" />
+          <input [ngModel]="displayName()" (ngModelChange)="displayName.set($event)" maxlength="50" />
         </label>
-        <div class="row">
-          @if (msg()?.section === 'profile') { <span class="msg" [class.ng]="!msg()!.ok">{{ msg()!.key | t }}</span> }
-          <button type="button" class="primary" [disabled]="busy() || !displayName.trim()" (click)="saveProfile()">
-            {{ 'settings.save' | t }}</button>
-        </div>
       </section>
 
       <section>
         <h2>{{ 'settings.language' | t }}</h2>
         <div class="chips">
-          <button type="button" [class.on]="i18n.lang() === 'ja'" (click)="saveLanguage('ja')">日本語</button>
-          <button type="button" [class.on]="i18n.lang() === 'en'" (click)="saveLanguage('en')">English</button>
+          <button type="button" [class.on]="language() === 'ja'" (click)="language.set('ja')">日本語</button>
+          <button type="button" [class.on]="language() === 'en'" (click)="language.set('en')">English</button>
         </div>
-        @if (msg()?.section === 'language') { <p class="msg" [class.ng]="!msg()!.ok">{{ msg()!.key | t }}</p> }
       </section>
 
       <section>
         <h2>{{ 'settings.timeZone' | t }}</h2>
         <p class="help">{{ 'settings.tzHelp' | t }}</p>
-        <select [ngModel]="timeZone()" (ngModelChange)="saveTimeZone($event)">
+        <select [ngModel]="timeZone()" (ngModelChange)="timeZone.set($event)">
           <optgroup [label]="'settings.tzCommon' | t">
             @for (z of commonZones; track z.value) { <option [value]="z.value">{{ z.label }}</option> }
           </optgroup>
@@ -48,7 +43,6 @@ type Section = 'profile' | 'language' | 'timeZone' | 'password';
           </optgroup>
         </select>
         <p class="help">{{ 'settings.tzNow' | t: { t: nowInZone() } }}</p>
-        @if (msg()?.section === 'timeZone') { <p class="msg" [class.ng]="!msg()!.ok">{{ msg()!.key | t }}</p> }
       </section>
 
       <section>
@@ -69,6 +63,17 @@ type Section = 'profile' | 'language' | 'timeZone' | 'password';
           <p class="help">{{ 'settings.googleManaged' | t }}</p>
         }
       </section>
+            @if (msg()?.section === 'general') {
+        <p class="msg" [class.ng]="!msg()!.ok">{{ msg()!.key | t }}</p>
+      }
+      @if (dirty()) {
+        <div class="savebar" role="status">
+          <span>{{ 'settings.unsaved' | t }}</span>
+          <button type="button" class="link" [disabled]="busy()" (click)="discard()">{{ 'settings.discard' | t }}</button>
+          <button type="button" class="primary" [disabled]="busy() || !displayName().trim()" (click)="save()">
+            {{ 'settings.saveChanges' | t }}</button>
+        </div>
+      }
     </main>
   `,
   styles: `
@@ -92,6 +97,10 @@ type Section = 'profile' | 'language' | 'timeZone' | 'password';
     .msg { font-size: 13px; color: #2e7d32; margin: 0; }
     .msg.ng { color: #c62828; }
     .link { background: none; border: none; color: #1565c0; }
+    .savebar { position: sticky; bottom: 0; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      padding: 12px 16px; margin: 0 -16px; background: #fff8e1; border-top: 1px solid #f0e0a0;
+      padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+    .savebar span { flex: 1; font-size: 13px; }
   `,
 })
 export class Settings implements OnInit {
@@ -102,34 +111,60 @@ export class Settings implements OnInit {
   readonly commonZones = COMMON_TIMEZONES.map((z) => ({ value: z, label: `${z}（${tzOffset(z)}）` }));
   readonly allZones = Intl.supportedValuesOf('timeZone').map((z) => ({ value: z, label: `${z}（${tzOffset(z)}）` }));
 
-  displayName = '';
-  currentPw = '';
-  newPw = '';
-  timeZone = signal('Asia/Tokyo');
-  busy = signal(false);
-  msg = signal<{ section: Section; key: string; ok: boolean } | null>(null);
-
-  nowInZone = computed(() => formatDateTime(new Date(), this.timeZone(), this.i18n.lang()));
+   // 画面上の値（保存するまでは反映しない）
+   displayName = signal('');
+   language = signal<Lang>('ja');
+   timeZone = signal('Asia/Tokyo');
+   // 保存済みの値（変更があるかの比較用）
+   private saved = signal({ displayName: '', language: 'ja' as Lang, timeZone: 'Asia/Tokyo' });
+ 
+   currentPw = '';
+   newPw = '';
+   busy = signal(false);
+   msg = signal<{ section: Section; key: string; ok: boolean } | null>(null);
+ 
+   nowInZone = computed(() => formatDateTime(new Date(), this.timeZone(), this.i18n.lang()));
+   dirty = computed(() => {
+     const s = this.saved();
+     return this.displayName().trim() !== s.displayName
+       || this.language() !== s.language
+       || this.timeZone() !== s.timeZone;
+   });
 
   async ngOnInit() {
     const p = this.authService.profile() ?? (await this.authService.fetchProfile());
     if (p) {
-      this.displayName = p.displayName;
-      this.timeZone.set(p.timeZone);
+      this.saved.set({ displayName: p.displayName, language: p.language, timeZone: p.timeZone });
+      this.discard();
     }
   }
+  /** 変えた項目だけをまとめて保存する */
+  async save() {
+    const s = this.saved();
+    const changes: { displayName?: string; language?: Lang; timeZone?: string } = {};
+    const name = this.displayName().trim();
+    if (name !== s.displayName) changes.displayName = name;
+    if (this.language() !== s.language) changes.language = this.language();
+    if (this.timeZone() !== s.timeZone) changes.timeZone = this.timeZone();
 
-  saveProfile() {
-    return this.run('profile', () => this.authService.updateProfile({ displayName: this.displayName.trim() }));
+    await this.run('general', async () => {
+      await this.authService.updateProfile(changes);
+      this.saved.set({ displayName: name, language: this.language(), timeZone: this.timeZone() });
+    });
   }
 
-  saveLanguage(lang: Lang) {
-    return this.run('language', () => this.authService.updateProfile({ language: lang }));
+  /** 保存済みの値に戻す */
+  discard() {
+    const s = this.saved();
+    this.displayName.set(s.displayName);
+    this.language.set(s.language);
+    this.timeZone.set(s.timeZone);
+    this.msg.set(null);
   }
 
-  saveTimeZone(tz: string) {
-    this.timeZone.set(tz);
-    return this.run('timeZone', () => this.authService.updateProfile({ timeZone: tz }));
+  /** タブを閉じる・再読み込みするときの確認 */
+  onBeforeUnload(e: BeforeUnloadEvent) {
+    if (this.dirty()) e.preventDefault();
   }
 
   async changePassword() {
