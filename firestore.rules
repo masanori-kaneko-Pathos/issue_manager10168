@@ -10,7 +10,8 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time;
       allow update: if request.auth != null && request.auth.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['displayName', 'timeZone', 'language']);
+             .hasOnly(['displayName', 'timeZone', 'language', 'defaultView'])
+        && (!('defaultView' in request.resource.data) || request.resource.data.defaultView in ['list', 'board']);
     }
     function signedIn() { return request.auth != null; }
     function projectPath(pid) { return /databases/$(database)/documents/projects/$(pid); }

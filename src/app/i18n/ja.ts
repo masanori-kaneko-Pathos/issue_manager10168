@@ -246,9 +246,21 @@ export const ja = {
       discard: '取り消す',
       saveChanges: '変更を保存',
       leaveConfirm: '保存していない変更があります。破棄して移動しますか？',
+      defaultView: 'プロジェクトを開いたときの表示',
     },  
     tip: { help: '説明を見る', whyDisabled: '押せない理由を見る' },
     tabs: { list: 'リスト', board: 'かんばん', calendar: 'カレンダー', gantt: 'ガント', members: 'メンバー' },
-
+    board: {
+      all: '全員',
+      dueAll: 'すべて',
+      mine: '自分',
+      due: { today: '今日まで', week: '1週間以内', overdue: '期限切れ' },
+      cols: { open: '未着手', in_progress: '対応中', resolved: '解決済み', done: '完了', on_hold: '保留' },
+      doneNote: 'クローズ・直近7日',
+      overdue: '期限切れ',
+      empty: '課題はありません',
+      move: 'ステータスを変える',
+      viewerCannotMove: '閲覧者は、カードを動かしてステータスを変えることはできません。',
+    },
 };
 export type Dict = typeof ja;

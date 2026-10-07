@@ -21,6 +21,8 @@ export const routes: Routes = [
         { path: '', pathMatch: 'full', redirectTo: () => inject(AuthService).profile()?.defaultView ?? 'list' },
         { path: 'list',
           loadComponent: () => import('./pages/project-home/project-list').then((m) => m.ProjectList) },
+        { path: 'board',
+            loadComponent: () => import('./pages/project-home/project-board').then((m) => m.ProjectBoard) },
         { path: 'members',
           loadComponent: () => import('./pages/project-home/project-members').then((m) => m.ProjectMembers) },
       ] },

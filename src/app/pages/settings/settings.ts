@@ -31,7 +31,13 @@ type Section = 'general' | 'password';
           <button type="button" [class.on]="language() === 'en'" (click)="language.set('en')">English</button>
         </div>
       </section>
-
+      <section>
+        <h2>{{ 'settings.defaultView' | t }}</h2>
+        <div class="chips">
+          <button type="button" [class.on]="defaultView() === 'list'" (click)="defaultView.set('list')">{{ 'tabs.list' | t }}</button>
+          <button type="button" [class.on]="defaultView() === 'board'" (click)="defaultView.set('board')">{{ 'tabs.board' | t }}</button>
+        </div>
+      </section>
       <section>
         <h2>{{ 'settings.timeZone' | t }} <app-help-tip [keys]="['settings.tzHelp']" /></h2>
         <select [ngModel]="timeZone()" (ngModelChange)="timeZone.set($event)">
@@ -115,8 +121,11 @@ export class Settings implements OnInit {
    displayName = signal('');
    language = signal<Lang>('ja');
    timeZone = signal('Asia/Tokyo');
+   defaultView = signal<'list' | 'board'>('list');
    // 保存済みの値（変更があるかの比較用）
-   private saved = signal({ displayName: '', language: 'ja' as Lang, timeZone: 'Asia/Tokyo' });
+   private saved = signal({
+     displayName: '', language: 'ja' as Lang, timeZone: 'Asia/Tokyo', defaultView: 'list' as 'list' | 'board',
+   });
  
    currentPw = '';
    newPw = '';
@@ -128,29 +137,35 @@ export class Settings implements OnInit {
      const s = this.saved();
      return this.displayName().trim() !== s.displayName
        || this.language() !== s.language
-       || this.timeZone() !== s.timeZone;
+       || this.timeZone() !== s.timeZone
+       || this.defaultView() !== s.defaultView;
    });
 
   async ngOnInit() {
     const p = this.authService.profile() ?? (await this.authService.fetchProfile());
     if (p) {
-      this.saved.set({ displayName: p.displayName, language: p.language, timeZone: p.timeZone });
+      this.saved.set({ 
+        displayName: p.displayName, language: p.language, timeZone: p.timeZone, defaultView: p.defaultView ?? 'list',
+      });
       this.discard();
     }
   }
   /** 変えた項目だけをまとめて保存する */
   async save() {
     const s = this.saved();
-    const changes: { displayName?: string; language?: Lang; timeZone?: string } = {};
+    const changes: { displayName?: string; language?: Lang; timeZone?: string; defaultView?: 'list' | 'board' } = {};
     const name = this.displayName().trim();
     if (name !== s.displayName) changes.displayName = name;
     if (this.language() !== s.language) changes.language = this.language();
-    if (this.timeZone() !== s.timeZone) changes.timeZone = this.timeZone();
+
 
     await this.run('general', async () => {
       await this.authService.updateProfile(changes);
-      this.saved.set({ displayName: name, language: this.language(), timeZone: this.timeZone() });
-    });
+      this.saved.set({
+        displayName: name, language: this.language(), timeZone: this.timeZone(), defaultView: this.defaultView(),
+      });
+      });
+    
   }
 
   /** 保存済みの値に戻す */

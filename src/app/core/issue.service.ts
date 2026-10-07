@@ -178,19 +178,28 @@ export class IssueService {
     await batch.commit();
   }
 
-    /** クローズ・却下も含めたすべての課題（検索と「すべて」表示のときだけ使う） */
-    async listAll(pid: string): Promise<Issue[]> {
-      const s = await getDocs(collection(db, 'projects', pid, 'issues'));
-      return s.docs.map((d) => ({ ...(d.data() as Omit<Issue, 'id'>), id: d.id }));
-    }
-  
-    /** 所属するすべてのプロジェクトで、自分が担当している課題 */
-    async listMine(uid: string): Promise<(Issue & { projectId: string })[]> {
-      const s = await getDocs(query(collectionGroup(db, 'issues'), where('assigneeId', '==', uid)));
-      return s.docs.map((d) => ({
-        ...(d.data() as Omit<Issue, 'id'>),
-        id: d.id,
-        projectId: d.ref.parent.parent!.id,
-      }));
-    }
+  /** クローズ・却下も含めたすべての課題（検索と「すべて」表示のときだけ使う） */
+  async listAll(pid: string): Promise<Issue[]> {
+    const s = await getDocs(collection(db, 'projects', pid, 'issues'));
+    return s.docs.map((d) => ({ ...(d.data() as Omit<Issue, 'id'>), id: d.id }));
+  }
+
+  /** 所属するすべてのプロジェクトで、自分が担当している課題 */
+  async listMine(uid: string): Promise<(Issue & { projectId: string })[]> {
+    const s = await getDocs(query(collectionGroup(db, 'issues'), where('assigneeId', '==', uid)));
+    return s.docs.map((d) => ({
+      ...(d.data() as Omit<Issue, 'id'>),
+      id: d.id,
+      projectId: d.ref.parent.parent!.id,
+    }));
+  }
+  /** 直近 days 日以内にクローズした課題（かんばんの「完了」の列用） */
+  async listRecentlyClosed(pid: string, days: number): Promise<Issue[]> {
+    const since = Timestamp.fromMillis(Date.now() - days * 24 * 60 * 60 * 1000);
+    const s = await getDocs(query(collection(db, 'projects', pid, 'issues'), where('closedAt', '>=', since)));
+    return s.docs
+      .map((d) => ({ ...(d.data() as Omit<Issue, 'id'>), id: d.id }))
+      // 再開した課題は closedAt が残っているので、今クローズのものだけにする
+      .filter((i) => i.status === 'closed');
+  }
 }

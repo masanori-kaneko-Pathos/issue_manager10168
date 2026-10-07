@@ -43,7 +43,7 @@ export class ProjectHome {
   private route = inject(ActivatedRoute);
 
   /** タブの並び。カレンダーなどは、作ったらここに足す */
-  readonly tabs = ['list', 'members'];
+  readonly tabs = ['list', 'board', 'members'];
 
   constructor() {
     // 別のプロジェクトに移ったときも読み直す

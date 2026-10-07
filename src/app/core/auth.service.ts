@@ -74,7 +74,7 @@ export class AuthService {
   }
 
   /** プロフィールの更新。表示名は、所属する全プロジェクトのメンバー情報の写しも書き換える */
-  async updateProfile(changes: Partial<Pick<UserProfile, 'displayName' | 'timeZone' | 'language'>>) {
+  async updateProfile(changes: Partial<Pick<UserProfile, 'displayName' | 'timeZone' | 'language' | 'defaultView'>>) {
     const u = auth.currentUser!;
     await updateDoc(doc(db, 'users', u.uid), changes);
     this.profile.update((p) => (p ? { ...p, ...changes } : p));
