@@ -132,6 +132,12 @@ service cloud.firestore {
             && request.resource.data.role == get(myInvitationPath(pid)).data.role
             && !existsAfter(myInvitationPath(pid)))
         );
+        // 自分の表示名・アイコンの写しだけ、本人が書き換えられる
+        allow update: if signedIn() && uid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'photoURL'])
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 50;
        }
 
       match /invitations/{email} {

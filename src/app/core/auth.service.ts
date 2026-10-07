@@ -2,9 +2,11 @@ import { Injectable, inject, signal } from '@angular/core';
 import {
   User, onAuthStateChanged, signInWithEmailAndPassword,
   createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut,
-  sendEmailVerification,
+  sendEmailVerification, EmailAuthProvider, reauthenticateWithCredential, updatePassword,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import {
+  collectionGroup, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch,
+} from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { I18nService } from '../i18n/i18n';
 
@@ -60,5 +62,42 @@ export class AuthService {
       language: 'ja',
       createdAt: serverTimestamp(),
     });
+  }
+  /** 保存されているプロフィールを読み直す（設定画面を直接開いたとき用） */
+  async fetchProfile(): Promise<UserProfile | null> {
+    const u = auth.currentUser;
+    if (!u) return null;
+    const p = (await getDoc(doc(db, 'users', u.uid))).data() as UserProfile | undefined;
+    if (p) this.profile.set(p);
+    return p ?? null;
+  }
+
+  /** プロフィールの更新。表示名は、所属する全プロジェクトのメンバー情報の写しも書き換える */
+  async updateProfile(changes: Partial<Pick<UserProfile, 'displayName' | 'timeZone' | 'language'>>) {
+    const u = auth.currentUser!;
+    await updateDoc(doc(db, 'users', u.uid), changes);
+    this.profile.update((p) => (p ? { ...p, ...changes } : p));
+    if (changes.language) this.i18n.lang.set(changes.language);
+
+    if (changes.displayName !== undefined) {
+      const s = await getDocs(query(collectionGroup(db, 'members'), where('uid', '==', u.uid)));
+      if (!s.empty) {
+        const batch = writeBatch(db);
+        s.docs.forEach((d) => batch.update(d.ref, { displayName: changes.displayName }));
+        await batch.commit();
+      }
+    }
+  }
+
+  /** パスワード変更。安全のため、今のパスワードで本人確認してから変える */
+  async changePassword(current: string, next: string) {
+    const u = auth.currentUser!;
+    await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email!, current));
+    await updatePassword(u, next);
+  }
+
+  /** メール/パスワードでログインしているか（Googleだけの人は false） */
+  isPasswordUser(): boolean {
+    return auth.currentUser?.providerData.some((p) => p.providerId === 'password') ?? false;
   }
 }

@@ -73,3 +73,16 @@ export function relativeTime(ms: number, lang: 'ja' | 'en', nowMs = Date.now()):
     if (abs < 86400 * 365) return rtf.format(Math.round(sec / (86400 * 30)), 'month');
     return rtf.format(Math.round(sec / (86400 * 365)), 'year');
   }
+
+  /** UTCからのずれの表示（例 GMT+9） */
+export function tzOffset(timeZone: string): string {
+  const p = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'shortOffset' }).formatToParts(new Date());
+  return p.find((x) => x.type === 'timeZoneName')?.value ?? '';
+}
+
+/** 選択肢の上に出す、よく使うタイムゾーン */
+export const COMMON_TIMEZONES = [
+  'Asia/Tokyo', 'Asia/Seoul', 'Asia/Shanghai', 'Asia/Singapore', 'Asia/Bangkok', 'Asia/Kolkata',
+  'Europe/London', 'Europe/Berlin', 'America/New_York', 'America/Chicago', 'America/Los_Angeles',
+  'Australia/Sydney', 'UTC',
+];

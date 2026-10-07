@@ -2,12 +2,13 @@ import { Component, OnInit, WritableSignal, computed, inject, input, signal } fr
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { IssueService } from '../../../core/issue.service';
+import { AuthService } from '../../../core/auth.service';
 import { ISSUE_TYPES, Issue, IssueType, Level, Member, OPEN_STATUSES } from '../../../core/models';
 import { compareIssues, priorityOf } from '../../../core/priority';
 import { formatDateTime, relativeTime, remainingOf } from '../../../core/time';
 import { I18nService, TPipe } from '../../../i18n/i18n';
 
-type SortKey = 'priority' | 'due' | 'number' | 'updated' ;
+type SortKey = 'priority' | 'due' | 'number' | 'updated';
 type Dir = 'asc' | 'desc';
 
 /** 並べ替えを選んだときの初期の向き */
@@ -21,6 +22,7 @@ const normalize = (s: string) => s.normalize('NFKC').toLowerCase();
 @Component({
   selector: 'app-issue-list',
   imports: [FormsModule, RouterLink, TPipe],
+  host: { '(document:keydown.escape)': 'showFilters.set(false)' },
   template: `
     <section>
       <div class="section-head">
@@ -51,11 +53,67 @@ const normalize = (s: string) => s.normalize('NFKC').toLowerCase();
       </div>
 
       <div class="toolbar">
-        <button type="button" class="link" (click)="showFilters.set(!showFilters())">
-          {{ 'list.filters' | t }}{{ activeCount() ? '（' + activeCount() + '）' : '' }}
-        </button>
-        <span class="spacer"></span>
-        <label class="sort">{{ 'list.sort' | t }}
+        <div class="filter-wrap">
+          <button type="button" class="summary" [attr.aria-expanded]="showFilters()"
+            [attr.aria-label]="'list.filters' | t" (click)="showFilters.set(!showFilters())">
+            <span class="icon" aria-hidden="true">⚲</span>
+            <span class="cond" [class.on]="scope() === 'all'">
+              <span class="k">{{ 'list.status' | t }}</span>{{ (scope() === 'all' ? 'list.scopeAll' : 'list.scopeOpen') | t }}
+            </span>
+            <span class="cond" [class.on]="!!type()">
+              <span class="k">{{ 'issue.type' | t }}</span>{{ type() ? ('issueTypes.' + type() | t) : ('list.any' | t) }}
+            </span>
+            <span class="cond" [class.on]="!!priority()">
+              <span class="k">{{ 'issue.priority' | t }}</span>{{ priority() ? ('priority.' + priority() | t) : ('list.any' | t) }}
+            </span>
+            @if (assignee()) {
+              <span class="cond on"><span class="k">{{ 'issue.assignee' | t }}</span>{{ memberName(assignee()!) }}</span>
+            }
+            @if (overdueOnly()) {
+              <span class="cond on">{{ 'list.overdue' | t }}</span>
+            }
+          </button>
+
+          @if (showFilters()) {
+            <div class="backdrop" (click)="showFilters.set(false)"></div>
+            <div class="panel" role="dialog" [attr.aria-label]="'list.filters' | t">
+              <p class="label">{{ 'list.status' | t }}</p>
+              <div class="chips">
+                <button type="button" [class.on]="scope() === 'open'" (click)="setScope('open')">{{ 'list.scopeOpen' | t }}</button>
+                <button type="button" [class.on]="scope() === 'all'" (click)="setScope('all')">{{ 'list.scopeAll' | t }}</button>
+              </div>
+
+              <p class="label">{{ 'issue.type' | t }}</p>
+              <div class="chips">
+                <button type="button" [class.on]="!type()" (click)="reset(type)">{{ 'list.any' | t }}</button>
+                @for (t of types; track t) {
+                  <button type="button" [class.on]="type() === t" (click)="toggle(type, t)">{{ 'issueTypes.' + t | t }}</button>
+                }
+              </div>
+
+              <p class="label">{{ 'issue.priority' | t }}</p>
+              <div class="chips">
+                <button type="button" [class.on]="!priority()" (click)="reset(priority)">{{ 'list.any' | t }}</button>
+                @for (l of levels; track l) {
+                  <button type="button" [class.on]="priority() === l" (click)="toggle(priority, l)">{{ 'priority.' + l | t }}</button>
+                }
+              </div>
+
+              <p class="label">{{ 'issue.due' | t }}</p>
+              <div class="chips">
+                <button type="button" [class.on]="overdueOnly()" (click)="toggleOverdue()">{{ 'list.overdue' | t }}</button>
+              </div>
+
+              <div class="footer">
+                <button type="button" class="link" (click)="clearFilters()">{{ 'list.clear' | t }}</button>
+                <button type="button" class="close" (click)="showFilters.set(false)">{{ 'list.close' | t }}</button>
+              </div>
+            </div>
+          }
+        </div>
+
+        <label class="sort">
+          <span class="sort-label">{{ 'list.sort' | t }}</span>
           <select [ngModel]="sort()" (ngModelChange)="setSort($event)">
             @for (k of sortKeys; track k) {
               <option [value]="k">{{ 'list.sortKeys.' + k | t }}</option>
@@ -66,28 +124,6 @@ const normalize = (s: string) => s.normalize('NFKC').toLowerCase();
           {{ dir() === 'asc' ? '↑' : '↓' }}
         </button>
       </div>
-
-      @if (showFilters()) {
-        <div class="filters">
-          <div class="chips">
-            <button type="button" [class.on]="scope() === 'open'" (click)="setScope('open')">{{ 'list.scopeOpen' | t }}</button>
-            <button type="button" [class.on]="scope() === 'all'" (click)="setScope('all')">{{ 'list.scopeAll' | t }}</button>
-          </div>
-          <div class="chips">
-            @for (t of types; track t) {
-              <button type="button" [class.on]="type() === t" (click)="toggle(type, t)">{{ 'issueTypes.' + t | t }}</button>
-            }
-          </div>
-          <div class="chips">
-            @for (l of levels; track l) {
-              <button type="button" [class.on]="priority() === l" (click)="toggle(priority, l)">
-                {{ 'issue.priority' | t }}：{{ 'priority.' + l | t }}</button>
-            }
-            <button type="button" [class.on]="overdueOnly()" (click)="toggleOverdue()">{{ 'list.overdue' | t }}</button>
-          </div>
-          <button type="button" class="link" (click)="clearFilters()">{{ 'list.clear' | t }}</button>
-        </div>
-      }
 
       @if (loading()) {
         <p>{{ 'common.loading' | t }}</p>
@@ -128,17 +164,38 @@ const normalize = (s: string) => s.normalize('NFKC').toLowerCase();
       padding: 0; overflow: hidden; font-size: 14px; display: flex; align-items: center; justify-content: center; }
     .avatar img { width: 100%; height: 100%; object-fit: cover; }
     .avatar.on { border-color: #1565c0; }
-    .toolbar { display: flex; align-items: center; gap: 8px; }
-    .spacer { flex: 1; }
-    .link { background: none; border: none; color: #1565c0; min-height: 40px; font-size: 14px; }
-    .sort { font-size: 13px; color: #666; display: flex; align-items: center; gap: 4px; }
-    select { min-height: 36px; font-size: 14px; }
-    .dir { min-width: 36px; min-height: 36px; border: 1px solid #ccc; background: #fff; border-radius: 6px; }
-    .filters { background: #f5f5f5; border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+        .toolbar { display: flex; align-items: center; gap: 8px; }
+    .filter-wrap { position: relative; flex: 1; min-width: 0; }
+    .summary { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; width: 100%;
+      min-height: 40px; padding: 4px 10px; background: #fff; border: 1px solid #ccc; border-radius: 8px;
+      text-align: left; font-size: 13px; cursor: pointer; }
+    .summary .icon { color: #888; }
+    .cond { color: #444; white-space: nowrap; }
+    .cond .k { color: #999; margin-right: 4px; }
+    .cond.on { color: #1565c0; font-weight: bold; }
+    .backdrop { position: fixed; inset: 0; z-index: 10; }
+    .panel { position: absolute; top: calc(100% + 4px); left: 0; z-index: 11; width: min(420px, 90vw);
+      background: #fff; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+      padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+    .label { font-size: 12px; color: #666; margin: 6px 0 0; }
     .chips { display: flex; flex-wrap: wrap; gap: 6px; }
     .chips button { min-height: 36px; padding: 0 12px; border: 1px solid #ccc; background: #fff;
       border-radius: 18px; font-size: 13px; }
     .chips button.on { background: #1565c0; color: #fff; border-color: #1565c0; }
+    .footer { display: flex; justify-content: space-between; align-items: center;
+      border-top: 1px solid #eee; margin-top: 8px; padding-top: 8px; }
+    .link { background: none; border: none; color: #1565c0; min-height: 40px; font-size: 14px; }
+    .close { min-height: 40px; padding: 0 20px; background: #1565c0; color: #fff; border: none;
+      border-radius: 8px; font-size: 14px; }
+    .sort { display: flex; align-items: center; gap: 4px; font-size: 13px; color: #666; }
+    select { min-height: 40px; font-size: 14px; }
+    .dir { min-width: 40px; min-height: 40px; border: 1px solid #ccc; background: #fff; border-radius: 8px; }
+    @media (max-width: 600px) {
+      .sort-label { display: none; }
+      .backdrop { background: rgba(0, 0, 0, 0.3); }
+      .panel { position: fixed; top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 80vh;
+        overflow: auto; border-radius: 16px 16px 0 0; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+    }
     .count { font-size: 12px; color: #666; margin: 8px 0 0; }
     .list { list-style: none; padding: 0; margin: 0; }
     .issue { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 52px;
@@ -165,6 +222,7 @@ export class IssueList implements OnInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private issueService = inject(IssueService);
+  private authService = inject(AuthService);
   protected i18n = inject(I18nService);
 
   readonly types = ISSUE_TYPES;
@@ -187,6 +245,7 @@ export class IssueList implements OnInit {
   dir = signal<Dir>('asc');
 
   assignable = computed(() => this.members().filter((m) => m.role !== 'viewer'));
+  tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
   activeCount = computed(() =>
     [this.scope() === 'all', this.type(), this.priority(), this.overdueOnly()].filter(Boolean).length);
   hasCondition = computed(() => !!this.q().trim() || !!this.assignee() || this.activeCount() > 0);
@@ -237,7 +296,7 @@ export class IssueList implements OnInit {
       const d = p.get('dir');
       this.dir.set(d === 'asc' || d === 'desc' ? d : DEFAULT_DIR[s]);
     }
-    if (this.activeCount() > 0) this.showFilters.set(true);
+    
 
     try {
       this.openIssues.set(await this.issueService.listOpen(this.pid()));
@@ -289,6 +348,10 @@ export class IssueList implements OnInit {
     sig.set(sig() === value ? null : value);
     this.changed();
   }
+  reset<T>(sig: WritableSignal<T | null>) {
+    sig.set(null);
+    this.changed();
+  }
 
   clearFilters() {
     this.scope.set('open');
@@ -319,6 +382,6 @@ export class IssueList implements OnInit {
     return relativeTime(i.updatedAt.toMillis(), this.i18n.lang());
   }
   updatedFull(i: Issue) {
-    return formatDateTime(i.updatedAt.toDate(), 'Asia/Tokyo', this.i18n.lang());
+    return formatDateTime(i.updatedAt.toDate(), this.tz(), this.i18n.lang());
   }
 }

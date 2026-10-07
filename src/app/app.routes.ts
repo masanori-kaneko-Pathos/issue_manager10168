@@ -13,5 +13,7 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/issue-new/issue-new').then((m) => m.IssueNew) },
   { path: 'p/:pid/i/:iid', canActivate: [authGuard],
     loadComponent: () => import('./pages/issue-detail/issue-detail').then((m) => m.IssueDetail) },
+  { path: 'settings', canActivate: [authGuard],
+    loadComponent: () => import('./pages/settings/settings').then((m) => m.Settings) },
   { path: '**', redirectTo: '' },
 ];

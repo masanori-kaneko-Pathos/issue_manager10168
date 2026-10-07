@@ -15,13 +15,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
   selector: 'app-projects',
   imports: [FormsModule, RouterLink, TPipe],
   template: `
-    <header class="bar">
-      <h1>{{ 'projects.title' | t }}</h1>
-      <button type="button" class="link" (click)="i18n.lang.set(i18n.lang() === 'ja' ? 'en' : 'ja')">
-        {{ i18n.lang() === 'ja' ? 'English' : '日本語' }}
-      </button>
-      <button type="button" class="link" (click)="logout()">{{ 'common.logout' | t }}</button>
-    </header>
+   
 
     <main>
       @if (needsVerify()) {
