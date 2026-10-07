@@ -11,6 +11,8 @@ import { TPipe } from '../i18n/i18n';
     <header class="app-header">
       <a routerLink="/" class="brand">{{ 'app.title' | t }}</a>
       <span class="spacer"></span>
+      <button type="button" class="add-btn" [attr.aria-label]="'menu.newIssue' | t"
+        [title]="'menu.newIssue' | t" (click)="newIssue()">＋</button>
       <div class="account">
         <button type="button" class="account-btn" [attr.aria-expanded]="open()"
           [attr.aria-label]="'menu.account' | t" (click)="open.set(!open())">
@@ -41,6 +43,8 @@ import { TPipe } from '../i18n/i18n';
       height: 52px; padding: 0 12px; background: var(--primary); color: var(--on-primary); }
     .brand { color: var(--on-primary); text-decoration: none; font-weight: bold; font-size: 16px; }
     .spacer { flex: 1; }
+    .add-btn { width: 36px; height: 36px; border-radius: 50%; border: none; background: var(--on-primary);
+      color: var(--primary); font-size: 22px; font-weight: bold; line-height: 1; cursor: pointer; }
     .account { position: relative; }
     .account-btn { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 8px;
       background: rgba(255, 255, 255, 0.15); color: var(--on-primary); border: none; border-radius: 20px; cursor: pointer; }
@@ -73,5 +77,10 @@ export class AppHeader {
     this.open.set(false);
     await this.authService.logout();
     await this.router.navigateByUrl('/login');
+  }
+  /** プロジェクトの中にいるときは、そのプロジェクトを選んだ状態で開く */
+  newIssue() {
+    const m = this.router.url.match(/^\/p\/([^/?#]+)/);
+    this.router.navigate(['/new'], { queryParams: m ? { p: m[1] } : {} });
   }
 }

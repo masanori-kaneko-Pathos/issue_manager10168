@@ -110,6 +110,9 @@ export const en: Dict = {
     submit: 'Create',
     duePast: 'The due date is in the past.',
     you: ' (you)',
+    project: 'Project',
+    noProject: 'No project where you can create issues. Create a project first, or accept an invitation.',
+    toProjects: 'Go to projects',
   },
   status: {
     open: 'Open', in_progress: 'In progress', on_hold: 'On hold',
@@ -212,7 +215,7 @@ export const en: Dict = {
     showDone: 'Show resolved and closed',
     empty: 'You have no assigned issues.',
   },
-  menu: { account: 'Account', settings: 'Settings' },
+  menu: { account: 'Account', settings: 'Settings', newIssue: 'New issue' },
   settings: {
     title: 'Settings',
     profile: 'Profile',

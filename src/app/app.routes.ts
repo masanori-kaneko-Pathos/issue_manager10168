@@ -9,6 +9,8 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/projects/projects').then((m) => m.Projects) },
   { path: 'p/:pid', canActivate: [authGuard],
     loadComponent: () => import('./pages/project-home/project-home').then((m) => m.ProjectHome) }, 
+  { path: 'new', canActivate: [authGuard],
+    loadComponent: () => import('./pages/issue-new/issue-new').then((m) => m.IssueNew) },
   { path: 'p/:pid/new', canActivate: [authGuard],
     loadComponent: () => import('./pages/issue-new/issue-new').then((m) => m.IssueNew) },
   { path: 'p/:pid/i/:iid', canActivate: [authGuard],

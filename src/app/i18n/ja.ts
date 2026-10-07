@@ -107,6 +107,9 @@ export const ja = {
       submit: '登録する',
       duePast: '期限が過去になっています。',
       you: '（自分）',
+      project: 'プロジェクト',
+      noProject: '課題を登録できるプロジェクトがありません。先にプロジェクトを作成するか、招待を受けてください。',
+      toProjects: 'プロジェクト一覧へ',
     },
     status: {
       open: '未着手', in_progress: '対応中', on_hold: '保留',
@@ -209,7 +212,7 @@ export const ja = {
       showDone: '解決済み・クローズも表示',
       empty: '担当している課題はありません。',
     },
-    menu: { account: 'アカウント', settings: '設定' },
+    menu: { account: 'アカウント', settings: '設定', newIssue: '課題を登録' },
     settings: {
       title: '設定',
       profile: 'プロフィール',

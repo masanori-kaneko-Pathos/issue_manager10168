@@ -5,19 +5,53 @@ import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth.service';
 import { ProjectService } from '../../core/project.service';
 import { IssueService } from '../../core/issue.service';
-import { ISSUE_TYPES, IssueType, Level, Member } from '../../core/models';
+import { ISSUE_TYPES, IssueType, Level, Member, ProjectWithRole } from '../../core/models';
 import { endOfDayIn, formatDateTime, parseLocalInput } from '../../core/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { HelpTip } from '../../shared/help-tip';
+
+const LAST_PROJECT_KEY = 'issuemanager.lastProject';
+
+function readLastProject(): string | null {
+  try {
+    return localStorage.getItem(LAST_PROJECT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeLastProject(pid: string) {
+  try {
+    localStorage.setItem(LAST_PROJECT_KEY, pid);
+  } catch {
+    // 保存できなくても登録には影響しない
+  }
+}
 
 @Component({
   selector: 'app-issue-new',
   imports: [FormsModule, RouterLink, TPipe, HelpTip],
   template: `
-    <header class="bar"><a [routerLink]="['/p', pid]" class="link">{{ 'common.back' | t }}</a></header>
+    <header class="bar"><a [routerLink]="backLink()" class="link">{{ 'common.back' | t }}</a></header>
     <main>
       <h1>{{ 'issueNew.title' | t }}</h1>
       <form (ngSubmit)="save()">
+              @if (!loadingProjects() && projects().length === 0) {
+          <p class="notice">
+            {{ 'issueNew.noProject' | t }}
+            <a routerLink="/">{{ 'issueNew.toProjects' | t }}</a>
+          </p>
+        }
+        @if (projects().length) {
+          <div class="field">
+            <span><label for="f-project">{{ 'issueNew.project' | t }}</label></span>
+            <select id="f-project" name="project" [ngModel]="pid()" (ngModelChange)="selectProject($event)">
+              @for (p of projects(); track p.id) {
+                <option [value]="p.id">{{ p.name }}</option>
+              }
+            </select>
+          </div>
+        }
         <div class="field">
           <span><label for="f-title">{{ 'issue.title' | t }}</label> <app-help-tip [keys]="['help.title']" /></span>
           <input id="f-title" name="title" [(ngModel)]="title" maxlength="200" required autofocus
@@ -106,6 +140,8 @@ import { HelpTip } from '../../shared/help-tip';
     .primary { background: var(--primary); color: var(--on-primary); border: none; border-radius: 8px; }
     .primary:disabled { background: var(--disabled); }
     .error { color: var(--danger-text); }
+        select { min-height: 48px; font-size: 16px; padding: 0 12px; }
+    .notice { background: var(--warning-bg); padding: 12px; border-radius: 8px; margin: 0; font-weight: normal; }
   `,
 })
 export class IssueNew implements OnInit {
@@ -116,7 +152,13 @@ export class IssueNew implements OnInit {
   private authService = inject(AuthService);
   protected i18n = inject(I18nService);
 
-  readonly pid = this.route.snapshot.paramMap.get('pid')!;
+  /** 開いた元のプロジェクト（プロジェクトの外から開いたときは null） */
+  private readonly fromPid =
+    this.route.snapshot.paramMap.get('pid') ?? this.route.snapshot.queryParamMap.get('p');
+  pid = signal<string | null>(null);
+  projects = signal<ProjectWithRole[]>([]);
+  loadingProjects = signal(true);
+  backLink = computed(() => (this.fromPid ? ['/p', this.fromPid] : ['/']));
   readonly myUid = auth.currentUser!.uid;
   readonly types = ISSUE_TYPES;
   readonly levels: Level[] = ['high', 'mid', 'low'];
@@ -148,9 +190,32 @@ export class IssueNew implements OnInit {
   });
 
   async ngOnInit() {
+    try {
+      // 登録できるのは、管理者かメンバーで、アーカイブされていないプロジェクト
+      const all = await this.ps.listMine(this.myUid);
+      const writable = all.filter((p) => !p.archived && (p.role === 'admin' || p.role === 'member'));
+      this.projects.set(writable);
+
+      // 開いた元 → 前回登録した → 一覧の先頭、の順に選ぶ
+      const first = [this.fromPid, readLastProject()].find((id) => id && writable.some((p) => p.id === id))
+        ?? writable[0]?.id ?? null;
+      if (first) await this.selectProject(first);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      this.loadingProjects.set(false);
+    }
+  }
+
+  /** プロジェクトを変えたら、担当者の選択肢をそのプロジェクトのメンバーに入れ替える */
+  async selectProject(pid: string) {
+    this.pid.set(pid);
+    const all = await this.ps.listMembers(pid);
     // 閲覧者は担当者にできない
-    const all = await this.ps.listMembers(this.pid);
     this.members.set(all.filter((m) => m.role !== 'viewer'));
+    if (!this.members().some((m) => m.uid === this.assigneeId())) {
+      this.assigneeId.set(this.myUid);
+    }
   }
 
   selectType(t: IssueType) {
@@ -176,7 +241,7 @@ export class IssueNew implements OnInit {
   }
 
   ready() {
-    return !!(this.title.trim() && this.type() && this.importance() && this.dueAt()
+    return !!(this.pid() && this.title.trim() && this.type() && this.importance() && this.dueAt()
       && this.doneCriteria.trim() && this.assigneeId());
   }
 
@@ -189,7 +254,8 @@ export class IssueNew implements OnInit {
     this.busy.set(true);
     this.error.set('');
     try {
-      await this.issues.create(this.pid, {
+      const pid = this.pid()!;
+      await this.issues.create(pid, {
         title: this.title.trim(),
         type: this.type()!,
         importance: this.importance()!,
@@ -198,7 +264,8 @@ export class IssueNew implements OnInit {
         doneCriteria: this.doneCriteria.trim(),
         description: this.description,
       }, this.myUid, this.tz());
-      await this.router.navigate(['/p', this.pid]);
+      writeLastProject(pid);
+      await this.router.navigate(['/p', pid]);
     } catch (e) {
       console.error(e);
       this.error.set('common.saveError');
