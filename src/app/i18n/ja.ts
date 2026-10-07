@@ -202,6 +202,7 @@ export const ja = {
       status: '状態',
       any: 'すべて',
       close: '閉じる',
+      showAll: '一覧で{{n}}件すべて見る',
     },
     mine: {
       title: '自分の課題',

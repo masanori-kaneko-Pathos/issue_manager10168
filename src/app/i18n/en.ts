@@ -205,6 +205,7 @@ export const en: Dict = {
     status: 'Status',
     any: 'Any',
     close: 'Done',
+    showAll: 'See all {{n}} in the list',
   },
   mine: {
     title: 'My issues',
