@@ -1,6 +1,8 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { focusById } from '../../core/dom';
 import { sendEmailVerification } from 'firebase/auth';
 import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth.service';
@@ -70,7 +72,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
       <h2>{{ 'projects.title' | t }}</h2>
 
       <form class="create" (ngSubmit)="create()">
-        <input name="name" [(ngModel)]="newName" maxlength="100" required
+        <input id="new-project" name="name" [(ngModel)]="newName" maxlength="100" required
           [placeholder]="'projects.namePlaceholder' | t" />
         <button type="submit" [disabled]="busy() || !newName.trim()">{{ 'projects.create' | t }}</button>
       </form>
@@ -133,6 +135,14 @@ export class Projects implements OnInit {
   private issueService = inject(IssueService);
   private router = inject(Router);
   protected i18n = inject(I18nService);
+  private route = inject(ActivatedRoute);
+
+  constructor() {
+    // ヘッダーの「プロジェクトを作成」から来たら、作成欄に移る
+    this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((p) => {
+      if (p.get('create')) focusById('new-project');
+    });
+  }
 
   projects = signal<ProjectWithRole[]>([]);
   invitations = signal<Invitation[]>([]);

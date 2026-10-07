@@ -1,21 +1,42 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../core/auth.service';
+import { auth } from '../core/firebase';
+import { Role } from '../core/models';
+import { ProjectService } from '../core/project.service';
 import { TPipe } from '../i18n/i18n';
+import { HelpTip } from './help-tip';
 
 @Component({
   selector: 'app-header',
-  imports: [RouterLink, TPipe],
-  host: { '(document:keydown.escape)': 'open.set(false)' },
+  imports: [RouterLink, TPipe, HelpTip],
+  host: { '(document:keydown.escape)': 'open.set(false); addOpen.set(false)' },
   template: `
     <header class="app-header">
       <a routerLink="/" class="brand">{{ 'app.title' | t }}</a>
       <span class="spacer"></span>
-      <button type="button" class="add-btn" [attr.aria-label]="'menu.newIssue' | t"
-        [title]="'menu.newIssue' | t" (click)="newIssue()">＋</button>
+      <div class="add">
+        <button type="button" class="add-btn" [attr.aria-expanded]="addOpen()"
+          [attr.aria-label]="'menu.add' | t" [title]="'menu.add' | t" (click)="toggleAdd()">＋</button>
+        @if (addOpen()) {
+          <div class="backdrop" (click)="addOpen.set(false)"></div>
+          <div class="menu" role="menu">
+            <button type="button" role="menuitem" class="primary-item" (click)="newIssue()">
+              {{ 'menu.newIssue' | t }}</button>
+            <button type="button" role="menuitem" (click)="newProject()">{{ 'menu.newProject' | t }}</button>
+            <div class="item-row">
+              <button type="button" role="menuitem" [disabled]="!canInvite()" (click)="invite()">
+                {{ 'menu.invite' | t }}</button>
+              @if (!canInvite()) {
+                <app-help-tip kind="denied" align="right" [keys]="[inviteDenied()]" />
+              }
+            </div>
+          </div>
+        }
+      </div>
       <div class="account">
         <button type="button" class="account-btn" [attr.aria-expanded]="open()"
-          [attr.aria-label]="'menu.account' | t" (click)="open.set(!open())">
+          [attr.aria-label]="'menu.account' | t" (click)="toggleAccount()">
           @if (photo()) {
             <img [src]="photo()" alt="" referrerpolicy="no-referrer" />
           } @else {
@@ -45,6 +66,12 @@ import { TPipe } from '../i18n/i18n';
     .spacer { flex: 1; }
     .add-btn { width: 36px; height: 36px; border-radius: 50%; border: none; background: var(--on-primary);
       color: var(--primary); font-size: 22px; font-weight: bold; line-height: 1; cursor: pointer; }
+    .add { position: relative; }
+    .primary-item { font-weight: bold; color: var(--primary) !important; }
+    .item-row { display: flex; align-items: center; padding-right: 12px; }
+    .item-row button { flex: 1; }
+    .menu button:disabled { color: var(--text-disabled); cursor: default; }
+    .menu button:disabled:hover { background: none; }
     .account { position: relative; }
     .account-btn { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 8px;
       background: rgba(255, 255, 255, 0.15); color: var(--on-primary); border: none; border-radius: 20px; cursor: pointer; }
@@ -66,6 +93,13 @@ import { TPipe } from '../i18n/i18n';
 export class AppHeader {
   private authService = inject(AuthService);
   private router = inject(Router);
+  private projectService = inject(ProjectService);
+
+  addOpen = signal(false);
+  /** メニューを開いたときにいたプロジェクトと、そこでの自分のロール */
+  ctx = signal<{ pid: string | null; role: Role | null }>({ pid: null, role: null });
+  canInvite = computed(() => !!this.ctx().pid && this.ctx().role === 'admin');
+  inviteDenied = computed(() => (this.ctx().pid ? 'menu.inviteNeedAdmin' : 'menu.inviteNeedProject'));
 
   open = signal(false);
   name = computed(() => this.authService.profile()?.displayName || this.authService.user()?.email || '');
@@ -78,9 +112,51 @@ export class AppHeader {
     await this.authService.logout();
     await this.router.navigateByUrl('/login');
   }
+  private currentPid(): string | null {
+    return this.router.url.match(/^\/p\/([^/?#]+)/)?.[1] ?? null;
+  }
+
+  toggleAccount() {
+    this.addOpen.set(false);
+    this.open.set(!this.open());
+  }
+
+  /** 開くときに、今いるプロジェクトでの自分のロールを確かめる */
+  async toggleAdd() {
+    if (this.addOpen()) {
+      this.addOpen.set(false);
+      return;
+    }
+    this.open.set(false);
+    const pid = this.currentPid();
+    let role: Role | null = null;
+    if (pid) {
+      try {
+        role = await this.projectService.myRole(pid, auth.currentUser!.uid);
+      } catch {
+        role = null;
+      }
+    }
+    this.ctx.set({ pid, role });
+    this.addOpen.set(true);
+  }
+
   /** プロジェクトの中にいるときは、そのプロジェクトを選んだ状態で開く */
   newIssue() {
-    const m = this.router.url.match(/^\/p\/([^/?#]+)/);
-    this.router.navigate(['/new'], { queryParams: m ? { p: m[1] } : {} });
+    this.addOpen.set(false);
+    const pid = this.currentPid();
+    this.router.navigate(['/new'], { queryParams: pid ? { p: pid } : {} });
+  }
+
+  newProject() {
+    this.addOpen.set(false);
+    // 毎回違う値にして、一覧にいるときに押しても入力欄に移るようにする
+    this.router.navigate(['/'], { queryParams: { create: Date.now() } });
+  }
+
+  invite() {
+    const pid = this.ctx().pid;
+    this.addOpen.set(false);
+    if (pid) this.router.navigate(['/p', pid], { fragment: 'invite' });
   }
 }

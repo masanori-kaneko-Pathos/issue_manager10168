@@ -7,6 +7,8 @@ import { Invitation, Issue, Member, Project, Role } from '../../core/models';
 import { IssueService } from '../../core/issue.service';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { IssueList } from './issue-list/issue-list';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { focusById } from '../../core/dom';
 
 @Component({
   selector: 'app-project-home',
@@ -37,7 +39,7 @@ import { IssueList } from './issue-list/issue-list';
           <section>
             <h2>{{ 'project.invite' | t }}</h2>
             <form class="invite" (ngSubmit)="invite()">
-              <input type="email" name="email" [(ngModel)]="inviteEmail" required autocomplete="off"
+              <input id="invite-email" type="email" name="email" [(ngModel)]="inviteEmail" required autocomplete="off"
                 [placeholder]="'project.inviteEmail' | t" />
               <div class="roles">
                 @for (r of roles; track r) {
@@ -108,6 +110,12 @@ export class ProjectHome implements OnInit {
 
   readonly roles: Role[] = ['member', 'viewer', 'admin'];
   readonly pid = this.route.snapshot.paramMap.get('pid')!;
+  constructor() {
+    // ヘッダーの「メンバーを招待」から来たら、招待欄に移る（読み込みが終わるまで待つ）
+    this.route.fragment.pipe(takeUntilDestroyed()).subscribe((f) => {
+      if (f === 'invite') focusById('invite-email');
+    });
+  }
 
   project = signal<Project | null>(null);
   role = signal<Role | null>(null);

@@ -215,7 +215,16 @@ export const en: Dict = {
     showDone: 'Show resolved and closed',
     empty: 'You have no assigned issues.',
   },
-  menu: { account: 'Account', settings: 'Settings', newIssue: 'New issue' },
+  menu: {
+    account: 'Account',
+    settings: 'Settings',
+    add: 'Create',
+    newIssue: 'New issue',
+    newProject: 'New project',
+    invite: 'Invite members',
+    inviteNeedProject: 'Open the project you want to invite people to first.',
+    inviteNeedAdmin: 'Only admins of this project can invite members.',
+  },
   settings: {
     title: 'Settings',
     profile: 'Profile',

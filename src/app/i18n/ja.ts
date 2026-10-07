@@ -212,7 +212,16 @@ export const ja = {
       showDone: '解決済み・クローズも表示',
       empty: '担当している課題はありません。',
     },
-    menu: { account: 'アカウント', settings: '設定', newIssue: '課題を登録' },
+    menu: {
+      account: 'アカウント',
+      settings: '設定',
+      add: '新しく作る',
+      newIssue: '課題を登録',
+      newProject: 'プロジェクトを作成',
+      invite: 'メンバーを招待',
+      inviteNeedProject: 'メンバーの招待は、招待したいプロジェクトを開いてから行います。',
+      inviteNeedAdmin: 'メンバーを招待できるのは、そのプロジェクトの管理者だけです。',
+    },
     settings: {
       title: '設定',
       profile: 'プロフィール',
