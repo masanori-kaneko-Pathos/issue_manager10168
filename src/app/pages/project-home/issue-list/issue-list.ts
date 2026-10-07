@@ -4,7 +4,8 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { IssueService } from '../../../core/issue.service';
 import { AuthService } from '../../../core/auth.service';
 import { HelpTip } from '../../../shared/help-tip';
-import { ISSUE_TYPES, Issue, IssueType, Level, Member, OPEN_STATUSES } from '../../../core/models';
+import { ISSUE_TYPES, Issue, IssueType, Label, Level, Member, OPEN_STATUSES, labelsOf } from '../../../core/models';
+import { LabelChip } from '../../../shared/label-chip';
 import { compareIssues, priorityOf } from '../../../core/priority';
 import { formatDateTime, relativeTime, remainingOf } from '../../../core/time';
 import { I18nService, TPipe } from '../../../i18n/i18n';
@@ -50,7 +51,7 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
 
 @Component({
   selector: 'app-issue-list',
-  imports: [FormsModule, RouterLink, TPipe, HelpTip],
+  imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip],
   host: { '(document:keydown.escape)': 'showFilters.set(false); suggestOpen.set(false)' },
   template: `
     <section>
@@ -125,12 +126,16 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
             <span class="cond" [class.on]="!!priority()">
               <span class="k">{{ 'issue.priority' | t }}</span>{{ priority() ? ('priority.' + priority() | t) : ('list.any' | t) }}
             </span>
+            @if (label()) {
+              <span class="cond on"><span class="k">{{ 'issue.labelIds' | t }}</span>{{ labelName(label()!) }}</span>
+            }
             @if (assignee()) {
               <span class="cond on"><span class="k">{{ 'issue.assignee' | t }}</span>{{ memberName(assignee()!) }}</span>
             }
             @if (overdueOnly()) {
               <span class="cond on">{{ 'list.overdue' | t }}</span>
             }
+            
           </button>
 
           @if (showFilters()) {
@@ -157,7 +162,15 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
                   <button type="button" [class.on]="priority() === l" (click)="toggle(priority, l)">{{ 'priority.' + l | t }}</button>
                 }
               </div>
-
+              @if (labels().length) {
+                <p class="label">{{ 'issue.labelIds' | t }}</p>
+                <div class="chips">
+                  <button type="button" [class.on]="!label()" (click)="reset(label)">{{ 'list.any' | t }}</button>
+                  @for (l of labels(); track l.id) {
+                    <button type="button" [class.on]="label() === l.id" (click)="toggle(label, l.id)">{{ l.name }}</button>
+                  }
+                </div>
+              }
               <p class="label">{{ 'issue.due' | t }}</p>
               <div class="chips">
                 <button type="button" [class.on]="overdueOnly()" (click)="toggleOverdue()">{{ 'list.overdue' | t }}</button>
@@ -194,6 +207,7 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
               <span class="prio" [attr.data-p]="prio(i)"></span>
               <span class="num">#{{ i.number }}</span>
               <a class="name" [routerLink]="['/p', pid(), 'i', i.id]">{{ i.title }}</a>
+          @for (l of rowLabels(i); track l.id) { <app-label-chip [label]="l" /> }
               @if (i.status !== 'open') { <span class="st">{{ 'status.' + i.status | t }}</span> }
               <span class="meta">{{ memberName(i.assigneeId) }}</span>
                @if (sort() === 'updated') {
@@ -294,6 +308,7 @@ export class IssueList implements OnInit {
   members = input.required<Member[]>();
   canCreate = input(false);
   isViewer = input(false);
+  labels = input<Label[]>([]);
 
   private route = inject(ActivatedRoute);
   private router = inject(Router);
@@ -319,13 +334,14 @@ export class IssueList implements OnInit {
   type = signal<IssueType | null>(null);
   priority = signal<Level | null>(null);
   overdueOnly = signal(false);
+  label = signal<string | null>(null);
   sort = signal<SortKey>('priority');
   dir = signal<Dir>('asc');
 
   assignable = computed(() => this.members().filter((m) => m.role !== 'viewer'));
   tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
   activeCount = computed(() =>
-    [this.scope() === 'all', this.type(), this.priority(), this.overdueOnly()].filter(Boolean).length);
+    [this.scope() === 'all', this.type(), this.priority(), this.label(), this.overdueOnly()].filter(Boolean).length);
   hasCondition = computed(() => !!this.q().trim() || !!this.assignee() || this.activeCount() > 0);
 
   visible = computed(() => {
@@ -346,6 +362,8 @@ export class IssueList implements OnInit {
     if (type) list = list.filter((i) => i.type === type);
     const priority = this.priority();
     if (priority) list = list.filter((i) => priorityOf(i, now) === priority);
+    const label = this.label();
+    if (label) list = list.filter((i) => (i.labelIds ?? []).includes(label));
     if (this.overdueOnly()) list = list.filter((i) => this.isActive(i) && i.dueAt.toMillis() < now);
 
     const cmp: Record<SortKey, (a: Issue, b: Issue) => number> = {
@@ -413,6 +431,7 @@ export class IssueList implements OnInit {
     this.type.set(p.get('type') as IssueType | null);
     this.priority.set(p.get('priority') as Level | null);
     this.overdueOnly.set(p.get('overdue') === '1');
+    this.label.set(p.get('label'));
     const s = p.get('sort') as SortKey | null;
     if (s && this.sortKeys.includes(s)) {
       this.sort.set(s);
@@ -453,6 +472,7 @@ export class IssueList implements OnInit {
         type: this.type(),
         priority: this.priority(),
         overdue: this.overdueOnly() ? '1' : null,
+        label: this.label(),
         sort: this.sort() === 'priority' ? null : this.sort(),
         dir: this.dir() === DEFAULT_DIR[this.sort()] ? null : this.dir(),
       },
@@ -503,6 +523,7 @@ export class IssueList implements OnInit {
     this.assignee.set(null);
     this.type.set(null);
     this.priority.set(null);
+    this.label.set(null);
     this.overdueOnly.set(false);
     this.changed();
   }
@@ -528,5 +549,11 @@ export class IssueList implements OnInit {
   }
   updatedFull(i: Issue) {
     return formatDateTime(i.updatedAt.toDate(), this.tz(), this.i18n.lang());
+  }
+  rowLabels(i: Issue) {
+    return labelsOf(i.labelIds, this.labels());
+  }
+  labelName(id: string) {
+    return this.labels().find((l) => l.id === id)?.name ?? '';
   }
 }

@@ -72,6 +72,7 @@ export const en: Dict = {
     doneCriteria: 'Definition of done',
     description: 'Description',
     priority: 'Priority',
+    labelIds: 'Labels',
   },
   issueTypes: { bug: 'Bug', request: 'Request', question: 'Question', task: 'Task', risk: 'Risk' },
   importance: { high: 'High', mid: 'Medium', low: 'Low' },
@@ -278,5 +279,9 @@ export const en: Dict = {
     emptyName: 'Label names cannot be empty.',
     maxReached: 'Up to {{n}} labels.',
     colors: { blue: 'Blue', green: 'Green', orange: 'Orange', red: 'Red', purple: 'Purple', gray: 'Gray' },
+  },
+  labelPicker: {
+    none: 'This project has no labels. Admins can add them in the Settings tab.',
+    count: '{{n}} / {{max}}',
   },
 };

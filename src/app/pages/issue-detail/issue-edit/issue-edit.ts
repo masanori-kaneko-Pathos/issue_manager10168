@@ -3,18 +3,27 @@ import { FormsModule } from '@angular/forms';
 import { auth } from '../../../core/firebase';
 import { AuthService } from '../../../core/auth.service';
 import { IssueEdits, IssueService } from '../../../core/issue.service';
-import { ISSUE_TYPES, Issue, IssueType, Level, Member } from '../../../core/models';
+import { ISSUE_TYPES, Issue, IssueType, Label, Level, Member } from '../../../core/models';
+import { LabelPicker } from '../../../shared/label-picker';
 import { endOfDayIn, formatDateTime, parseLocalInput, toLocalInput } from '../../../core/time';
 import { I18nService, TPipe } from '../../../i18n/i18n';
 
+/** 並び順を無視して、同じ id の組み合わせかを比べる */
+function sameIds(a: string[], b: string[]) {
+  return a.length === b.length && [...a].sort().join() === [...b].sort().join();
+}
+
 @Component({
   selector: 'app-issue-edit',
-  imports: [FormsModule, TPipe],
+  imports: [FormsModule, TPipe, LabelPicker],
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
     <section class="dialog" role="dialog" aria-modal="true">
       <h2>{{ 'edit.title' | t }}</h2>
-
+      <div class="field">
+        <span>{{ 'issue.labelIds' | t }}</span>
+        <app-label-picker [labels]="labels()" [(selected)]="labelIds" />
+      </div>
       <label class="field">{{ 'issue.title' | t }}
         <input [(ngModel)]="title" maxlength="200" />
       </label>
@@ -112,6 +121,7 @@ export class IssueEdit implements OnInit {
   issue = input.required<Issue>();
   members = input.required<Member[]>();
   pid = input.required<string>();
+  labels = input<Label[]>([]);
   saved = output<void>();
   cancel = output<void>();
 
@@ -132,6 +142,7 @@ export class IssueEdit implements OnInit {
   importance = signal<Level>('mid');
   dueAt = signal<Date | null>(null);
   assigneeId = signal('');
+  labelIds = signal<string[]>([]);
   busy = signal(false);
   error = signal('');
   title = '';
@@ -158,6 +169,7 @@ export class IssueEdit implements OnInit {
     this.dueAt.set(i.dueAt.toDate());
     this.dueInput = toLocalInput(i.dueAt.toDate(), this.tz());
     this.assigneeId.set(i.assigneeId);
+    this.labelIds.set(i.labelIds ?? []);
     this.doneCriteria = i.doneCriteria;
     this.description = i.description;
   }
@@ -192,6 +204,7 @@ export class IssueEdit implements OnInit {
     if (this.assigneeId() !== i.assigneeId) edits.assigneeId = this.assigneeId();
     if (doneCriteria !== i.doneCriteria) edits.doneCriteria = doneCriteria;
     if (this.description !== i.description) edits.description = this.description;
+    if (!sameIds(this.labelIds(), i.labelIds ?? [])) edits.labelIds = this.labelIds();
 
     if (Object.keys(edits).length === 0) { this.cancel.emit(); return; }
 

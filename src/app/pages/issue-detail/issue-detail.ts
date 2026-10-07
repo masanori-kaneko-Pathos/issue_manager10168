@@ -6,8 +6,9 @@ import { AuthService } from '../../core/auth.service';
 import { ProjectService } from '../../core/project.service';
 import { IssueService } from '../../core/issue.service';
 import {
-  CAUSE_CATEGORIES, CauseCategory, Effect, Issue, Level, Member, Role, TimelineItem,
+  CAUSE_CATEGORIES, CauseCategory, Effect, Issue, Label, Level, Member, Role, TimelineItem, labelsOf,
 } from '../../core/models';
+import { LabelChip } from '../../shared/label-chip';
 import { IssueEdit } from './issue-edit/issue-edit';
 import { HelpTip } from '../../shared/help-tip';
 import { priorityOf } from '../../core/priority';
@@ -17,7 +18,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
 
 @Component({
   selector: 'app-issue-detail',
-  imports: [FormsModule, RouterLink, TPipe, IssueEdit, HelpTip],
+  imports: [FormsModule, RouterLink, TPipe, IssueEdit, HelpTip, LabelChip],
   template: `
     <header class="bar"><a [routerLink]="['/p', pid]" class="link">{{ 'common.back' | t }}</a></header>
     <main>
@@ -49,6 +50,10 @@ import { I18nService, TPipe } from '../../i18n/i18n';
           <dt>{{ 'issue.assignee' | t }}</dt><dd>{{ memberName(i.assigneeId) }}</dd>
           <dt>{{ 'detail.reporter' | t }}</dt><dd>{{ memberName(i.reporterId) }}</dd>
           <dt>{{ 'issue.importance' | t }}</dt><dd>{{ 'importance.' + i.importance | t }}</dd>
+           @if (issueLabels().length) {
+            <dt>{{ 'issue.labelIds' | t }}</dt>
+            <dd class="label-row">@for (l of issueLabels(); track l.id) { <app-label-chip [label]="l" /> }</dd>
+          }
           <dt>{{ 'issue.due' | t }}</dt><dd>{{ dueLabel() }}</dd>
           <dt>{{ 'issue.doneCriteria' | t }}</dt><dd class="pre">{{ i.doneCriteria }}</dd>
           @if (i.description.trim()) {
@@ -98,7 +103,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
         }
 
         @if (editing()) {
-          <app-issue-edit [issue]="i" [members]="members()" [pid]="pid"
+          <app-issue-edit [issue]="i" [members]="members()" [pid]="pid" [labels]="projectLabels()"
             (saved)="onEdited()" (cancel)="editing.set(false)" />
         }
 
@@ -257,6 +262,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
       border-radius: 8px; font-size: 14px; }
     .tools button:disabled { color: var(--text-disabled); }
     .change { font-size: 13px; color: var(--text-secondary); margin: 4px 0 0; }
+    .label-row { display: flex; flex-wrap: wrap; gap: 4px; }
   `,
 })
 export class IssueDetail implements OnInit {
@@ -283,6 +289,8 @@ export class IssueDetail implements OnInit {
   role = signal<Role | null>(null);
   members = signal<Member[]>([]);
   timeline = signal<TimelineItem[]>([]);
+  projectLabels = signal<Label[]>([]);
+  issueLabels = computed(() => labelsOf(this.issue()?.labelIds, this.projectLabels()));
   loading = signal(true);
   busy = signal(false);
   error = signal('');
@@ -341,11 +349,13 @@ export class IssueDetail implements OnInit {
   async load() {
     try {
       this.role.set(await this.ps.myRole(this.pid, this.myUid));
-      const [issue, members, timeline] = await Promise.all([
+      const [issue, members, timeline, project] = await Promise.all([
         this.issueService.get(this.pid, this.iid),
         this.ps.listMembers(this.pid),
         this.issueService.timeline(this.pid, this.iid),
+        this.ps.get(this.pid),
       ]);
+      this.projectLabels.set(project?.labels ?? []);
       this.issue.set(issue);
       this.members.set(members);
       this.timeline.set(timeline);

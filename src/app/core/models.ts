@@ -127,3 +127,10 @@ export interface TimelineItem {
   tz?: string;  // 書いた人のタイムゾーン
   at: Timestamp;
 }
+
+/** 課題の labelIds から、表示するラベルを取り出す。
+ *  並びはプロジェクトのラベル一覧の順。削除されたラベルの id は無視する */
+export function labelsOf(ids: string[] | undefined, all: Label[]): Label[] {
+  const set = new Set(ids ?? []);
+  return all.filter((l) => set.has(l.id));
+}

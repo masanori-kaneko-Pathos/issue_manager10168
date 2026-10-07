@@ -78,7 +78,8 @@ service cloud.firestore {
     function editAllowed(pid) {
       let d = request.resource.data;
       return d.diff(resource.data).affectedKeys().hasOnly([
-               'title', 'type', 'importance', 'dueAt', 'assigneeId', 'doneCriteria', 'description', 'updatedAt'])
+               'title', 'type', 'importance', 'dueAt', 'assigneeId', 'doneCriteria', 'description', 'labelIds', 'updatedAt'])
+        && d.labelIds is list && d.labelIds.size() <= 5
         && resource.data.status != 'closed'
         && (myRole(pid) == 'admin'
             || resource.data.reporterId == request.auth.uid
@@ -109,6 +110,8 @@ service cloud.firestore {
         && request.resource.data.issueSeq == 0
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
+        && request.resource.data.labelIds is list
+        && request.resource.data.labelIds.size() <= 5
         && request.resource.data.name.size() <= 100
         && getAfter(memberPath(pid)).data.role == 'admin';
       allow update: if (isAdmin(pid)

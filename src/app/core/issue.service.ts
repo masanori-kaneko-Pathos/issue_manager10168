@@ -17,6 +17,7 @@ export interface NewIssue {
   assigneeId: string;
   doneCriteria: string;
   description: string;
+  labelIds: string[];
 }
 
 export interface StatusPayload {
@@ -37,6 +38,7 @@ export interface IssueEdits {
   assigneeId?: string;
   doneCriteria?: string;
   description?: string;
+  labelIds?: string[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -63,7 +65,7 @@ export class IssueService {
         description: input.description,
         assigneeId: input.assigneeId,
         reporterId: uid,
-        labelIds: [],
+        labelIds: input.labelIds,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });

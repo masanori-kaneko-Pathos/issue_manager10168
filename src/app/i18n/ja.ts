@@ -69,6 +69,7 @@ export const ja = {
     doneCriteria: '完了条件',
     description: '内容',
     priority: '優先度',
+    labelIds: 'ラベル',
   },
   issueTypes: { bug: '不具合', request: '要望・改善', question: '質問・確認', task: '作業', risk: 'リスク・懸念' },
   importance: { high: '大', mid: '中', low: '小' },
@@ -275,6 +276,10 @@ export const ja = {
     emptyName: 'ラベル名を空にはできません。',
     maxReached: 'ラベルは{{n}}個までです。',
     colors: { blue: '青', green: '緑', orange: 'オレンジ', red: '赤', purple: '紫', gray: 'グレー' },
+  },
+  labelPicker: {
+    none: 'このプロジェクトにはラベルがありません。管理者が「設定」タブで追加できます。',
+    count: '{{n}} / {{max}} 個',
   },
 };
 export type Dict = typeof ja;

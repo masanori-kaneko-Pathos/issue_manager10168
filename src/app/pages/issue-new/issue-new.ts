@@ -9,6 +9,7 @@ import { ISSUE_TYPES, IssueType, Level, Member, ProjectWithRole } from '../../co
 import { endOfDayIn, formatDateTime, parseLocalInput } from '../../core/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { HelpTip } from '../../shared/help-tip';
+import { LabelPicker } from '../../shared/label-picker';
 
 const LAST_PROJECT_KEY = 'issuemanager.lastProject';
 
@@ -30,7 +31,7 @@ function writeLastProject(pid: string) {
 
 @Component({
   selector: 'app-issue-new',
-  imports: [FormsModule, RouterLink, TPipe, HelpTip],
+  imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelPicker],
   template: `
     <header class="bar"><a [routerLink]="backLink()" class="link">{{ 'common.back' | t }}</a></header>
     <main>
@@ -111,6 +112,10 @@ function writeLastProject(pid: string) {
           {{ (showDetail() ? 'issueNew.hideDetail' : 'issueNew.showDetail') | t }}
         </button>
         @if (showDetail()) {
+          <div class="field">
+            <span>{{ 'issue.labelIds' | t }}</span>
+            <app-label-picker [labels]="currentLabels()" [(selected)]="labelIds" />
+          </div>
           <label class="field">{{ 'issue.description' | t }}
             <textarea name="description" [(ngModel)]="description" rows="6"></textarea>
           </label>
@@ -175,6 +180,9 @@ export class IssueNew implements OnInit {
   dueAt = signal<Date | null>(null);
   duePreset = signal<string | null>(null);
   assigneeId = signal(this.myUid);
+  labelIds = signal<string[]>([]);
+  /** 選んでいるプロジェクトのラベル一覧 */
+  currentLabels = computed(() => this.projects().find((p) => p.id === this.pid())?.labels ?? []);
   showDetail = signal(false);
   busy = signal(false);
   error = signal('');
@@ -210,6 +218,8 @@ export class IssueNew implements OnInit {
   /** プロジェクトを変えたら、担当者の選択肢をそのプロジェクトのメンバーに入れ替える */
   async selectProject(pid: string) {
     this.pid.set(pid);
+    // ラベルはプロジェクトごとに違うので、切り替えたら選び直してもらう
+    this.labelIds.set([]);
     const all = await this.ps.listMembers(pid);
     // 閲覧者は担当者にできない
     this.members.set(all.filter((m) => m.role !== 'viewer'));
@@ -263,6 +273,7 @@ export class IssueNew implements OnInit {
         assigneeId: this.assigneeId(),
         doneCriteria: this.doneCriteria.trim(),
         description: this.description,
+        labelIds: this.labelIds(),
       }, this.myUid, this.tz());
       writeLastProject(pid);
       await this.router.navigate(['/p', pid]);

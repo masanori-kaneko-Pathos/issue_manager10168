@@ -4,7 +4,8 @@ import { CdkDrag, CdkDragDrop, CdkDropList, CdkDropListGroup } from '@angular/cd
 import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth.service';
 import { IssueService } from '../../core/issue.service';
-import { Issue, IssueStatus, Level } from '../../core/models';
+import { Issue, IssueStatus, Level, labelsOf } from '../../core/models';
+import { LabelChip } from '../../shared/label-chip';
 import { compareIssues, priorityOf } from '../../core/priority';
 import { ProjectContext } from '../../core/project-context';
 import { endOfDayIn, remainingOf } from '../../core/time';
@@ -38,7 +39,7 @@ const EMPTY_PAYLOAD = {
 
 @Component({
   selector: 'app-project-board',
-  imports: [CdkDropListGroup, CdkDropList, CdkDrag, RouterLink, TPipe, HelpTip, StatusDialog],
+  imports: [CdkDropListGroup, CdkDropList, CdkDrag, RouterLink, TPipe, HelpTip, StatusDialog, LabelChip],
   template: `
     <div class="quick">
       <div class="chips">
@@ -99,6 +100,13 @@ const EMPTY_PAYLOAD = {
                         }
                       </div>
                       <a class="title" [routerLink]="['/p', ctx.pid(), 'i', i.id]">{{ i.title }}</a>
+                                            @let ls = cardLabels(i);
+                      @if (ls.length) {
+                        <div class="labels">
+                          @for (l of ls.slice(0, 2); track l.id) { <app-label-chip [label]="l" /> }
+                          @if (ls.length > 2) { <span class="more-labels">+{{ ls.length - 2 }}</span> }
+                        </div>
+                      }
                       <div class="meta">
                         <span class="avatar" [title]="memberName(i.assigneeId)">
                           @if (memberPhoto(i.assigneeId); as src) {
@@ -175,6 +183,8 @@ const EMPTY_PAYLOAD = {
     .num { font-size: 12px; color: var(--text-muted); }
     .more { min-width: 36px; min-height: 32px; border: none; background: none; font-size: 18px; color: var(--text-muted); }
     .title { color: var(--text); text-decoration: none; font-size: 14px; overflow-wrap: anywhere; }
+    .labels { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+    .more-labels { font-size: 11px; color: var(--text-muted); }
     .meta { display: flex; align-items: center; justify-content: space-between; }
     .avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--primary-bg); overflow: hidden;
       display: flex; align-items: center; justify-content: center; font-size: 12px; }
@@ -424,5 +434,8 @@ export class ProjectBoard implements OnInit {
     this.boardEl()?.nativeElement
       .querySelector<HTMLElement>(`.col[data-col="${c}"]`)
       ?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }
+  cardLabels(i: Issue) {
+    return labelsOf(i.labelIds, this.ctx.project()?.labels ?? []);
   }
 }

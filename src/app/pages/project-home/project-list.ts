@@ -7,6 +7,7 @@ import { IssueList } from './issue-list/issue-list';
   imports: [IssueList],
   template: `
     <app-issue-list [pid]="ctx.pid()" [members]="ctx.members()" [canCreate]="ctx.canCreate()"
+      [labels]="ctx.project()?.labels ?? []"
       [isViewer]="ctx.role() === 'viewer'" />
   `,
 })
