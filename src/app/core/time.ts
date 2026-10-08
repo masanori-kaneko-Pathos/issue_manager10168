@@ -86,3 +86,10 @@ export const COMMON_TIMEZONES = [
   'Europe/London', 'Europe/Berlin', 'America/New_York', 'America/Chicago', 'America/Los_Angeles',
   'Australia/Sydney', 'UTC',
 ];
+
+/** 瞬間を、timeZone での日付（YYYY-MM-DD）にする。カレンダーのマス分けに使う */
+export function dateKey(date: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(date);
+}

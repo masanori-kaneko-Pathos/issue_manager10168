@@ -1,6 +1,7 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { Location } from '@angular/common';
 import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth.service';
 import { ProjectService } from '../../core/project.service';
@@ -20,7 +21,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
   selector: 'app-issue-detail',
   imports: [FormsModule, RouterLink, TPipe, IssueEdit, HelpTip, LabelChip],
   template: `
-    <header class="bar"><a [routerLink]="['/p', pid]" class="link">{{ 'common.back' | t }}</a></header>
+    <header class="bar"><button type="button" class="link" (click)="back()">{{ 'common.back' | t }}</button></header>
     <main>
       @if (loading()) {
         <p>{{ 'common.loading' | t }}</p>
@@ -267,6 +268,8 @@ import { I18nService, TPipe } from '../../i18n/i18n';
 })
 export class IssueDetail implements OnInit {
   private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private location = inject(Location);
   private ps = inject(ProjectService);
   private issueService = inject(IssueService);
   private authService = inject(AuthService);
@@ -459,7 +462,7 @@ export class IssueDetail implements OnInit {
     });
   }
 
-   
+
   /** 書いた人の現地時間で表示し、見ている人と違えば基準を併記する */
   when(item: TimelineItem) {
     const writerTz = item.tz ?? this.tz();
@@ -500,6 +503,15 @@ export class IssueDetail implements OnInit {
       this.error.set('common.saveError');
     } finally {
       this.busy.set(false);
+    }
+  }
+  /** アプリの中で前の画面があればそこへ（見ていた月や絞り込みごと戻る）。なければプロジェクトへ */
+  back() {
+    const navigationId = (history.state as { navigationId?: number } | null)?.navigationId ?? 1;
+    if (navigationId > 1) {
+      this.location.back();
+    } else {
+      this.router.navigate(['/p', this.pid]);
     }
   }
 }

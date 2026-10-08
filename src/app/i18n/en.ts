@@ -284,4 +284,12 @@ export const en: Dict = {
     none: 'This project has no labels. Admins can add them in the Settings tab.',
     count: '{{n}} / {{max}}',
   },
+  calendar: {
+    month: 'Month',
+    week: 'Week',
+    today: 'Today',
+    prev: 'Previous',
+    next: 'Next',
+    addOn: 'New issue due {{date}}',
+  },
 };

@@ -23,6 +23,8 @@ export const routes: Routes = [
           loadComponent: () => import('./pages/project-home/project-list').then((m) => m.ProjectList) },
         { path: 'board',
             loadComponent: () => import('./pages/project-home/project-board').then((m) => m.ProjectBoard) },
+        { path: 'calendar',
+          loadComponent: () => import('./pages/project-home/project-calendar').then((m) => m.ProjectCalendar) },
         { path: 'members',
           loadComponent: () => import('./pages/project-home/project-members').then((m) => m.ProjectMembers) },
         { path: 'settings', canDeactivate: [unsavedGuard],

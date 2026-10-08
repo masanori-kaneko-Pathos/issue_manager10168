@@ -6,7 +6,7 @@ import { AuthService } from '../../core/auth.service';
 import { ProjectService } from '../../core/project.service';
 import { IssueService } from '../../core/issue.service';
 import { ISSUE_TYPES, IssueType, Level, Member, ProjectWithRole } from '../../core/models';
-import { endOfDayIn, formatDateTime, parseLocalInput } from '../../core/time';
+import { endOfDayIn, formatDateTime, parseLocalInput, toLocalInput, zonedTime } from '../../core/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { HelpTip } from '../../shared/help-tip';
 import { LabelPicker } from '../../shared/label-picker';
@@ -208,6 +208,16 @@ export class IssueNew implements OnInit {
       const first = [this.fromPid, readLastProject()].find((id) => id && writable.some((p) => p.id === id))
         ?? writable[0]?.id ?? null;
       if (first) await this.selectProject(first);
+      // カレンダーの日付から来たら、その日の23:59（自分のタイムゾーン）を期限に入れる
+      const due = this.route.snapshot.queryParamMap.get('due');
+      const m = due?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) {
+        const d = zonedTime(+m[1], +m[2], +m[3], 23, 59, this.tz());
+        if (d.getTime() > Date.now()) {
+          this.dueAt.set(d);
+          this.dueInput = toLocalInput(d, this.tz());
+        }
+      }
     } catch (e) {
       console.error(e);
     } finally {

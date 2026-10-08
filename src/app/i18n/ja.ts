@@ -281,5 +281,13 @@ export const ja = {
     none: 'このプロジェクトにはラベルがありません。管理者が「設定」タブで追加できます。',
     count: '{{n}} / {{max}} 個',
   },
+  calendar: {
+    month: '月',
+    week: '週',
+    today: '今日',
+    prev: '前へ',
+    next: '次へ',
+    addOn: '{{date}}に課題を登録',
+  },
 };
 export type Dict = typeof ja;
