@@ -110,8 +110,7 @@ service cloud.firestore {
         && request.resource.data.issueSeq == 0
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
-        && request.resource.data.labelIds is list
-        && request.resource.data.labelIds.size() <= 5
+
         && request.resource.data.name.size() <= 100
         && getAfter(memberPath(pid)).data.role == 'admin';
       allow update: if (isAdmin(pid)
@@ -173,6 +172,8 @@ service cloud.firestore {
           && request.resource.data.priorityOverride == null
           && request.resource.data.title is string
           && request.resource.data.title.size() > 0
+          && request.resource.data.labelIds is list
+          && request.resource.data.labelIds.size() <= 5
           && request.resource.data.title.size() <= 200
           && request.resource.data.type in ['bug', 'request', 'question', 'task', 'risk']
           && request.resource.data.importance in ['high', 'mid', 'low']
