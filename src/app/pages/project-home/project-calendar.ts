@@ -4,6 +4,7 @@ import { CdkDrag, CdkDragDrop, CdkDropList, CdkDropListGroup } from '@angular/cd
 import { auth } from '../../core/firebase';
 import { DueDialog } from '../../shared/due-dialog';
 import { AuthService } from '../../core/auth.service';
+import { Clock } from '../../core/clock';
 import { IssueService } from '../../core/issue.service';
 import { Issue, Level } from '../../core/models';
 import { compareIssues, priorityOf } from '../../core/priority';
@@ -157,6 +158,7 @@ export class ProjectCalendar implements OnInit {
   protected ctx = inject(ProjectContext);
   private issueService = inject(IssueService);
   private authService = inject(AuthService);
+  private clock = inject(Clock);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private i18n = inject(I18nService);
@@ -175,7 +177,7 @@ export class ProjectCalendar implements OnInit {
   cursor = signal('');
 
   private tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
-  todayKey = computed(() => dateKey(new Date(), this.tz()));
+  todayKey = computed(() => dateKey(new Date(this.clock.now()), this.tz()));
 
   /** 表に並べる日付。日曜はじまり */
   days = computed<Day[]>(() => {
@@ -196,7 +198,7 @@ export class ProjectCalendar implements OnInit {
 
   /** 日付ごとの課題。見ている人のタイムゾーンで、期限の日付に振り分ける */
   byDay = computed(() => {
-    const now = Date.now();
+    const now = this.clock.now();
     const map = new Map<string, Issue[]>();
     for (const i of this.issues()) {
       const key = dateKey(i.dueAt.toDate(), this.tz());
@@ -286,7 +288,7 @@ export class ProjectCalendar implements OnInit {
     return priorityOf(i);
   }
   isOverdue(i: Issue) {
-    return i.status !== 'resolved' && i.dueAt.toMillis() < Date.now();
+    return i.status !== 'resolved' && i.dueAt.toMillis() < this.clock.now();
   }
     // ---- ドラッグで期限を変える ----
   /** つかめるのは、管理者・提起者・担当者で、クローズ前の課題だけ（ルールの editAllowed と同じ） */

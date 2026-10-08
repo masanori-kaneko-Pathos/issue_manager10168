@@ -92,7 +92,10 @@ export const ja = {
   importance: { high: '大', mid: '中', low: '小' },
   priority: { high: '高', mid: '中', low: '低' },
   duePresets: { today: '今日中', tomorrow: '明日中', in3: '3日後', in7: '1週間後' },
-  due: { leftDays: 'あと{{n}}日', leftHours: 'あと{{n}}時間', overDays: '{{n}}日超過', overHours: '{{n}}時間超過' },
+  due: {
+    leftDays: 'あと{{n}}日', leftHours: 'あと{{n}}時間', leftMinutes: 'あと{{n}}分',
+    overDays: '{{n}}日超過', overHours: '{{n}}時間超過', overMinutes: '{{n}}分超過',
+  },
   doneCriteria: {
     bug: '再現手順で、不具合が起きないことを確認できた',
     request: '要望の内容が反映され、依頼した人が確認できた',

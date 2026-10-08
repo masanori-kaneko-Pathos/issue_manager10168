@@ -4,12 +4,13 @@ import { CdkDrag, CdkDragDrop, CdkDropList, CdkDropListGroup } from '@angular/cd
 import { CdkScrollable } from '@angular/cdk/scrolling';
 import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth.service';
-import { IssueService } from '../../core/issue.service';
+import { Clock } from '../../core/clock';
+import { EMPTY_STATUS_PAYLOAD, IssueService } from '../../core/issue.service';
 import { Issue, IssueStatus, Level, labelsOf } from '../../core/models';
 import { LabelChip } from '../../shared/label-chip';
 import { compareIssues, priorityOf } from '../../core/priority';
 import { ProjectContext } from '../../core/project-context';
-import { endOfDayIn, remainingOf } from '../../core/time';
+import { endOfDayIn, remainingOf, shortDue } from '../../core/time';
 import { Transition, availableTransitions } from '../../core/workflow';
 import { HelpTip } from '../../shared/help-tip';
 import { StatusDialog } from '../../shared/status-dialog';
@@ -119,7 +120,9 @@ const EMPTY_PAYLOAD = {
                           }
                         </span>
                         @if (isActive(i)) {
-                          <span class="due" [class.overdue]="isOverdue(i)">{{ remaining(i) }}</span>
+                          <span class="due" [class.overdue]="isOverdue(i)">{{ dueLabel(i) }}・{{ remaining(i) }}</span>
+                        } @else {
+                          <span class="due">{{ dueLabel(i) }}</span>
                         }
                       </div>
                       @if (menuFor() === i.id) {
@@ -227,6 +230,7 @@ export class ProjectBoard implements OnInit {
   protected ctx = inject(ProjectContext);
   private issueService = inject(IssueService);
   private authService = inject(AuthService);
+  private clock = inject(Clock);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private i18n = inject(I18nService);
@@ -258,7 +262,7 @@ export class ProjectBoard implements OnInit {
 
   /** すばやい絞り込みをかけた課題 */
   filtered = computed(() => {
-    const now = Date.now();
+    const now = this.clock.now();
     let list = this.issues();
     if (this.mine()) list = list.filter((i) => i.assigneeId === this.myUid);
     const due = this.due();
@@ -273,7 +277,7 @@ export class ProjectBoard implements OnInit {
 
   /** 列ごとの課題。完了の列はクローズが新しい順、それ以外は優先度順 */
   byCol = computed(() => {
-    const now = Date.now();
+    const now = this.clock.now();
     const map: Record<ColKey, Issue[]> = { open: [], in_progress: [], resolved: [], done: [], on_hold: [] };
     for (const i of this.filtered()) {
       const k = colOf(i.status);
@@ -382,7 +386,7 @@ export class ProjectBoard implements OnInit {
       return;
     }
     try {
-      await this.issueService.changeStatus(this.ctx.pid(), issue, t, EMPTY_PAYLOAD, this.myUid, this.tz());
+      await this.issueService.changeStatus(this.ctx.pid(), issue, t, EMPTY_STATUS_PAYLOAD, this.myUid, this.tz());
       await this.load();
     } catch (e) {
       console.error(e);
@@ -396,16 +400,16 @@ export class ProjectBoard implements OnInit {
 
   // ---- 表示用 ----
   prio(i: Issue): Level {
-    return priorityOf(i);
+    return priorityOf(i, this.clock.now());
   }
   isActive(i: Issue) {
     return i.status === 'open' || i.status === 'in_progress' || i.status === 'on_hold';
   }
   isOverdue(i: Issue) {
-    return this.isActive(i) && i.dueAt.toMillis() < Date.now();
+    return this.isActive(i) && i.dueAt.toMillis() < this.clock.now();
   }
   remaining(i: Issue) {
-    const r = remainingOf(i.dueAt.toMillis());
+    const r = remainingOf(i.dueAt.toMillis(), this.clock.now());
     return this.i18n.t(r.key, { n: String(r.n) });
   }
   memberName(uid: string) {
@@ -442,5 +446,8 @@ export class ProjectBoard implements OnInit {
   }
   cardLabels(i: Issue) {
     return labelsOf(i.labelIds, this.ctx.project()?.labels ?? []);
+  }
+  dueLabel(i: Issue) {
+    return shortDue(i.dueAt.toDate(), this.tz(), this.i18n.lang(), this.clock.now());
   }
 }

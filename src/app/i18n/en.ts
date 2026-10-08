@@ -95,7 +95,10 @@ export const en: Dict = {
   importance: { high: 'High', mid: 'Medium', low: 'Low' },
   priority: { high: 'High', mid: 'Medium', low: 'Low' },
   duePresets: { today: 'Today', tomorrow: 'Tomorrow', in3: 'In 3 days', in7: 'In a week' },
-  due: { leftDays: '{{n}}d left', leftHours: '{{n}}h left', overDays: '{{n}}d overdue', overHours: '{{n}}h overdue' },
+  due: {
+    leftDays: '{{n}}d left', leftHours: '{{n}}h left', leftMinutes: '{{n}}m left',
+    overDays: '{{n}}d overdue', overHours: '{{n}}h overdue', overMinutes: '{{n}}m overdue',
+  },
   doneCriteria: {
     bug: 'Verified that the bug no longer occurs with the repro steps',
     request: 'The change is in place and confirmed by the requester',

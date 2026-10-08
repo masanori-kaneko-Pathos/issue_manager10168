@@ -1,5 +1,6 @@
 const DAY = 24 * 60 * 60 * 1000;
 const HOUR = 60 * 60 * 1000;
+const MINUTE = 60 * 1000;
 
 /** その瞬間における、timeZone の UTC からのずれ（ミリ秒） */
 function offsetMs(date: Date, timeZone: string): number {
@@ -42,13 +43,16 @@ export function formatDateTime(date: Date, timeZone: string, lang: 'ja' | 'en'):
   }).format(date);
 }
 
-/** 残り時間の表示用（翻訳キーと数値）。1日以上は日数、それ未満は時間数 */
+/** 残り時間の表示用（翻訳キーと数値）。1日以上は日数、1時間以上は時間数、それ未満は分数 */
 export function remainingOf(dueMs: number, nowMs = Date.now()): { key: string; n: number } {
   const diff = dueMs - nowMs;
+  const over = diff < 0;
   const abs = Math.abs(diff);
   const days = Math.floor(abs / DAY);
-  if (days > 0) return { key: diff < 0 ? 'due.overDays' : 'due.leftDays', n: days };
-  return { key: diff < 0 ? 'due.overHours' : 'due.leftHours', n: Math.max(1, Math.floor(abs / HOUR)) };
+  if (days > 0) return { key: over ? 'due.overDays' : 'due.leftDays', n: days };
+  const hours = Math.floor(abs / HOUR);
+  if (hours > 0) return { key: over ? 'due.overHours' : 'due.leftHours', n: hours };
+  return { key: over ? 'due.overMinutes' : 'due.leftMinutes', n: Math.max(1, Math.floor(abs / MINUTE)) };
 }
 
 /** 瞬間を、timeZone での datetime-local の値（例 2026-10-09T18:00）にする */
@@ -92,4 +96,14 @@ export function dateKey(date: Date, timeZone: string): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(date);
+}
+/** 一覧用の短い期限（10/12(月) 18:00）。23:59 は「その日のうち」なので時刻を省く。今年でなければ年を付ける */
+export function shortDue(date: Date, timeZone: string, lang: 'ja' | 'en', nowMs = Date.now()): string {
+  const locale = lang === 'ja' ? 'ja-JP' : 'en-US';
+  const sameYear = dateKey(date, timeZone).slice(0, 4) === dateKey(new Date(nowMs), timeZone).slice(0, 4);
+  const day = new Intl.DateTimeFormat(locale, {
+    timeZone, month: 'numeric', day: 'numeric', weekday: 'short', ...(sameYear ? {} : { year: 'numeric' }),
+  }).format(date);
+  const hm = toLocalInput(date, timeZone).slice(11);
+  return hm === '23:59' ? day : `${day} ${hm}`;
 }

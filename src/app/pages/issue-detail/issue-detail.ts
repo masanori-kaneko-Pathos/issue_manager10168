@@ -4,11 +4,11 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Location } from '@angular/common';
 import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth.service';
+import { Clock } from '../../core/clock';
 import { ProjectService } from '../../core/project.service';
-import { IssueService } from '../../core/issue.service';
-import {
-  CAUSE_CATEGORIES, CauseCategory, Effect, Issue, Label, Level, Member, Role, TimelineItem, labelsOf,
-} from '../../core/models';
+import { EMPTY_STATUS_PAYLOAD, IssueService } from '../../core/issue.service';
+import { Issue, Label, Level, Member, Role, TimelineItem, labelsOf } from '../../core/models';
+import { StatusDialog } from '../../shared/status-dialog';
 import { LabelChip } from '../../shared/label-chip';
 import { IssueEdit } from './issue-edit/issue-edit';
 import { HelpTip } from '../../shared/help-tip';
@@ -19,7 +19,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
 
 @Component({
   selector: 'app-issue-detail',
-  imports: [FormsModule, RouterLink, TPipe, IssueEdit, HelpTip, LabelChip],
+  imports: [FormsModule, RouterLink, TPipe, IssueEdit, HelpTip, LabelChip, StatusDialog],
   template: `
     <header class="bar"><button type="button" class="link" (click)="back()">{{ 'common.back' | t }}</button></header>
     <main>
@@ -116,62 +116,9 @@ import { I18nService, TPipe } from '../../i18n/i18n';
           @if (deniedReasons().length) { <app-help-tip kind="denied" [keys]="deniedReasons()" /> }
         </section>
 
-        @if (active(); as t) {
-          <section class="panel">
-            <h2>{{ 'workflow.' + t.key | t }}</h2>
-            @if (t.needs === 'reason') {
-              <label class="field">{{ 'workflow.reason' | t }}
-                <textarea [(ngModel)]="reason" rows="3" [placeholder]="'workflow.reasonHint.' + t.key | t"></textarea>
-              </label>
-            }
-            @if (t.needs === 'resolve') {
-              <label class="field">{{ 'workflow.cause' | t }}
-                <textarea [(ngModel)]="cause" rows="2"></textarea>
-              </label>
-              <label class="field">{{ 'workflow.countermeasure' | t }}
-                <textarea [(ngModel)]="countermeasure" rows="2"></textarea>
-              </label>
-              <fieldset>
-                <legend>{{ 'workflow.causeCategory' | t }}</legend>
-                <div class="chips">
-                  @for (c of causeCategories; track c) {
-                    <button type="button" [class.on]="causeCategory() === c" (click)="causeCategory.set(c)">
-                      {{ 'causeCategories.' + c | t }}</button>
-                  }
-                </div>
-              </fieldset>
-            }
-            @if (t.needs === 'close') {
-              <fieldset>
-                <legend>{{ 'workflow.effect' | t }}</legend>
-                <div class="chips">
-                  @for (e of effects; track e) {
-                    <button type="button" [class.on]="effect() === e" (click)="effect.set(e)">
-                      {{ 'workflow.effectOpts.' + e | t }}</button>
-                  }
-                </div>
-                @if (effect() === 'no') { <p class="help">{{ 'workflow.closeHintNo' | t }}</p> }
-              </fieldset>
-              <label class="field">{{ 'workflow.learning' | t }}
-                <textarea [(ngModel)]="learning" rows="2"></textarea>
-              </label>
-            }
-            @if (t.needs === 'resolve' || t.needs === 'close') {
-              <div class="criteria">
-                <p class="pre">{{ i.doneCriteria }}</p>
-                <label class="check">
-                  <input type="checkbox" [checked]="doneMet()" (change)="doneMet.set(!doneMet())" />
-                  {{ 'workflow.doneCriteriaMet' | t }}
-                </label>
-              </div>
-            }
-            @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
-            <div class="row">
-              <button type="button" class="link" (click)="active.set(null)">{{ 'workflow.cancel' | t }}</button>
-              <button type="button" class="primary" [disabled]="busy() || !canConfirm()" (click)="confirm()">
-                {{ 'workflow.confirm' | t }}</button>
-            </div>
-          </section>
+               @if (active(); as t) {
+          <app-status-dialog [issue]="i" [transition]="t" [pid]="pid"
+            (done)="onStatusDone()" (cancel)="active.set(null)" />
         }
 
         <section>
@@ -273,13 +220,12 @@ export class IssueDetail implements OnInit {
   private ps = inject(ProjectService);
   private issueService = inject(IssueService);
   private authService = inject(AuthService);
+  private clock = inject(Clock);
   protected i18n = inject(I18nService);
 
   readonly pid = this.route.snapshot.paramMap.get('pid')!;
   readonly iid = this.route.snapshot.paramMap.get('iid')!;
   readonly myUid = auth.currentUser!.uid;
-  readonly causeCategories = CAUSE_CATEGORIES;
-  readonly effects: Effect[] = ['yes', 'partial', 'no'];
   readonly levels: Level[] = ['high', 'mid', 'low'];
 
   // 編集と優先度の手動変更
@@ -299,19 +245,13 @@ export class IssueDetail implements OnInit {
   error = signal('');
 
   // ステータス変更の入力
+  // ステータス変更のモーダル（入力が要るものだけ開く）
   active = signal<Transition | null>(null);
-  reason = '';
-  cause = '';
-  countermeasure = '';
-  causeCategory = signal<CauseCategory | null>(null);
-  effect = signal<Effect | null>(null);
-  learning = '';
-  doneMet = signal(false);
   comment = '';
 
   tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
-  priority = computed(() => priorityOf(this.issue()!));
-  autoPriority = computed(() => priorityOf({ ...this.issue()!, priorityOverride: null }));
+  priority = computed(() => priorityOf(this.issue()!, this.clock.now()));
+  autoPriority = computed(() => priorityOf({ ...this.issue()!, priorityOverride: null }, this.clock.now()));
   canEdit = computed(() => {
     const i = this.issue();
     const r = this.role();
@@ -329,9 +269,9 @@ export class IssueDetail implements OnInit {
     ...(this.canEdit() ? [] : ['edit.denied']),
     ...(this.canSetPriority() ? [] : ['priorityEdit.denied']),
   ]);
-  overdue = computed(() => this.issue()!.dueAt.toMillis() < Date.now());
+  overdue = computed(() => this.issue()!.dueAt.toMillis() < this.clock.now());
   dueText = computed(() => {
-    const r = remainingOf(this.issue()!.dueAt.toMillis());
+    const r = remainingOf(this.issue()!.dueAt.toMillis(), this.clock.now());
     return this.i18n.t(r.key, { n: String(r.n) });
   });
   dueLabel = computed(() => formatDateTime(this.issue()!.dueAt.toDate(), this.tz(), this.i18n.lang()));
@@ -372,46 +312,17 @@ export class IssueDetail implements OnInit {
 
   click(t: Transition) {
     if (t.needs === 'none') {
-      this.confirm(t);
+      this.applyNow(t);
       return;
     }
-    const i = this.issue()!;
     this.active.set(t);
-    this.reason = '';
-    this.cause = i.cause ?? '';
-    this.countermeasure = i.countermeasure ?? '';
-    this.causeCategory.set(i.causeCategory ?? null);
-    this.effect.set(null);
-    this.learning = '';
-    this.doneMet.set(false);
-    this.error.set('');
   }
 
-  canConfirm(): boolean {
-    const t = this.active();
-    if (!t) return false;
-    switch (t.needs) {
-      case 'reason': return !!this.reason.trim();
-      case 'resolve': return !!(this.cause.trim() && this.countermeasure.trim() && this.causeCategory() && this.doneMet());
-      case 'close': return !!(this.effect() && this.doneMet());
-      default: return true;
-    }
-  }
-
-  async confirm(t = this.active()!) {
+  /** 入力が要らない変更（対応を始める・再開）は、押したらすぐ保存する */
+  private async applyNow(t: Transition) {
     this.busy.set(true);
-    this.error.set('');
     try {
-      await this.issueService.changeStatus(this.pid, this.issue()!, t, {
-        reason: this.reason.trim(),
-        cause: this.cause.trim(),
-        countermeasure: this.countermeasure.trim(),
-        causeCategory: this.causeCategory(),
-        effect: this.effect(),
-        learning: this.learning.trim(),
-        doneCriteriaMet: this.doneMet(),
-      }, this.myUid, this.tz());
-      this.active.set(null);
+      await this.issueService.changeStatus(this.pid, this.issue()!, t, EMPTY_STATUS_PAYLOAD, this.myUid, this.tz());
       await this.load();
     } catch (e) {
       console.error(e);
@@ -419,6 +330,11 @@ export class IssueDetail implements OnInit {
     } finally {
       this.busy.set(false);
     }
+  }
+
+  async onStatusDone() {
+    this.active.set(null);
+    await this.load();
   }
 
   async sendComment() {

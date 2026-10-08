@@ -30,6 +30,11 @@ export interface StatusPayload {
   doneCriteriaMet: boolean;
 }
 
+/** 入力が要らないステータス変更（対応を始める・再開）に使う、空の入力 */
+export const EMPTY_STATUS_PAYLOAD: StatusPayload = {
+  reason: '', cause: '', countermeasure: '', causeCategory: null, effect: null, learning: '', doneCriteriaMet: false,
+};
+
 export interface IssueEdits {
   title?: string;
   type?: IssueType;

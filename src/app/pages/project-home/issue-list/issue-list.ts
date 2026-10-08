@@ -2,12 +2,13 @@ import { Component, OnInit, WritableSignal, computed, inject, input, signal } fr
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { IssueService } from '../../../core/issue.service';
+import { Clock } from '../../../core/clock';
 import { AuthService } from '../../../core/auth.service';
 import { HelpTip } from '../../../shared/help-tip';
 import { ISSUE_TYPES, Issue, IssueType, Label, Level, Member, OPEN_STATUSES, labelsOf } from '../../../core/models';
 import { LabelChip } from '../../../shared/label-chip';
 import { compareIssues, priorityOf } from '../../../core/priority';
-import { formatDateTime, relativeTime, remainingOf } from '../../../core/time';
+import { formatDateTime, relativeTime, remainingOf, shortDue } from '../../../core/time';
 import { I18nService, TPipe } from '../../../i18n/i18n';
 
 type SortKey = 'priority' | 'due' | 'number' | 'updated';
@@ -214,7 +215,9 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
                 <span class="meta" [title]="updatedFull(i)">{{ 'list.updated' | t: { t: updated(i) } }}</span>
               }
               @if (isActive(i)) {
-                <span class="due" [class.overdue]="isOverdue(i)">{{ remaining(i) }}</span>
+                <span class="due" [class.overdue]="isOverdue(i)">{{ dueLabel(i) }}・{{ remaining(i) }}</span>
+              } @else {
+                <span class="due">{{ dueLabel(i) }}</span>
               }
             </li>
           } @empty {
@@ -314,6 +317,7 @@ export class IssueList implements OnInit {
   private router = inject(Router);
   private issueService = inject(IssueService);
   private authService = inject(AuthService);
+  private clock = inject(Clock);
   protected i18n = inject(I18nService);
 
   readonly types = ISSUE_TYPES;
@@ -345,7 +349,7 @@ export class IssueList implements OnInit {
   hasCondition = computed(() => !!this.q().trim() || !!this.assignee() || this.activeCount() > 0);
 
   visible = computed(() => {
-    const now = Date.now();
+    const now = this.clock.now();
     const q = normalize(this.q().trim());
     // 検索語があるときと「すべて」のときは、クローズ済みも含める
     const useAll = !!q || this.scope() === 'all';
@@ -532,20 +536,19 @@ export class IssueList implements OnInit {
     return i.status === 'open' || i.status === 'in_progress' || i.status === 'on_hold';
   }
   isOverdue(i: Issue) {
-    return this.isActive(i) && i.dueAt.toMillis() < Date.now();
+    return this.isActive(i) && i.dueAt.toMillis() < this.clock.now();
   }
   prio(i: Issue): Level {
-    return priorityOf(i);
+    return priorityOf(i, this.clock.now());
   }
   remaining(i: Issue) {
-    const r = remainingOf(i.dueAt.toMillis());
-    return this.i18n.t(r.key, { n: String(r.n) });
+    const r = remainingOf(i.dueAt.toMillis(), this.clock.now());
   }
   memberName(uid: string) {
     return this.members().find((m) => m.uid === uid)?.displayName ?? '—';
   }
   updated(i: Issue) {
-    return relativeTime(i.updatedAt.toMillis(), this.i18n.lang());
+    return relativeTime(i.updatedAt.toMillis(), this.i18n.lang(), this.clock.now());
   }
   updatedFull(i: Issue) {
     return formatDateTime(i.updatedAt.toDate(), this.tz(), this.i18n.lang());
@@ -555,5 +558,9 @@ export class IssueList implements OnInit {
   }
   labelName(id: string) {
     return this.labels().find((l) => l.id === id)?.name ?? '';
+  }
+
+  dueLabel(i: Issue) {
+    return shortDue(i.dueAt.toDate(), this.tz(), this.i18n.lang(), this.clock.now());
   }
 }

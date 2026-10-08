@@ -9,8 +9,9 @@ import { AuthService } from '../../core/auth.service';
 import { ProjectService } from '../../core/project.service';
 import { Invitation, Issue, Level, ProjectWithRole } from '../../core/models';
 import { IssueService } from '../../core/issue.service';
+import { Clock } from '../../core/clock';
 import { compareIssues, priorityOf } from '../../core/priority';
-import { remainingOf } from '../../core/time';
+import { remainingOf, shortDue } from '../../core/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 
 @Component({
@@ -58,7 +59,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
               <a class="name" [routerLink]="['/p', i.projectId, 'i', i.id]">#{{ i.number }} {{ i.title }}</a>
               <span class="small">{{ projectName(i.projectId) }}</span>
               @if (isActive(i)) {
-                <span class="small" [class.overdue]="isOverdue(i)">{{ remaining(i) }}</span>
+                <span class="small" [class.overdue]="isOverdue(i)">{{ dueLabel(i) }}・{{ remaining(i) }}</span>
               } @else {
                 <span class="small">{{ 'status.' + i.status | t }}</span>
               }
@@ -133,6 +134,8 @@ export class Projects implements OnInit {
   private authService = inject(AuthService);
   private projectService = inject(ProjectService);
   private issueService = inject(IssueService);
+  private clock = inject(Clock);
+  private tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
   private router = inject(Router);
   protected i18n = inject(I18nService);
   private route = inject(ActivatedRoute);
@@ -150,7 +153,7 @@ export class Projects implements OnInit {
   showDone = signal(false);
   /** 初期は自分の手が必要なもの（未着手・対応中・保留）。切り替えで解決済み・クローズも表示 */
   visibleMine = computed(() => {
-    const now = Date.now();
+    const now = this.clock.now();
     return this.myIssues()
       .filter((i) => this.showDone() || this.isActive(i))
       .sort((a, b) => compareIssues(a, b, now));
@@ -256,18 +259,21 @@ export class Projects implements OnInit {
     return i.status === 'open' || i.status === 'in_progress' || i.status === 'on_hold';
   }
   isOverdue(i: Issue) {
-    return this.isActive(i) && i.dueAt.toMillis() < Date.now();
+    return this.isActive(i) && i.dueAt.toMillis() < this.clock.now();
   }
   prio(i: Issue): Level {
-    return priorityOf(i);
+    return priorityOf(i, this.clock.now());
   }
   remaining(i: Issue) {
-    const r = remainingOf(i.dueAt.toMillis());
+    const r = remainingOf(i.dueAt.toMillis(), this.clock.now());
     return this.i18n.t(r.key, { n: String(r.n) });
   }
 
   async logout() {
     await this.authService.logout();
     await this.router.navigateByUrl('/login');
+  }
+  dueLabel(i: Issue) {
+    return shortDue(i.dueAt.toDate(), this.tz(), this.i18n.lang(), this.clock.now());
   }
 }
