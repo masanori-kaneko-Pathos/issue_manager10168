@@ -58,8 +58,10 @@ import { I18nService, TPipe } from '../../i18n/i18n';
               <span class="prio" [attr.data-p]="prio(i)"></span>
               <a class="name" [routerLink]="['/p', i.projectId, 'i', i.id]">#{{ i.number }} {{ i.title }}</a>
               <span class="small">{{ projectName(i.projectId) }}</span>
-              @if (isActive(i)) {
-                <span class="small" [class.overdue]="isOverdue(i)">{{ dueLabel(i) }}・{{ remaining(i) }}</span>
+              @if (isActive(i) && isOverdue(i)) {
+                <span class="small overdue" [title]="remaining(i)">{{ 'due.overdue' | t }} {{ dueLabel(i) }}</span>
+              } @else if (isActive(i)) {
+                <span class="small">{{ dueLabel(i) }}・{{ remaining(i) }}</span>
               } @else {
                 <span class="small">{{ 'status.' + i.status | t }}</span>
               }

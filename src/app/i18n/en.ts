@@ -98,6 +98,7 @@ export const en: Dict = {
   due: {
     leftDays: '{{n}}d left', leftHours: '{{n}}h left', leftMinutes: '{{n}}m left',
     overDays: '{{n}}d overdue', overHours: '{{n}}h overdue', overMinutes: '{{n}}m overdue',
+    overdue: 'Overdue',
   },
   doneCriteria: {
     bug: 'Verified that the bug no longer occurs with the repro steps',

@@ -214,8 +214,10 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
                @if (sort() === 'updated') {
                 <span class="meta" [title]="updatedFull(i)">{{ 'list.updated' | t: { t: updated(i) } }}</span>
               }
-              @if (isActive(i)) {
-                <span class="due" [class.overdue]="isOverdue(i)">{{ dueLabel(i) }}・{{ remaining(i) }}</span>
+              @if (isActive(i) && isOverdue(i)) {
+                <span class="due overdue" [title]="remaining(i)">{{ 'due.overdue' | t }} {{ dueLabel(i) }}</span>
+              } @else if (isActive(i)) {
+                <span class="due">{{ dueLabel(i) }}・{{ remaining(i) }}</span>
               } @else {
                 <span class="due">{{ dueLabel(i) }}</span>
               }

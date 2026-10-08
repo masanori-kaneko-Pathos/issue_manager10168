@@ -95,6 +95,7 @@ export const ja = {
   due: {
     leftDays: 'あと{{n}}日', leftHours: 'あと{{n}}時間', leftMinutes: 'あと{{n}}分',
     overDays: '{{n}}日超過', overHours: '{{n}}時間超過', overMinutes: '{{n}}分超過',
+    overdue: '期限切れ',
   },
   doneCriteria: {
     bug: '再現手順で、不具合が起きないことを確認できた',

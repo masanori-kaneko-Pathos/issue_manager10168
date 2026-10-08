@@ -119,8 +119,10 @@ const EMPTY_PAYLOAD = {
                             {{ memberName(i.assigneeId).slice(0, 1) }}
                           }
                         </span>
-                        @if (isActive(i)) {
-                          <span class="due" [class.overdue]="isOverdue(i)">{{ dueLabel(i) }}・{{ remaining(i) }}</span>
+                        @if (isActive(i) && isOverdue(i)) {
+                          <span class="due overdue" [title]="remaining(i)">{{ dueLabel(i) }}</span>
+                        } @else if (isActive(i)) {
+                          <span class="due">{{ dueLabel(i) }}・{{ remaining(i) }}</span>
                         } @else {
                           <span class="due">{{ dueLabel(i) }}</span>
                         }
