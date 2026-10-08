@@ -1,6 +1,7 @@
 import { Component, DestroyRef, ElementRef, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { CdkDrag, CdkDragDrop, CdkDropList, CdkDropListGroup } from '@angular/cdk/drag-drop';
+import { CdkScrollable } from '@angular/cdk/scrolling';
 import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth.service';
 import { IssueService } from '../../core/issue.service';
@@ -39,7 +40,7 @@ const EMPTY_PAYLOAD = {
 
 @Component({
   selector: 'app-project-board',
-  imports: [CdkDropListGroup, CdkDropList, CdkDrag, RouterLink, TPipe, HelpTip, StatusDialog, LabelChip],
+  imports: [CdkDropListGroup, CdkDropList, CdkDrag, CdkScrollable, RouterLink, TPipe, HelpTip, StatusDialog, LabelChip],
   template: `
     <div class="quick">
       <div class="chips">
@@ -70,7 +71,8 @@ const EMPTY_PAYLOAD = {
         </div>
       }
 
-      <div class="board" #boardEl cdkDropListGroup (scroll)="onBoardScroll()">
+      <div class="board" #boardEl cdkDropListGroup cdkScrollable [class.dragging]="!!dragging()"
+        (scroll)="onBoardScroll()">
         @for (c of visibleCols(); track c) {
           @let collapsed = c === 'on_hold' && !holdOpen() && !isMobile();
           <section class="col" [attr.data-col]="c" [class.collapsed]="collapsed"
@@ -87,7 +89,8 @@ const EMPTY_PAYLOAD = {
             @if (!collapsed) {
               <div class="cards">
                 @for (i of byCol()[c]; track i.id) {
-                  <article class="card" cdkDrag [cdkDragData]="i" [cdkDragDisabled]="isMobile() || !canDrag(i)"
+                  <article class="card" cdkDrag [cdkDragData]="i" [cdkDragDisabled]="!canDrag(i)"
+                    [cdkDragStartDelay]="{ touch: 300, mouse: 0 }"
                     (cdkDragStarted)="dragging.set(i)" (cdkDragEnded)="dragging.set(null)"
                     [attr.data-p]="prio(i)" [class.closed]="i.status === 'closed'">
                     @if (isOverdue(i)) { <div class="band">{{ 'board.overdue' | t }}</div> }
@@ -214,7 +217,9 @@ const EMPTY_PAYLOAD = {
         margin: 0 -16px; padding: 0 16px 8px; scroll-padding: 0 16px; scrollbar-width: none; }
       .board::-webkit-scrollbar { display: none; }
       .col { flex: 0 0 85%; min-width: 0; scroll-snap-align: center; }
-      .card { cursor: default; }
+      .card { cursor: default; -webkit-touch-callout: none; user-select: none; }
+      /* つかんでいる間は、1列ずつ止まる仕組みを外し、端に運んだときになめらかに横へ流れるようにする */
+      .board.dragging { scroll-snap-type: none; }
     }
   `,
 })
@@ -228,7 +233,7 @@ export class ProjectBoard implements OnInit {
 
   readonly myUid = auth.currentUser!.uid;
   readonly dueOptions: DueFilter[] = ['today', 'week', 'overdue'];
-  readonly mobileCols: ColKey[] = ['open', 'in_progress', 'on_hold', 'resolved', 'done'];
+  readonly mobileCols: ColKey[] = ['open', 'in_progress', 'resolved', 'done', 'on_hold'];
 
   issues = signal<Issue[]>([]);
   loading = signal(true);

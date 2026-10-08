@@ -89,6 +89,9 @@ function writeLastProject(pid: string) {
           </div>
           <input type="datetime-local" name="due" [ngModel]="dueInput" (ngModelChange)="onDueInput($event)" />
           @if (dueAt()) { <p class="help">{{ dueLabel() }}（{{ tz() }}）</p> }
+          @if (isPastDue()) {
+            <p class="warn" role="alert">{{ 'dueDialog.pastWarning' | t }}</p>
+          }
         </fieldset>
 
         <fieldset>
@@ -147,6 +150,8 @@ function writeLastProject(pid: string) {
     .error { color: var(--danger-text); }
         select { min-height: 48px; font-size: 16px; padding: 0 12px; }
     .notice { background: var(--warning-bg); padding: 12px; border-radius: 8px; margin: 0; font-weight: normal; }
+    .warn { margin: 4px 0; padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: normal;
+      background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
   `,
 })
 export class IssueNew implements OnInit {
@@ -196,6 +201,10 @@ export class IssueNew implements OnInit {
     const d = this.dueAt();
     return d ? formatDateTime(d, this.tz(), this.i18n.lang()) : '';
   });
+  isPastDue = computed(() => {
+    const d = this.dueAt();
+    return !!d && d.getTime() <= Date.now();
+  });
 
   async ngOnInit() {
     try {
@@ -213,10 +222,8 @@ export class IssueNew implements OnInit {
       const m = due?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
       if (m) {
         const d = zonedTime(+m[1], +m[2], +m[3], 23, 59, this.tz());
-        if (d.getTime() > Date.now()) {
-          this.dueAt.set(d);
-          this.dueInput = toLocalInput(d, this.tz());
-        }
+        this.dueAt.set(d);
+        this.dueInput = toLocalInput(d, this.tz());
       }
     } catch (e) {
       console.error(e);
@@ -267,10 +274,7 @@ export class IssueNew implements OnInit {
 
   async save() {
     if (!this.ready()) return;
-    if (this.dueAt()!.getTime() <= Date.now()) {
-      this.error.set('issueNew.duePast');
-      return;
-    }
+
     this.busy.set(true);
     this.error.set('');
     try {

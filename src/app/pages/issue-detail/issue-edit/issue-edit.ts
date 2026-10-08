@@ -56,6 +56,9 @@ function sameIds(a: string[], b: string[]) {
         </div>
         <input type="datetime-local" [ngModel]="dueInput" (ngModelChange)="onDueInput($event)" />
         @if (dueAt()) { <p class="help">{{ dueLabel() }}（{{ tz() }}）</p> }
+        @if (dueChanged() && isPastDue()) {
+          <p class="warn" role="alert">{{ 'dueDialog.pastWarning' | t }}</p>
+        }
       </fieldset>
 
       <fieldset>
@@ -115,6 +118,8 @@ function sameIds(a: string[], b: string[]) {
       border-radius: 8px; font-size: 14px; }
     .primary:disabled { background: var(--disabled); }
     .error { color: var(--danger-text); }
+    .warn { margin: 4px 0; padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: normal;
+      background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
   `,
 })
 export class IssueEdit implements OnInit {
@@ -158,6 +163,11 @@ export class IssueEdit implements OnInit {
     return d ? formatDateTime(d, this.tz(), this.i18n.lang()) : '';
   });
   dueChanged = computed(() => this.dueAt()?.getTime() !== this.issue().dueAt.toMillis());
+
+  isPastDue = computed(() => {
+    const d = this.dueAt();
+    return !!d && d.getTime() <= Date.now();
+  });
   /** 期限か担当者を変えたときだけ、理由が必須 */
   needsReason = computed(() => this.dueChanged() || this.assigneeId() !== this.issue().assigneeId);
 
@@ -200,7 +210,6 @@ export class IssueEdit implements OnInit {
     if (title !== i.title) edits.title = title;
     if (this.type() !== i.type) edits.type = this.type();
     if (this.importance() !== i.importance) edits.importance = this.importance();
-    if (this.dueChanged()) edits.dueAt = due;
     if (this.assigneeId() !== i.assigneeId) edits.assigneeId = this.assigneeId();
     if (doneCriteria !== i.doneCriteria) edits.doneCriteria = doneCriteria;
     if (this.description !== i.description) edits.description = this.description;

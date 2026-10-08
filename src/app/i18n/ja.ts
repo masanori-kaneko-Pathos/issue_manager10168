@@ -306,5 +306,11 @@ export const ja = {
     next: '次へ',
     addOn: '{{date}}に課題を登録',
   },
+  dueDialog: {
+    title: '期限の変更',
+    time: '時刻',
+    pastWarning: '過去の日時です。この課題はすぐに期限切れとして扱われます（赤く表示され、優先度も上がります）。入力ミスの修正など、意図した変更か確かめてください。',
+    confirmPast: '期限切れとして確定',
+  },
 };
 export type Dict = typeof ja;

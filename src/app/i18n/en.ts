@@ -309,4 +309,10 @@ export const en: Dict = {
     next: 'Next',
     addOn: 'New issue due {{date}}',
   },
+  dueDialog: {
+    title: 'Change due date',
+    time: 'Time',
+    pastWarning: 'This date is in the past. The issue will be treated as overdue right away (shown in red, with higher priority). Make sure this is intended, such as fixing a typo.',
+    confirmPast: 'Confirm as overdue',
+  },
 };

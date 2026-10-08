@@ -1,5 +1,8 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { CdkDrag, CdkDragDrop, CdkDropList, CdkDropListGroup } from '@angular/cdk/drag-drop';
+import { auth } from '../../core/firebase';
+import { DueDialog } from '../../shared/due-dialog';
 import { AuthService } from '../../core/auth.service';
 import { IssueService } from '../../core/issue.service';
 import { Issue, Level } from '../../core/models';
@@ -28,7 +31,7 @@ function addDays(dt: Date, n: number): Date {
 
 @Component({
   selector: 'app-project-calendar',
-  imports: [RouterLink, TPipe],
+  imports: [RouterLink, TPipe, CdkDropListGroup, CdkDropList, CdkDrag, DueDialog],
   template: `
     <div class="toolbar">
       <div class="nav">
@@ -46,29 +49,35 @@ function addDays(dt: Date, n: number): Date {
     @if (loading()) {
       <p>{{ 'common.loading' | t }}</p>
     } @else {
-      <div class="grid" [class.week]="mode() === 'week'">
+      <div class="grid" [class.week]="mode() === 'week'" cdkDropListGroup>
         @for (w of weekdays(); track $index) {
           <div class="dow" [class.sun]="$index === 0" [class.sat]="$index === 6">{{ w }}</div>
         }
         @for (day of days(); track day.key) {
           @let items = byDay().get(day.key) ?? [];
           <div class="cell" [class.out]="!day.inRange" [class.today]="day.key === todayKey()"
-            [class.sun]="day.dow === 0" [class.sat]="day.dow === 6" (click)="onCellTap(day.key)">
+            [class.sun]="day.dow === 0" [class.sat]="day.dow === 6" (click)="onCellTap(day.key)"
+            cdkDropList [cdkDropListData]="day.key" [cdkDropListSortingDisabled]="true"
+            (cdkDropListDropped)="onDrop($event)"
+            [class.drop-future]="!!dragging() && day.key >= todayKey()"
+            [class.drop-past]="!!dragging() && day.key < todayKey()">
             <div class="cell-head">
               <span class="date">{{ day.d }}</span>
               @if (items.length) { <span class="count">{{ items.length }}</span> }
-              @if (ctx.canCreate() && day.key >= todayKey()) {
+              @if (ctx.canCreate()) {
                 <a class="add" [routerLink]="['/p', ctx.pid(), 'new']" [queryParams]="{ due: day.key }"
                   [attr.aria-label]="'calendar.addOn' | t: { date: day.key }" (click)="$event.stopPropagation()">＋</a>
               }
             </div>
             <div class="items">
               @for (i of (mode() === 'week' ? items : items.slice(0, 3)); track i.id) {
-                <a class="item" [attr.data-p]="prio(i)" [class.overdue]="isOverdue(i)"
+                <div class="item" role="link" tabindex="0" [attr.data-p]="prio(i)" [class.overdue]="isOverdue(i)"
                   [class.resolved]="i.status === 'resolved'" [title]="i.title"
-                  [routerLink]="['/p', ctx.pid(), 'i', i.id]" (click)="$event.stopPropagation()">
+                  cdkDrag [cdkDragData]="i" [cdkDragDisabled]="!canMove(i)" [cdkDragStartDelay]="{ touch: 300, mouse: 0 }"
+                  (cdkDragStarted)="dragging.set(i)" (cdkDragEnded)="onDragEnded()"
+                  (click)="open(i); $event.stopPropagation()" (keydown.enter)="open(i)">
                   <span class="num">#{{ i.number }}</span> {{ i.title }}
-                </a>
+                </div>
               }
               @if (mode() === 'month' && items.length > 3) {
                 <button type="button" class="more" (click)="openWeek(day.key); $event.stopPropagation()">
@@ -78,6 +87,10 @@ function addDays(dt: Date, n: number): Date {
           </div>
         }
       </div>
+    }
+    @if (pending(); as p) {
+      <app-due-dialog [issue]="p.issue" [date]="p.date" [pid]="ctx.pid()"
+        (done)="onDialogDone()" (cancel)="pending.set(null)" />
     }
   `,
   styles: `
@@ -117,6 +130,12 @@ function addDays(dt: Date, n: number): Date {
     .item.overdue { background: var(--danger-bg); color: var(--danger-text); }
     .item.resolved { color: var(--text-muted); }
     .item .num { color: var(--text-subtle); }
+        /* 長押しでブラウザのリンクのプレビューが出ないようにし、アプリのドラッグを優先する */
+    .item { cursor: pointer; -webkit-touch-callout: none; user-select: none; }
+    .cell.drop-future { background: var(--primary-bg); }
+    .cell.drop-past { background: var(--warning-bg); }
+    .cdk-drag-preview { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25); max-width: 240px; }
+    .cdk-drag-placeholder { opacity: 0.3; }
     .more { border: none; background: none; color: var(--primary); font-size: 11px; text-align: left; padding: 0 4px; cursor: pointer; }
 
     /* スマホ：月はマスに件数だけ出し、押すとその週を開く。週は縦に1日ずつ並べる */
@@ -141,6 +160,13 @@ export class ProjectCalendar implements OnInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private i18n = inject(I18nService);
+  private readonly myUid = auth.currentUser!.uid;
+
+  dragging = signal<Issue | null>(null);
+  /** 落としたあと、モーダルで確かめ中の変更 */
+  pending = signal<{ issue: Issue; date: string } | null>(null);
+  /** ドラッグを離した直後のクリックで、詳細が開かないようにする目印 */
+  private justDragged = false;
 
   issues = signal<Issue[]>([]);
   loading = signal(true);
@@ -261,5 +287,36 @@ export class ProjectCalendar implements OnInit {
   }
   isOverdue(i: Issue) {
     return i.status !== 'resolved' && i.dueAt.toMillis() < Date.now();
+  }
+    // ---- ドラッグで期限を変える ----
+  /** つかめるのは、管理者・提起者・担当者で、クローズ前の課題だけ（ルールの editAllowed と同じ） */
+  canMove(i: Issue) {
+    if (i.status === 'closed') return false;
+    const role = this.ctx.role();
+    if (role === 'admin') return true;
+    return role === 'member' && (i.reporterId === this.myUid || i.assigneeId === this.myUid);
+  }
+
+  onDrop(e: CdkDragDrop<string, string, Issue>) {
+    this.dragging.set(null);
+    if (e.previousContainer === e.container) return;
+    // 並びは変えない。モーダルで保存できたら読み直す。やめたら元の日のまま
+    this.pending.set({ issue: e.item.data, date: e.container.data });
+  }
+
+  onDragEnded() {
+    this.dragging.set(null);
+    this.justDragged = true;
+    setTimeout(() => (this.justDragged = false), 0);
+  }
+
+  open(i: Issue) {
+    if (this.justDragged) return;
+    this.router.navigate(['/p', this.ctx.pid(), 'i', i.id]);
+  }
+
+  async onDialogDone() {
+    this.pending.set(null);
+    this.issues.set(await this.issueService.listOpen(this.ctx.pid()));
   }
 }
