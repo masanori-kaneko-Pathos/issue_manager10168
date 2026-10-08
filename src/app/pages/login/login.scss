@@ -7,3 +7,13 @@ input { padding: 0 12px; }
 .error { color: var(--danger-text); margin: 0; }
 .link { background: none; border: none; color: var(--primary); min-height: 40px; }
 .lang { display: flex; justify-content: center; gap: 8px; }
+.tabs { display: flex; border-bottom: 1px solid var(--border); }
+.tabs button { flex: 1; min-height: 48px; background: none; border: none; border-bottom: 3px solid transparent;
+  font-size: 16px; color: var(--text-muted); cursor: pointer; }
+.tabs button.on { color: var(--primary); border-bottom-color: var(--primary); font-weight: bold; }
+h2 { font-size: 18px; margin: 0; }
+.hint { font-size: 13px; color: var(--text-muted); margin: 0; }
+.small { min-height: 32px; font-size: 13px; align-self: flex-end; }
+.primary { background: var(--primary); color: var(--on-primary); border: none; border-radius: 8px; }
+.primary:disabled { background: var(--disabled); }
+.google { background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; }

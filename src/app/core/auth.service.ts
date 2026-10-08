@@ -3,6 +3,7 @@ import {
   User, onAuthStateChanged, signInWithEmailAndPassword,
   createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut,
   sendEmailVerification, EmailAuthProvider, reauthenticateWithCredential, updatePassword,
+  sendPasswordResetEmail, updateProfile as updateAuthProfile, // updateProfile（設定画面の保存）がすでにある
 } from 'firebase/auth';
 import {
   collectionGroup, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch,
@@ -24,6 +25,8 @@ export class AuthService {
   readonly user = signal<User | null | undefined>(undefined);
   readonly profile = signal<UserProfile | null>(null);
   private i18n = inject(I18nService);
+  /** 新規登録で入力された表示名。ensureProfile が users を作るときに使う */
+  private pendingName: string | null = null;
 
   constructor() {
     onAuthStateChanged(auth, async (u) => {
@@ -42,9 +45,34 @@ export class AuthService {
   async loginWithEmail(email: string, password: string) {
     await signInWithEmailAndPassword(auth, email, password);
   }
-  async signUpWithEmail(email: string, password: string) {
+  async signUpWithEmail(email: string, password: string, displayName: string) {
+    this.pendingName = displayName;
     const cred = await createUserWithEmailAndPassword(auth, email, password);
-    await sendEmailVerification(cred.user);
+    await updateAuthProfile(cred.user, { displayName });
+    this.useAppLanguage();
+    await sendEmailVerification(cred.user, this.mailSettings());
+  }
+
+  /** パスワード再設定のメールを頼む。登録の有無は、呼び出し側に明かさない */
+  async sendPasswordReset(email: string) {
+    this.useAppLanguage();
+    try {
+      await sendPasswordResetEmail(auth, email, this.mailSettings());
+    } catch (e) {
+      // 登録のないメールアドレスでも、成功と同じに扱う
+      if ((e as { code?: string }).code === 'auth/user-not-found') return;
+      throw e;
+    }
+  }
+
+  /** 確認メール・再設定メールの言語を、アプリの言語にそろえる */
+  useAppLanguage() {
+    auth.languageCode = this.i18n.lang();
+  }
+
+  /** メールのリンクの手続きが終わったあと、このアプリのログイン画面に戻す */
+  private mailSettings() {
+    return { url: `${location.origin}/login` };
   }
   async loginWithGoogle() {
     await signInWithPopup(auth, new GoogleAuthProvider());
@@ -57,7 +85,7 @@ export class AuthService {
     const ref = doc(db, 'users', u.uid);
     if ((await getDoc(ref)).exists()) return;
     await setDoc(ref, {
-      displayName: u.displayName ?? u.email?.split('@')[0] ?? '',
+      displayName: this.pendingName ?? u.displayName ?? u.email?.split('@')[0] ?? '',
       email: u.email ?? '',
       timeZone: 'Asia/Tokyo',
       language: 'ja',

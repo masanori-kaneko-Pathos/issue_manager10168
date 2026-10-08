@@ -5,6 +5,7 @@ import { AuthService } from '../../core/auth.service';
 import { COMMON_TIMEZONES, formatDateTime, tzOffset } from '../../core/time';
 import { I18nService, Lang, TPipe } from '../../i18n/i18n';
 import { HelpTip } from '../../shared/help-tip';
+import { PASSWORD_RULE } from '../login/login';
 
 type Section = 'general' | 'password';
 
@@ -183,7 +184,7 @@ export class Settings implements OnInit {
   }
 
   async changePassword() {
-    if (this.newPw.length < 6) {
+    if (!PASSWORD_RULE.test(this.newPw)) {
       this.msg.set({ section: 'password', key: 'settings.pwWeak', ok: false });
       return;
     }

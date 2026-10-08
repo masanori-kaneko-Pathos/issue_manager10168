@@ -1,32 +1,66 @@
 <main class="login">
-    <h1>{{ 'app.title' | t }}</h1>
-  
-    <button type="button" class="primary" (click)="google()" [disabled]="busy()">
-      {{ 'login.google' | t }}
+  <h1>{{ 'app.title' | t }}</h1>
+
+  @if (mode() !== 'reset') {
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" [class.on]="mode() === 'login'" [attr.aria-selected]="mode() === 'login'"
+        (click)="setMode('login')">{{ 'login.tabLogin' | t }}</button>
+      <button type="button" role="tab" [class.on]="mode() === 'signup'" [attr.aria-selected]="mode() === 'signup'"
+        (click)="setMode('signup')">{{ 'login.tabSignup' | t }}</button>
+    </div>
+
+    <button type="button" class="google" (click)="google()" [disabled]="busy()">
+      {{ (mode() === 'login' ? 'login.google' : 'login.googleSignup') | t }}
     </button>
     <p class="or">{{ 'login.or' | t }}</p>
-  
+
     <form (ngSubmit)="submitEmail()">
+      @if (mode() === 'signup') {
+        <label>{{ 'login.displayName' | t }}
+          <input name="displayName" [(ngModel)]="displayName" required maxlength="50" autocomplete="name" />
+        </label>
+      }
       <label>{{ 'login.email' | t }}
         <input type="email" name="email" [(ngModel)]="email" required autocomplete="email" />
       </label>
       <label>{{ 'login.password' | t }}
-        <input type="password" name="password" [(ngModel)]="password" required minlength="6"
+        <input type="password" name="password" [(ngModel)]="password" required
           [attr.autocomplete]="mode() === 'login' ? 'current-password' : 'new-password'" />
       </label>
-      @if (error()) {
-        <p class="error" role="alert">{{ error() | t }}</p>
+      @if (mode() === 'signup') {
+        <p class="hint">{{ 'login.passwordRule' | t }}</p>
       }
-      <button type="submit" [disabled]="busy()">
+      @if (mode() === 'login') {
+        <button type="button" class="link small" (click)="setMode('reset')">{{ 'login.forgot' | t }}</button>
+      }
+      @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
+      <button type="submit" class="primary" [disabled]="busy()">
         {{ (mode() === 'login' ? 'login.submit' : 'login.signup') | t }}
       </button>
     </form>
-  
-    <button type="button" class="link" (click)="toggleMode()">
-      {{ (mode() === 'login' ? 'login.toSignup' : 'login.toLogin') | t }}
-    </button>
-    <div class="lang">
-      <button type="button" class="link" (click)="i18n.lang.set('ja')">日本語</button>
-      <button type="button" class="link" (click)="i18n.lang.set('en')">English</button>
-    </div>
-  </main>
+  } @else {
+    <h2>{{ 'login.resetTitle' | t }}</h2>
+    @if (!resetSent()) {
+      <p class="hint">{{ 'login.resetHelp' | t }}</p>
+      <form (ngSubmit)="sendReset()">
+        <label>{{ 'login.email' | t }}
+          <input type="email" name="email" [(ngModel)]="email" required autocomplete="email" />
+        </label>
+        @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
+        <button type="submit" class="primary" [disabled]="busy() || !email.trim()">{{ 'login.resetSend' | t }}</button>
+      </form>
+      <p class="hint">{{ 'login.resetGoogle' | t }}</p>
+    } @else {
+      <p>{{ 'login.resetSent' | t: { email: email.trim() } }}</p>
+      <p class="hint">{{ 'login.spamHint' | t }}</p>
+      @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
+      <button type="button" class="link" [disabled]="busy()" (click)="sendReset()">{{ 'login.resend' | t }}</button>
+    }
+    <button type="button" class="link" (click)="setMode('login')">{{ 'login.backToLogin' | t }}</button>
+  }
+
+  <div class="lang">
+    <button type="button" class="link" (click)="i18n.lang.set('ja')">日本語</button>
+    <button type="button" class="link" (click)="i18n.lang.set('en')">English</button>
+  </div>
+</main>
