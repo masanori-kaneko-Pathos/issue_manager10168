@@ -1,4 +1,5 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { Unsubscribe } from 'firebase/firestore';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -144,10 +145,19 @@ export class Projects implements OnInit {
   protected i18n = inject(I18nService);
   private route = inject(ActivatedRoute);
 
+  private stopMine: Unsubscribe | null = null;
+  private stopInvitations: Unsubscribe | null = null;
+
   constructor() {
     // ヘッダーの「プロジェクトを作成」から来たら、作成欄に移る
     this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((p) => {
       if (p.get('create')) focusById('new-project');
+    });
+    // ホームを離れたら、見張りをやめる
+    inject(DestroyRef).onDestroy(() => {
+      this.stopMine?.();
+      this.stopInvitations?.();
+      console.debug('[watch] ホームの見張りをやめた'); // 確認用。確かめ終わったら消す
     });
   }
 
@@ -168,10 +178,12 @@ export class Projects implements OnInit {
   busy = signal(false);
   error = signal('');
   newName = '';
-
+  
   ngOnInit() {
     const u = auth.currentUser!;
     this.needsVerify.set(!!u.email && !u.emailVerified);
+    this.watchMine();
+    this.watchInvitations();
     this.load();
   }
 
@@ -185,27 +197,26 @@ export class Projects implements OnInit {
     } finally {
       this.loading.set(false);
     }
-    // 招待と自分の課題は、失敗しても一覧の表示を止めない
-    await this.loadInvitations();
-    await this.loadMyIssues();
   }
 
-  private async loadInvitations() {
+  /** 自分宛ての招待を見張る。メールの確認が済むまでは読めないので始めない */
+  private watchInvitations() {
     const email = auth.currentUser!.email;
-    if (!email || this.needsVerify()) return;
-    try {
-      this.invitations.set(await this.projectService.listMyInvitations(email));
-    } catch (e) {
-      console.error('招待の読み込みに失敗', e);
-    }
+    if (!email || this.needsVerify() || this.stopInvitations) return;
+    this.stopInvitations = this.projectService.watchMyInvitations(
+      email,
+      (list) => this.invitations.set(list),
+      (e) => console.error('招待の見張りに失敗', e),
+    );
   }
 
-  private async loadMyIssues() {
-    try {
-      this.myIssues.set(await this.issueService.listMine(auth.currentUser!.uid));
-    } catch (e) {
-      console.error('自分の課題の読み込みに失敗', e);
-    }
+  /** 自分の課題を見張る（どのプロジェクトで担当になっても外れても、すぐ反映） */
+  private watchMine() {
+    this.stopMine = this.issueService.watchMine(
+      auth.currentUser!.uid,
+      (issues) => this.myIssues.set(issues),
+      (e) => console.error('自分の課題の見張りに失敗', e),
+    );
   }
 
   async create() {
@@ -240,7 +251,6 @@ export class Projects implements OnInit {
 
   async decline(inv: Invitation) {
     await this.projectService.declineInvitation(inv);
-    this.invitations.update((list) => list.filter((x) => x.projectId !== inv.projectId));
   }
   async resendVerification() {
     await sendEmailVerification(auth.currentUser!);
@@ -253,6 +263,7 @@ export class Projects implements OnInit {
     await u.reload();
     await u.getIdToken(true);
     this.needsVerify.set(!u.emailVerified);
+    this.watchInvitations();
     await this.load();
   }
 

@@ -88,7 +88,8 @@ function sameIds(a: string[], b: string[]) {
       @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
       <div class="row">
         <button type="button" class="link" (click)="cancel.emit()">{{ 'workflow.cancel' | t }}</button>
-        <button type="button" class="primary" [disabled]="busy()" (click)="save()">{{ 'edit.save' | t }}</button>
+        <button type="button" class="primary" [class.danger]="dueChanged() && isPastDue()" [disabled]="busy()"
+          (click)="save()">{{ (dueChanged() && isPastDue() ? 'dueDialog.confirmPast' : 'edit.save') | t }}</button>
       </div>
     </section>
   `,
@@ -116,7 +117,8 @@ function sameIds(a: string[], b: string[]) {
     .link { background: none; border: none; color: var(--primary); min-height: 44px; }
     .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
       border-radius: 8px; font-size: 14px; }
-    .primary:disabled { background: var(--disabled); }
+    .primary:disabled { background: var(--disabled); }     
+    .primary.danger { background: var(--danger); }
     .error { color: var(--danger-text); }
     .warn { margin: 4px 0; padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: normal;
       background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
@@ -202,7 +204,6 @@ export class IssueEdit implements OnInit {
     const due = this.dueAt();
 
     if (!title || !doneCriteria || !due) { this.error.set('edit.required'); return; }
-    if (this.dueChanged() && due.getTime() <= Date.now()) { this.error.set('issueNew.duePast'); return; }
     if (this.needsReason() && !this.reason.trim()) { this.error.set('edit.reasonRequired'); return; }
 
     // 変えた項目だけを集める
@@ -211,6 +212,7 @@ export class IssueEdit implements OnInit {
     if (this.type() !== i.type) edits.type = this.type();
     if (this.importance() !== i.importance) edits.importance = this.importance();
     if (this.assigneeId() !== i.assigneeId) edits.assigneeId = this.assigneeId();
+    if (this.dueChanged()) edits.dueAt = due; 
     if (doneCriteria !== i.doneCriteria) edits.doneCriteria = doneCriteria;
     if (this.description !== i.description) edits.description = this.description;
     if (!sameIds(this.labelIds(), i.labelIds ?? [])) edits.labelIds = this.labelIds();

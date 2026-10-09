@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { User } from 'firebase/auth';
 import {
-    collection, collectionGroup, doc, getDoc, getDocs, query, where,
+    FirestoreError, Unsubscribe, collection, collectionGroup, doc, getDoc, getDocs, onSnapshot, query, where,
     serverTimestamp, writeBatch, setDoc, deleteDoc, updateDoc,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -104,6 +104,19 @@ export class ProjectService {
             ...(d.data() as Omit<Invitation, 'projectId'>),
             projectId: d.ref.parent.parent!.id,
         }));
+    }
+    /** 自分宛ての招待を見張る（メール確認済みのときだけ読める） */
+    watchMyInvitations(
+        email: string, onData: (invitations: Invitation[]) => void, onError: (e: FirestoreError) => void,
+    ): Unsubscribe {
+        return onSnapshot(
+            query(collectionGroup(db, 'invitations'), where('email', '==', email.toLowerCase())),
+            (s) => onData(s.docs.map((d) => ({
+                ...(d.data({ serverTimestamps: 'estimate' }) as Omit<Invitation, 'projectId'>),
+                projectId: d.ref.parent.parent!.id,
+            }))),
+            onError,
+        );
     }
 
     /** 承諾：自分のメンバー文書の作成と、招待の削除を同時に行う */

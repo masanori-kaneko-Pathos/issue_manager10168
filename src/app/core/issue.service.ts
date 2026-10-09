@@ -264,6 +264,19 @@ export class IssueService {
     }));
   }
 
+  /** 所属するすべてのプロジェクトで、自分が担当している課題を見張る */
+  watchMine(
+    uid: string,
+    onData: (issues: (Issue & { projectId: string })[]) => void,
+    onError: (e: FirestoreError) => void,
+  ): Unsubscribe {
+    return onSnapshot(
+      query(collectionGroup(db, 'issues'), where('assigneeId', '==', uid)),
+      (s) => onData(s.docs.map((d) => ({ ...toIssue(d), projectId: d.ref.parent.parent!.id }))),
+      onError,
+    );
+  }
+
   /** 直近 days 日以内にクローズした課題を見張る（かんばんの「完了」の列用） */
   watchRecentlyClosed(
     pid: string, days: number, onData: (issues: Issue[]) => void, onError: (e: FirestoreError) => void,
