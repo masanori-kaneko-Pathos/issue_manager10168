@@ -12,6 +12,7 @@ import { StatusDialog } from '../../shared/status-dialog';
 import { LabelChip } from '../../shared/label-chip';
 import { IssueEdit } from './issue-edit/issue-edit';
 import { HelpTip } from '../../shared/help-tip';
+import { PriorityMark } from '../../shared/priority-mark';
 import { priorityOf } from '../../core/priority';
 import { formatDateTime, remainingOf } from '../../core/time';
 import { Transition, availableTransitions } from '../../core/workflow';
@@ -19,7 +20,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
 
 @Component({
   selector: 'app-issue-detail',
-  imports: [FormsModule, RouterLink, TPipe, IssueEdit, HelpTip, LabelChip, StatusDialog],
+  imports: [FormsModule, RouterLink, TPipe, IssueEdit, HelpTip, LabelChip, StatusDialog, PriorityMark],
   template: `
     <header class="bar"><button type="button" class="link" (click)="back()">{{ 'common.back' | t }}</button></header>
     <main>
@@ -33,12 +34,15 @@ import { I18nService, TPipe } from '../../i18n/i18n';
         <h1>{{ i.title }}</h1>
         <div class="badges">
           <span class="status" [attr.data-s]="i.status">{{ 'status.' + i.status | t }}</span>
-                    <span class="prio" [attr.data-p]="priority()">
-            {{ 'issue.priority' | t }}：{{ 'priority.' + priority() | t }}
-            @if (i.priorityOverride) {
-              {{ 'priorityEdit.manual' | t: { auto: i18n.t('priority.' + autoPriority()) } }}
-            }
-          </span>
+          @if (isActive(i)) {
+            <span class="prio" [attr.data-p]="priority()">
+              {{ 'issue.priority' | t }}：{{ 'priority.' + priority() | t }}
+              @if (i.priorityOverride) {
+                {{ 'priorityEdit.manual' | t: { auto: i18n.t('priority.' + autoPriority()) } }}
+              }
+            </span>
+            <app-help-tip [keys]="['help.priority']" />
+          }
           @if (i.status !== 'closed' && i.status !== 'rejected') {
             <span class="due" [class.overdue]="overdue()">{{ dueText() }}</span>
           }
@@ -84,7 +88,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
             <div class="chips">
               @for (l of levels; track l) {
                 <button type="button" [class.on]="prioChoice() === l" (click)="prioChoice.set(l)">
-                  {{ 'priority.' + l | t }}</button>
+                  <app-priority-mark [level]="l" decorative />{{ 'priority.' + l | t }}</button>
               }
               @if (i.priorityOverride) {
                 <button type="button" [class.on]="prioChoice() === 'auto'" (click)="prioChoice.set('auto')">
@@ -213,7 +217,8 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     legend { font-size: 14px; font-weight: bold; }
     textarea { font-size: 16px; padding: 8px 12px; font-weight: normal; }
     .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-    .chips button { min-height: 44px; padding: 0 14px; border: 1px solid var(--border-strong); background: var(--surface);
+    .chips button { display: inline-flex; align-items: center; gap: 6px;
+      min-height: 44px; padding: 0 14px; border: 1px solid var(--border-strong); background: var(--surface);
       border-radius: 22px; font-size: 14px; }
     .chips button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
     .criteria { background: var(--surface-alt); padding: 12px; border-radius: 8px; }
@@ -460,6 +465,10 @@ export class IssueDetail implements OnInit {
       this.busy.set(false);
     }
   }
+
+  isActive(i: Issue) {
+    return i.status === 'open' || i.status === 'in_progress' || i.status === 'on_hold';
+  }
   /** アプリの中で前の画面があればそこへ（見ていた月や絞り込みごと戻る）。なければプロジェクトへ */
   back() {
     const navigationId = (history.state as { navigationId?: number } | null)?.navigationId ?? 1;
@@ -469,44 +478,44 @@ export class IssueDetail implements OnInit {
       this.router.navigate(['/p', this.pid]);
     }
   }
-    // ---- コメントの編集・削除 ----
-    startEdit(item: TimelineItem) {
-      this.editingId.set(item.id);
-      this.editBody = item.body ?? '';
+  // ---- コメントの編集・削除 ----
+  startEdit(item: TimelineItem) {
+    this.editingId.set(item.id);
+    this.editBody = item.body ?? '';
+  }
+
+  async saveEdit(item: TimelineItem) {
+    const body = this.editBody.trim();
+    if (!body) return;
+    if (body === item.body) {
+      // 何も変えていなければ、保存せずに閉じる（「編集済み」を付けない）
+      this.editingId.set(null);
+      return;
     }
-  
-    async saveEdit(item: TimelineItem) {
-      const body = this.editBody.trim();
-      if (!body) return;
-      if (body === item.body) {
-        // 何も変えていなければ、保存せずに閉じる（「編集済み」を付けない）
-        this.editingId.set(null);
-        return;
-      }
-      this.busy.set(true);
-      try {
-        await this.issueService.updateComment(this.pid, this.iid, item.id, body);
-        this.editingId.set(null);
-        this.timeline.set(await this.issueService.timeline(this.pid, this.iid));
-      } catch (e) {
-        console.error(e);
-        this.error.set('common.saveError');
-      } finally {
-        this.busy.set(false);
-      }
+    this.busy.set(true);
+    try {
+      await this.issueService.updateComment(this.pid, this.iid, item.id, body);
+      this.editingId.set(null);
+      this.timeline.set(await this.issueService.timeline(this.pid, this.iid));
+    } catch (e) {
+      console.error(e);
+      this.error.set('common.saveError');
+    } finally {
+      this.busy.set(false);
     }
-  
-    async askDelete(item: TimelineItem) {
-      if (!confirm(this.i18n.t('comment.deleteConfirm'))) return;
-      this.busy.set(true);
-      try {
-        await this.issueService.deleteComment(this.pid, this.iid, item.id, this.myUid);
-        this.timeline.set(await this.issueService.timeline(this.pid, this.iid));
-      } catch (e) {
-        console.error(e);
-        this.error.set('common.saveError');
-      } finally {
-        this.busy.set(false);
-      }
+  }
+
+  async askDelete(item: TimelineItem) {
+    if (!confirm(this.i18n.t('comment.deleteConfirm'))) return;
+    this.busy.set(true);
+    try {
+      await this.issueService.deleteComment(this.pid, this.iid, item.id, this.myUid);
+      this.timeline.set(await this.issueService.timeline(this.pid, this.iid));
+    } catch (e) {
+      console.error(e);
+      this.error.set('common.saveError');
+    } finally {
+      this.busy.set(false);
     }
+  }
 }

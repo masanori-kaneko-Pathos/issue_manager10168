@@ -13,10 +13,11 @@ const BARS = [
 @Component({
   selector: 'app-priority-mark',
   imports: [TPipe],
-  host: { '[attr.data-p]': 'level()' },
+  host: { '[attr.data-p]': 'level()', '[attr.aria-hidden]': 'decorative() || null' },
   template: `
     @let text = (manual() ? 'priorityMark.manual' : 'priorityMark.label') | t: { p: ('priority.' + level() | t) };
-    <span class="mark" role="img" [attr.aria-label]="text" [title]="text">
+    <span class="mark" [attr.role]="decorative() ? null : 'img'"
+      [attr.aria-label]="decorative() ? null : text" [attr.title]="decorative() ? null : text">
       <svg viewBox="0 0 13 12" width="13" height="12" aria-hidden="true">
         @for (b of bars; track $index) {
           <rect [attr.x]="b.x" [attr.y]="12 - b.h" width="3" [attr.height]="b.h" rx="1"
@@ -42,6 +43,8 @@ export class PriorityMark {
   level = input.required<Level>();
   manual = input(false);
   showText = input(false, { transform: booleanAttribute });
+  /** 近くに同じ意味の文字があるときは true。読み上げとヒントを出さない */
+  decorative = input(false, { transform: booleanAttribute });
 
   readonly bars = BARS;
   count = computed(() => PRIORITY_BARS[this.level()]);

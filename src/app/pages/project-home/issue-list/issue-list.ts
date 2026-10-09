@@ -301,7 +301,7 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
       padding: 4px 8px; border-bottom: 1px solid var(--border); }
     .issue.done { color: var(--text-subtle); }
     .name { flex: 1; min-width: 50%; overflow-wrap: anywhere; }
-    .prio-none { width: 30px; flex: none; }
+    .issue app-priority-mark, .prio-none { width: 64px; flex: none; }
     .num { color: var(--text-muted); font-size: 13px; }
     .st { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--surface-muted); }
     .meta, .due { font-size: 12px; color: var(--text-muted); }

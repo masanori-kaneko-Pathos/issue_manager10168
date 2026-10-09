@@ -9,7 +9,7 @@ import { TPipe } from '../i18n/i18n';
     <button type="button" class="tip-btn" [class.denied]="kind() === 'denied'"
       [attr.aria-label]="(kind() === 'denied' ? 'tip.whyDisabled' : 'tip.help') | t"
       [attr.aria-expanded]="open()" (click)="open.set(!open())">
-      {{ kind() === 'denied' ? '!' : '?' }}
+      ?
     </button>
     @if (open()) {
       <div class="backdrop" (click)="open.set(false)"></div>
@@ -48,7 +48,7 @@ import { TPipe } from '../i18n/i18n';
 export class HelpTip {
   /** 表示する説明の翻訳キー（複数なら段落に分けて出す） */
   keys = input.required<string[]>();
-  /** help=「？」（説明）、denied=「！」（押せない理由） */
+  /** help=説明、denied=押せない理由（どちらも「？」。denied はオレンジの枠で区別。「!」は期限切れ専用） */
   kind = input<'help' | 'denied'>('help');
   /** 吹き出しを右に寄せる（画面の右端に置くとき） */
   align = input<'left' | 'right'>('left');

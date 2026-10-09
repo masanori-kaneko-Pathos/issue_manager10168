@@ -124,6 +124,7 @@ export const en: Dict = {
     due: 'The due date is one shared moment for everyone. Buttons like "Today" mean 23:59 of that day in your time zone.',
     assignee: 'Every issue has exactly one assignee, initially you. Teams or departments cannot be assigned.',
     archivedCannotCreate: 'This project is archived, so issues cannot be created.',
+    priority: 'Set automatically from importance and the time left until the due date. More bars mean higher priority: 3 for High, 2 for Medium, 1 for Low. The assignee and admins can change it manually with a reason.',
   },
   issueNew: {
     title: 'New issue',

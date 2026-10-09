@@ -57,7 +57,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
           @for (i of visibleMine(); track i.id) {
             <li class="mine-item">
               @if (isActive(i)) {
-                <app-priority-mark [level]="prio(i)" [manual]="manual(i)" />
+                <app-priority-mark [level]="prio(i)" [manual]="manual(i)" showText />
               } @else {
                 <span class="prio-none"></span>
               }
@@ -129,7 +129,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .check { display: flex; align-items: center; gap: 6px; font-size: 13px; min-height: 40px; }
     .mine-item { flex-wrap: wrap; }
     .mine-item .name { flex: 1; min-width: 50%; overflow-wrap: anywhere; }
-    .prio-none { width: 13px; flex: none; }
+    .mine-item app-priority-mark, .prio-none { width: 64px; flex: none; }
     .small { font-size: 12px; color: var(--text-muted); }
     .small.overdue { color: var(--danger); font-weight: bold; }
   `,
