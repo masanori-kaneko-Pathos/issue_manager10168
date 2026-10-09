@@ -2,6 +2,7 @@ import { Component, OnInit, WritableSignal, computed, inject, input, signal } fr
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { IssueService } from '../../../core/issue.service';
+import { ProjectContext } from '../../../core/project-context';
 import { Clock } from '../../../core/clock';
 import { AuthService } from '../../../core/auth.service';
 import { HelpTip } from '../../../shared/help-tip';
@@ -328,9 +329,11 @@ export class IssueList implements OnInit {
   readonly levels: Level[] = ['high', 'mid', 'low'];
   readonly sortKeys: SortKey[] = ['priority', 'due', 'number', 'updated',];
 
-  private openIssues = signal<Issue[]>([]);
+  private ctx = inject(ProjectContext);
+  /** 未クローズは置き場の見張りから。「すべて」と検索のときだけ、クローズ済みを1回読む */
+  private openIssues = computed(() => this.ctx.openIssues());
   private allIssues = signal<Issue[] | null>(null);
-  loading = signal(true);
+  loading = computed(() => this.ctx.issuesLoading());
   showFilters = signal(false);
   suggestOpen = signal(false);
   active = signal(-1); // ↑↓キーで選んでいる候補（-1 は未選択）
@@ -357,7 +360,10 @@ export class IssueList implements OnInit {
     const q = normalize(this.q().trim());
     // 検索語があるときと「すべて」のときは、クローズ済みも含める
     const useAll = !!q || this.scope() === 'all';
-    let list = useAll && this.allIssues() ? this.allIssues()! : this.openIssues();
+    // 「すべて」のときも、未クローズの分は見張りの最新を使い、クローズ済みの分だけ1回読んだものを足す
+    let list = useAll && this.allIssues()
+      ? [...this.openIssues(), ...this.allIssues()!.filter((i) => !OPEN_STATUSES.includes(i.status))]
+      : this.openIssues();
 
     if (q) {
       list = list.filter((i) =>
@@ -446,18 +452,8 @@ export class IssueList implements OnInit {
       const d = p.get('dir');
       this.dir.set(d === 'asc' || d === 'desc' ? d : DEFAULT_DIR[s]);
     }
-    
-
-    try {
-      this.openIssues.set(await this.issueService.listOpen(this.pid()));
-      await this.ensureAll();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      this.loading.set(false);
-    }
+    await this.ensureAll();
   }
-
   /** 必要になったときに1回だけ、クローズ済みも含めて読み込む */
   private async ensureAll() {
     if (this.allIssues() || (!this.q().trim() && this.scope() === 'open')) return;

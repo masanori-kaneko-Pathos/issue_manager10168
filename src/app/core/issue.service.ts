@@ -1,13 +1,18 @@
 import { Injectable } from '@angular/core';
 import {
-  Timestamp, collection, collectionGroup, doc, getDoc, getDocs, orderBy, query, runTransaction,
-  serverTimestamp, where, writeBatch, addDoc, updateDoc,
+  FirestoreError, QueryDocumentSnapshot, Timestamp, Unsubscribe, collection, collectionGroup, doc, getDoc, getDocs,
+  onSnapshot, orderBy, query, runTransaction, serverTimestamp, where, writeBatch, addDoc, updateDoc,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import {
   CauseCategory, Effect, Issue, IssueType, Level, OPEN_STATUSES, TimelineItem,
 } from './models';
 import { Transition } from './workflow';
+
+/** 見張りで届いた文書を課題にする。保存直後の手元の版では、サーバーの時刻が null なので仮の時刻を入れる */
+function toIssue(d: QueryDocumentSnapshot): Issue {
+  return { ...(d.data({ serverTimestamps: 'estimate' }) as Omit<Issue, 'id'>), id: d.id };
+}
 
 export interface NewIssue {
   title: string;
@@ -79,16 +84,28 @@ export class IssueService {
     });
   }
 
-  /** 未クローズの課題（クローズ・却下以外） */
-  async listOpen(pid: string): Promise<Issue[]> {
-    const s = await getDocs(
+  /** 未クローズの課題を見張る。変わるたびに onData が呼ばれる。戻り値を呼ぶと見張りをやめる */
+  watchOpen(pid: string, onData: (issues: Issue[]) => void, onError: (e: FirestoreError) => void): Unsubscribe {
+    return onSnapshot(
       query(collection(db, 'projects', pid, 'issues'), where('status', 'in', OPEN_STATUSES)),
+      (s) => onData(s.docs.map(toIssue)),
+      onError,
     );
-    return s.docs.map((d) => ({ ...(d.data() as Omit<Issue, 'id'>), id: d.id }));
   }
   async get(pid: string, iid: string): Promise<Issue | null> {
     const s = await getDoc(doc(db, 'projects', pid, 'issues', iid));
     return s.exists() ? { ...(s.data() as Omit<Issue, 'id'>), id: s.id } : null;
+  }
+
+  /** 1件の課題を見張る。消えた（または読めない）ときは null */
+  watchIssue(
+    pid: string, iid: string, onData: (issue: Issue | null) => void, onError: (e: FirestoreError) => void,
+  ): Unsubscribe {
+    return onSnapshot(
+      doc(db, 'projects', pid, 'issues', iid),
+      (s) => onData(s.exists() ? toIssue(s) : null),
+      onError,
+    );
   }
 
   /** ステータス変更：課題の更新と履歴の追加を同時に行う */
@@ -160,6 +177,35 @@ export class IssueService {
     ];
     return items.sort((a, b) => a.at.toMillis() - b.at.toMillis());
   }
+
+  /** 経緯（履歴とコメント）を見張る。どちらかが変わるたびに、古い順の1本にまとめて渡す */
+  watchTimeline(
+    pid: string, iid: string, onData: (items: TimelineItem[]) => void, onError: (e: FirestoreError) => void,
+  ): Unsubscribe {
+    const base = ['projects', pid, 'issues', iid] as const;
+    let events: TimelineItem[] | null = null;
+    let comments: TimelineItem[] | null = null;
+    const toItem = (kind: 'event' | 'comment') => (d: QueryDocumentSnapshot): TimelineItem => ({
+      ...(d.data({ serverTimestamps: 'estimate' }) as Omit<TimelineItem, 'id' | 'kind'>), id: d.id, kind,
+    });
+    // 両方が1回ずつ届いてから渡す（片方だけで画面を作ると、経緯が一瞬欠ける）
+    const emit = () => {
+      if (events && comments) onData([...events, ...comments].sort((a, b) => a.at.toMillis() - b.at.toMillis()));
+    };
+    const stopEvents = onSnapshot(query(collection(db, ...base, 'events'), orderBy('at')), (s) => {
+      events = s.docs.map(toItem('event'));
+      emit();
+    }, onError);
+    const stopComments = onSnapshot(query(collection(db, ...base, 'comments'), orderBy('at')), (s) => {
+      comments = s.docs.map(toItem('comment'));
+      emit();
+    }, onError);
+    // 呼んだ側には、2本まとめてやめる関数を1つだけ返す
+    return () => {
+      stopEvents();
+      stopComments();
+    };
+  }
   /** 編集：変えた項目だけを更新し、経緯に「何を、何から何へ、なぜ」を残す */
   async updateIssue(pid: string, issue: Issue, edits: IssueEdits, reason: string, uid: string, tz: string) {
     const ref = doc(db, 'projects', pid, 'issues', issue.id);
@@ -217,13 +263,17 @@ export class IssueService {
       projectId: d.ref.parent.parent!.id,
     }));
   }
-  /** 直近 days 日以内にクローズした課題（かんばんの「完了」の列用） */
-  async listRecentlyClosed(pid: string, days: number): Promise<Issue[]> {
+
+  /** 直近 days 日以内にクローズした課題を見張る（かんばんの「完了」の列用） */
+  watchRecentlyClosed(
+    pid: string, days: number, onData: (issues: Issue[]) => void, onError: (e: FirestoreError) => void,
+  ): Unsubscribe {
     const since = Timestamp.fromMillis(Date.now() - days * 24 * 60 * 60 * 1000);
-    const s = await getDocs(query(collection(db, 'projects', pid, 'issues'), where('closedAt', '>=', since)));
-    return s.docs
-      .map((d) => ({ ...(d.data() as Omit<Issue, 'id'>), id: d.id }))
+    return onSnapshot(
+      query(collection(db, 'projects', pid, 'issues'), where('closedAt', '>=', since)),
       // 再開した課題は closedAt が残っているので、今クローズのものだけにする
-      .filter((i) => i.status === 'closed');
+      (s) => onData(s.docs.map(toIssue).filter((i) => i.status === 'closed')),
+      onError,
+    );
   }
 }

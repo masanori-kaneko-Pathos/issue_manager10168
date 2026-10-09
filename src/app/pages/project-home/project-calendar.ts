@@ -76,7 +76,7 @@ function addDays(dt: Date, n: number): Date {
                 <div class="item" role="link" tabindex="0" [attr.data-p]="isActive(i) ? prio(i) : null" [class.overdue]="isOverdue(i)"
                   [class.resolved]="i.status === 'resolved'" [title]="i.title"
                   cdkDrag [cdkDragData]="i" [cdkDragDisabled]="!canMove(i)" [cdkDragStartDelay]="{ touch: 300, mouse: 0 }"
-                  (cdkDragStarted)="dragging.set(i)" (cdkDragEnded)="onDragEnded()"
+                  (cdkDragStarted)="onDragStart(i)" (cdkDragEnded)="onDragEnded()"
                   (click)="open(i); $event.stopPropagation()" (keydown.enter)="open(i)">
                   @if (isOverdue(i)) {
                     <span class="bang" role="img" [attr.aria-label]="'due.overdue' | t" [title]="'due.overdue' | t">!</span>
@@ -177,8 +177,10 @@ export class ProjectCalendar implements OnInit {
   /** ドラッグを離した直後のクリックで、詳細が開かないようにする目印 */
   private justDragged = false;
 
-  issues = signal<Issue[]>([]);
-  loading = signal(true);
+  /** つかんでいる間は、つかんだ時点のままにする */
+  private frozen = signal<Issue[] | null>(null);
+  issues = computed(() => this.frozen() ?? this.ctx.openIssues());
+  loading = computed(() => this.ctx.issuesLoading());
   mode = signal<Mode>('month');
   /** 表示の基準の日付（'YYYY-MM-DD'）。月なら、その月を出す */
   cursor = signal('');
@@ -239,13 +241,6 @@ export class ProjectCalendar implements OnInit {
     this.mode.set(p.get('view') === 'week' ? 'week' : 'month');
     const d = p.get('date');
     this.cursor.set(d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : this.todayKey());
-    try {
-      this.issues.set(await this.issueService.listOpen(this.ctx.pid()));
-    } catch (e) {
-      console.error(e);
-    } finally {
-      this.loading.set(false);
-    }
   }
 
   move(dir: 1 | -1) {
@@ -319,19 +314,22 @@ export class ProjectCalendar implements OnInit {
     this.pending.set({ issue: e.item.data, date: e.container.data });
   }
 
-  onDragEnded() {
-    this.dragging.set(null);
-    this.justDragged = true;
-    setTimeout(() => (this.justDragged = false), 0);
+  onDragStart(i: Issue) {
+    this.frozen.set(this.issues());
+    this.dragging.set(i);
   }
 
+  onDragEnded() {
+    this.dragging.set(null);
+    this.frozen.set(null);
+    this.justDragged = true;
+  }
   open(i: Issue) {
     if (this.justDragged) return;
     this.router.navigate(['/p', this.ctx.pid(), 'i', i.id]);
   }
 
-  async onDialogDone() {
+  onDialogDone() {
     this.pending.set(null);
-    this.issues.set(await this.issueService.listOpen(this.ctx.pid()));
   }
 }

@@ -1,6 +1,7 @@
 import { Component, DestroyRef, ElementRef, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { CdkDrag, CdkDragDrop, CdkDropList, CdkDropListGroup } from '@angular/cdk/drag-drop';
+import { Unsubscribe } from 'firebase/firestore';
 import { CdkScrollable } from '@angular/cdk/scrolling';
 import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth.service';
@@ -94,7 +95,7 @@ const EMPTY_PAYLOAD = {
                 @for (i of byCol()[c]; track i.id) {
                   <article class="card" cdkDrag [cdkDragData]="i" [cdkDragDisabled]="!canDrag(i)"
                     [cdkDragStartDelay]="{ touch: 300, mouse: 0 }"
-                    (cdkDragStarted)="dragging.set(i)" (cdkDragEnded)="dragging.set(null)"
+                    (cdkDragStarted)="onDragStart(i)" (cdkDragEnded)="onDragEnd()"
                     [attr.data-p]="isActive(i) ? prio(i) : null" [class.closed]="i.status === 'closed'">
                     @if (isOverdue(i)) { <div class="band">{{ 'board.overdue' | t }}</div> }
                     <div class="body">
@@ -247,8 +248,22 @@ export class ProjectBoard implements OnInit {
   readonly dueOptions: DueFilter[] = ['today', 'week', 'overdue'];
   readonly mobileCols: ColKey[] = ['open', 'in_progress', 'resolved', 'done', 'on_hold'];
 
-  issues = signal<Issue[]>([]);
-  loading = signal(true);
+  /** 直近7日のクローズ（かんばんのタブを開いている間だけ見張る） */
+  private recentClosed = signal<Issue[]>([]);
+  private closedLoading = signal(true);
+  private stopClosed: Unsubscribe | null = null;
+  /** つかんでいる間は、つかんだ時点の並びのままにする（届いた変更は離したあとに反映） */
+  private frozen = signal<Issue[] | null>(null);
+
+  issues = computed(() => {
+    const frozen = this.frozen();
+    if (frozen) return frozen;
+    // 開きっぱなしでも、7日を過ぎたものは完了の列から外す
+    const since = this.clock.now() - 7 * 24 * 60 * 60 * 1000;
+    const closed = this.recentClosed().filter((i) => (i.closedAt?.toMillis() ?? 0) >= since);
+    return [...this.ctx.openIssues(), ...closed];
+  });
+  loading = computed(() => this.ctx.issuesLoading() || this.closedLoading());
   holdOpen = signal(false);
   mobileCol = signal<ColKey>('open');
   dragging = signal<Issue | null>(null);
@@ -311,7 +326,11 @@ export class ProjectBoard implements OnInit {
   constructor() {
     const onChange = (e: MediaQueryListEvent) => this.isMobile.set(e.matches);
     this.mq.addEventListener('change', onChange);
-    inject(DestroyRef).onDestroy(() => this.mq.removeEventListener('change', onChange));
+    inject(DestroyRef).onDestroy(() => {
+      this.mq.removeEventListener('change', onChange);
+      this.stopClosed?.();
+      console.debug('[watch] 完了の列の見張りをやめた'); // 確認用。確かめ終わったら消す
+    });
   }
 
   async ngOnInit() {
@@ -319,23 +338,24 @@ export class ProjectBoard implements OnInit {
     this.mine.set(p.get('mine') === '1');
     const d = p.get('due');
     this.due.set(d === 'today' || d === 'week' || d === 'overdue' ? d : null);
-    await this.load();
+    this.watchClosed();
   }
+  
 
-  async load() {
-    try {
-      const [open, closed] = await Promise.all([
-        this.issueService.listOpen(this.ctx.pid()),
-        this.issueService.listRecentlyClosed(this.ctx.pid(), 7),
-      ]);
-      this.issues.set([...open, ...closed]);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      this.loading.set(false);
-    }
+  /** 直近7日のクローズを見張る（未クローズは置き場の見張りから） */
+  private watchClosed() {
+    this.stopClosed = this.issueService.watchRecentlyClosed(
+      this.ctx.pid(), 7,
+      (issues) => {
+        this.recentClosed.set(issues);
+        this.closedLoading.set(false);
+      },
+      (e) => {
+        console.error(e);
+        this.closedLoading.set(false);
+      },
+    );
   }
-
   // ---- 絞り込み（URLに残す） ----
   setMine(v: boolean) {
     this.mine.set(v);
@@ -377,7 +397,15 @@ export class ProjectBoard implements OnInit {
     const d = this.dragging();
     return !d || this.canMove(d, col);
   }
+  onDragStart(i: Issue) {
+    this.frozen.set(this.issues()); // この時点の並びで止める
+    this.dragging.set(i);
+  }
 
+  onDragEnd() {
+    this.dragging.set(null);
+    this.frozen.set(null); // 止めていた間に届いた変更を、ここで反映する
+  }
   onDrop(e: CdkDragDrop<ColKey, ColKey, Issue>) {
     this.dragging.set(null);
     if (e.previousContainer === e.container) return;
@@ -395,7 +423,6 @@ export class ProjectBoard implements OnInit {
     }
     try {
       await this.issueService.changeStatus(this.ctx.pid(), issue, t, EMPTY_STATUS_PAYLOAD, this.myUid, this.tz());
-      await this.load();
     } catch (e) {
       console.error(e);
     }
@@ -403,7 +430,6 @@ export class ProjectBoard implements OnInit {
 
   async onDialogDone() {
     this.pending.set(null);
-    await this.load();
   }
 
   // ---- 表示用 ----

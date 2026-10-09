@@ -1,4 +1,5 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { Unsubscribe } from 'firebase/firestore';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Location } from '@angular/common';
@@ -76,7 +77,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
         </dl>
 
                 <section class="tools">
-          <button type="button" [disabled]="!canEdit()" (click)="editing.set(true)">{{ 'edit.open' | t }}</button>
+          <button type="button" [disabled]="!canEdit()" (click)="openEdit()">{{ 'edit.open' | t }}</button>
           <button type="button" [disabled]="!canSetPriority()" (click)="openPriority()">
             {{ 'priorityEdit.open' | t }}</button>
           @if (toolDenied().length) { <app-help-tip kind="denied" [keys]="toolDenied()" /> }
@@ -108,7 +109,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
         }
 
         @if (editing()) {
-          <app-issue-edit [issue]="i" [members]="members()" [pid]="pid" [labels]="projectLabels()"
+          <app-issue-edit [issue]="base()!" [members]="members()" [pid]="pid" [labels]="projectLabels()"
             (saved)="onEdited()" (cancel)="editing.set(false)" />
         }
 
@@ -120,8 +121,8 @@ import { I18nService, TPipe } from '../../i18n/i18n';
           @if (deniedReasons().length) { <app-help-tip kind="denied" [keys]="deniedReasons()" /> }
         </section>
 
-               @if (active(); as t) {
-          <app-status-dialog [issue]="i" [transition]="t" [pid]="pid"
+          @if (active(); as t) {
+          <app-status-dialog [issue]="base()!" [transition]="t" [pid]="pid"
             (done)="onStatusDone()" (cancel)="active.set(null)" />
         }
 
@@ -278,7 +279,22 @@ export class IssueDetail implements OnInit {
   timeline = signal<TimelineItem[]>([]);
   projectLabels = signal<Label[]>([]);
   issueLabels = computed(() => labelsOf(this.issue()?.labelIds, this.projectLabels()));
-  loading = signal(true);
+  /** 役割・メンバー・プロジェクトの読み込み中 */
+  private metaLoading = signal(true);
+  /** 課題の最初の版が届いたか */
+  private issueReady = signal(false);
+  loading = computed(() => this.metaLoading() || !this.issueReady());
+  private stops: Unsubscribe[] = [];
+  /** モーダル（編集・ステータス変更）を開いた時点の課題。開いている間に変更が届いても、入力の土台は変えない */
+  base = signal<Issue | null>(null);
+
+  constructor() {
+    // 詳細画面を離れたら、見張りをやめる
+    inject(DestroyRef).onDestroy(() => {
+      this.stops.forEach((stop) => stop());
+      console.debug('[watch] 詳細画面の見張りをやめた'); // 確認用。確かめ終わったら消す
+    });
+  }
   busy = signal(false);
   error = signal('');
 
@@ -329,28 +345,46 @@ export class IssueDetail implements OnInit {
   ]);
 
   async ngOnInit() {
+    // 見張りを先に始めて、役割などの読み込みと並行して届くようにする
+    this.watch();
     await this.load();
   }
 
+  /** 課題と経緯は見張る。他の人の変更も、届くたびに画面に出る */
+  private watch() {
+    this.stops.push(
+      this.issueService.watchIssue(
+        this.pid, this.iid,
+        (issue) => {
+          this.issue.set(issue);
+          this.issueReady.set(true);
+        },
+        (e) => {
+          console.error(e);
+          this.issue.set(null);
+          this.issueReady.set(true);
+        },
+      ),
+      this.issueService.watchTimeline(this.pid, this.iid, (items) => this.timeline.set(items), (e) => console.error(e)),
+    );
+  }
+
+  /** 役割・メンバー・プロジェクトは、開いたときに1回読む（メンバーの見張りは後の工程で） */
   async load() {
     try {
       this.role.set(await this.ps.myRole(this.pid, this.myUid));
-      const [issue, members, timeline, project] = await Promise.all([
-        this.issueService.get(this.pid, this.iid),
+      const [members, project] = await Promise.all([
         this.ps.listMembers(this.pid),
-        this.issueService.timeline(this.pid, this.iid),
         this.ps.get(this.pid),
       ]);
       this.projectLabels.set(project?.labels ?? []);
       this.projectArchived.set(project?.archived ?? false);
-      this.issue.set(issue);
       this.members.set(members);
-      this.timeline.set(timeline);
     } catch (e) {
       console.error(e);
       this.issue.set(null);
     } finally {
-      this.loading.set(false);
+      this.metaLoading.set(false);
     }
   }
 
@@ -359,7 +393,13 @@ export class IssueDetail implements OnInit {
       this.applyNow(t);
       return;
     }
+    this.base.set(this.issue());
     this.active.set(t);
+  }
+
+  openEdit() {
+    this.base.set(this.issue());
+    this.editing.set(true);
   }
 
   /** 入力が要らない変更（対応を始める・再開）は、押したらすぐ保存する */
@@ -367,7 +407,7 @@ export class IssueDetail implements OnInit {
     this.busy.set(true);
     try {
       await this.issueService.changeStatus(this.pid, this.issue()!, t, EMPTY_STATUS_PAYLOAD, this.myUid, this.tz());
-      await this.load();
+
     } catch (e) {
       console.error(e);
       this.error.set('common.saveError');
@@ -378,7 +418,7 @@ export class IssueDetail implements OnInit {
 
   async onStatusDone() {
     this.active.set(null);
-    await this.load();
+
   }
 
   async sendComment() {
@@ -388,7 +428,6 @@ export class IssueDetail implements OnInit {
     try {
       await this.issueService.addComment(this.pid, this.iid, body, this.myUid, this.tz());
       this.comment = '';
-      this.timeline.set(await this.issueService.timeline(this.pid, this.iid));
     } catch (e) {
       console.error(e);
     } finally {
@@ -436,7 +475,7 @@ export class IssueDetail implements OnInit {
 
   async onEdited() {
     this.editing.set(false);
-    await this.load();
+
   }
 
   openPriority() {
@@ -457,7 +496,6 @@ export class IssueDetail implements OnInit {
         this.pid, this.issue()!, value, this.autoPriority(), this.prioReason.trim(), this.myUid, this.tz(),
       );
       this.prioPanel.set(false);
-      await this.load();
     } catch (e) {
       console.error(e);
       this.error.set('common.saveError');
@@ -496,7 +534,6 @@ export class IssueDetail implements OnInit {
     try {
       await this.issueService.updateComment(this.pid, this.iid, item.id, body);
       this.editingId.set(null);
-      this.timeline.set(await this.issueService.timeline(this.pid, this.iid));
     } catch (e) {
       console.error(e);
       this.error.set('common.saveError');
@@ -510,7 +547,6 @@ export class IssueDetail implements OnInit {
     this.busy.set(true);
     try {
       await this.issueService.deleteComment(this.pid, this.iid, item.id, this.myUid);
-      this.timeline.set(await this.issueService.timeline(this.pid, this.iid));
     } catch (e) {
       console.error(e);
       this.error.set('common.saveError');
