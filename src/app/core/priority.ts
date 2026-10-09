@@ -30,3 +30,11 @@ export function compareIssues(a: PriorityInput, b: PriorityInput, nowMs = Date.n
   return RANK[priorityOf(a, nowMs)] - RANK[priorityOf(b, nowMs)]
     || a.dueAt.toMillis() - b.dueAt.toMillis();
 }
+
+/** 印の棒を何本塗るか（高＝3本、中＝2本、低＝1本） */
+export const PRIORITY_BARS: Record<Level, number> = { high: 3, mid: 2, low: 1 };
+
+/** 優先度を手動で変更しているか */
+export function isManualPriority(i: Pick<Issue, 'priorityOverride'>): boolean {
+  return i.priorityOverride != null;
+}

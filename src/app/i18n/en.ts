@@ -94,6 +94,7 @@ export const en: Dict = {
   issueTypes: { bug: 'Bug', request: 'Request', question: 'Question', task: 'Task', risk: 'Risk' },
   importance: { high: 'High', mid: 'Medium', low: 'Low' },
   priority: { high: 'High', mid: 'Medium', low: 'Low' },
+  priorityMark: { label: 'Priority: {{p}}', manual: 'Priority: {{p}} (set manually)' },
   duePresets: { today: 'Today', tomorrow: 'Tomorrow', in3: 'In 3 days', in7: 'In a week' },
   due: {
     leftDays: '{{n}}d left', leftHours: '{{n}}h left', leftMinutes: '{{n}}m left',

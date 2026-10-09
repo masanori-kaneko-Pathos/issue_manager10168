@@ -7,7 +7,8 @@ import { AuthService } from '../../../core/auth.service';
 import { HelpTip } from '../../../shared/help-tip';
 import { ISSUE_TYPES, Issue, IssueType, Label, Level, Member, OPEN_STATUSES, labelsOf } from '../../../core/models';
 import { LabelChip } from '../../../shared/label-chip';
-import { compareIssues, priorityOf } from '../../../core/priority';
+import { PriorityMark } from '../../../shared/priority-mark';
+import { compareIssues, isManualPriority, priorityOf } from '../../../core/priority';
 import { formatDateTime, relativeTime, remainingOf, shortDue } from '../../../core/time';
 import { I18nService, TPipe } from '../../../i18n/i18n';
 
@@ -52,7 +53,7 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
 
 @Component({
   selector: 'app-issue-list',
-  imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip],
+  imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, PriorityMark],
   host: { '(document:keydown.escape)': 'showFilters.set(false); suggestOpen.set(false)' },
   template: `
     <section>
@@ -205,7 +206,11 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
         <ul class="list">
           @for (i of visible(); track i.id) {
             <li class="issue" [class.done]="!isActive(i)">
-              <span class="prio" [attr.data-p]="prio(i)"></span>
+              @if (isActive(i)) {
+                <app-priority-mark [level]="prio(i)" [manual]="manual(i)" showText />
+              } @else {
+                <span class="prio-none"></span>
+              }
               <span class="num">#{{ i.number }}</span>
               <a class="name" [routerLink]="['/p', pid(), 'i', i.id]">{{ i.title }}</a>
           @for (l of rowLabels(i); track l.id) { <app-label-chip [label]="l" /> }
@@ -296,10 +301,7 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
       padding: 4px 8px; border-bottom: 1px solid var(--border); }
     .issue.done { color: var(--text-subtle); }
     .name { flex: 1; min-width: 50%; overflow-wrap: anywhere; }
-    .prio { width: 10px; height: 10px; border-radius: 50%; background: var(--disabled); flex: none; }
-    .prio[data-p='high'] { background: var(--danger); }
-    .prio[data-p='mid'] { background: var(--warning); }
-    .prio[data-p='low'] { background: var(--success); }
+    .prio-none { width: 30px; flex: none; }
     .num { color: var(--text-muted); font-size: 13px; }
     .st { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--surface-muted); }
     .meta, .due { font-size: 12px; color: var(--text-muted); }
@@ -543,8 +545,12 @@ export class IssueList implements OnInit {
   prio(i: Issue): Level {
     return priorityOf(i, this.clock.now());
   }
+  manual(i: Issue) {
+    return isManualPriority(i);
+  }
   remaining(i: Issue) {
     const r = remainingOf(i.dueAt.toMillis(), this.clock.now());
+    return this.i18n.t(r.key, { n: String(r.n) });
   }
   memberName(uid: string) {
     return this.members().find((m) => m.uid === uid)?.displayName ?? '—';

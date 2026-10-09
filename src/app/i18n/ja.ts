@@ -91,6 +91,7 @@ export const ja = {
   issueTypes: { bug: '不具合', request: '要望・改善', question: '質問・確認', task: '作業', risk: 'リスク・懸念' },
   importance: { high: '大', mid: '中', low: '小' },
   priority: { high: '高', mid: '中', low: '低' },
+  priorityMark: { label: '優先度：{{p}}', manual: '優先度：{{p}}（手動で変更）' },
   duePresets: { today: '今日中', tomorrow: '明日中', in3: '3日後', in7: '1週間後' },
   due: {
     leftDays: 'あと{{n}}日', leftHours: 'あと{{n}}時間', leftMinutes: 'あと{{n}}分',

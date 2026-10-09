@@ -8,7 +8,8 @@ import { Clock } from '../../core/clock';
 import { EMPTY_STATUS_PAYLOAD, IssueService } from '../../core/issue.service';
 import { Issue, IssueStatus, Level, labelsOf } from '../../core/models';
 import { LabelChip } from '../../shared/label-chip';
-import { compareIssues, priorityOf } from '../../core/priority';
+import { PriorityMark } from '../../shared/priority-mark';
+import { compareIssues, isManualPriority, priorityOf } from '../../core/priority';
 import { ProjectContext } from '../../core/project-context';
 import { endOfDayIn, remainingOf, shortDue } from '../../core/time';
 import { Transition, availableTransitions } from '../../core/workflow';
@@ -41,7 +42,8 @@ const EMPTY_PAYLOAD = {
 
 @Component({
   selector: 'app-project-board',
-  imports: [CdkDropListGroup, CdkDropList, CdkDrag, CdkScrollable, RouterLink, TPipe, HelpTip, StatusDialog, LabelChip],
+  imports: [CdkDropListGroup, CdkDropList, CdkDrag, 
+    CdkScrollable, RouterLink, TPipe, HelpTip, StatusDialog, LabelChip, PriorityMark],
   template: `
     <div class="quick">
       <div class="chips">
@@ -93,11 +95,14 @@ const EMPTY_PAYLOAD = {
                   <article class="card" cdkDrag [cdkDragData]="i" [cdkDragDisabled]="!canDrag(i)"
                     [cdkDragStartDelay]="{ touch: 300, mouse: 0 }"
                     (cdkDragStarted)="dragging.set(i)" (cdkDragEnded)="dragging.set(null)"
-                    [attr.data-p]="prio(i)" [class.closed]="i.status === 'closed'">
+                    [attr.data-p]="isActive(i) ? prio(i) : null" [class.closed]="i.status === 'closed'">
                     @if (isOverdue(i)) { <div class="band">{{ 'board.overdue' | t }}</div> }
                     <div class="body">
                       <div class="top">
-                        <span class="num">#{{ i.number }}</span>
+                        <span class="id">
+                          @if (isActive(i)) { <app-priority-mark [level]="prio(i)" [manual]="manual(i)" /> }
+                          <span class="num">#{{ i.number }}</span>
+                        </span>
                         @if (isMobile() && moves(i).length) {
                           <button type="button" class="more" [attr.aria-label]="'board.move' | t"
                             (click)="menuFor.set(menuFor() === i.id ? null : i.id)">⋯</button>
@@ -188,6 +193,7 @@ const EMPTY_PAYLOAD = {
     .band { background: var(--danger-bg); color: var(--danger-text); font-size: 11px; font-weight: bold; padding: 2px 10px; }
     .body { padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
     .top { display: flex; align-items: center; justify-content: space-between; }
+    .id { display: flex; align-items: center; gap: 6px; }
     .num { font-size: 12px; color: var(--text-muted); }
     .more { min-width: 36px; min-height: 32px; border: none; background: none; font-size: 18px; color: var(--text-muted); }
     .title { color: var(--text); text-decoration: none; font-size: 14px; overflow-wrap: anywhere; }
@@ -403,6 +409,9 @@ export class ProjectBoard implements OnInit {
   // ---- 表示用 ----
   prio(i: Issue): Level {
     return priorityOf(i, this.clock.now());
+  }
+  manual(i: Issue) {
+    return isManualPriority(i);
   }
   isActive(i: Issue) {
     return i.status === 'open' || i.status === 'in_progress' || i.status === 'on_hold';

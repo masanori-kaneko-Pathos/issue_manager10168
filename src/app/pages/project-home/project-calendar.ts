@@ -3,11 +3,12 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { CdkDrag, CdkDragDrop, CdkDropList, CdkDropListGroup } from '@angular/cdk/drag-drop';
 import { auth } from '../../core/firebase';
 import { DueDialog } from '../../shared/due-dialog';
+import { PriorityMark } from '../../shared/priority-mark';
 import { AuthService } from '../../core/auth.service';
 import { Clock } from '../../core/clock';
 import { IssueService } from '../../core/issue.service';
 import { Issue, Level } from '../../core/models';
-import { compareIssues, priorityOf } from '../../core/priority';
+import { compareIssues, isManualPriority, priorityOf } from '../../core/priority';
 import { ProjectContext } from '../../core/project-context';
 import { dateKey } from '../../core/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
@@ -32,7 +33,7 @@ function addDays(dt: Date, n: number): Date {
 
 @Component({
   selector: 'app-project-calendar',
-  imports: [RouterLink, TPipe, CdkDropListGroup, CdkDropList, CdkDrag, DueDialog],
+  imports: [RouterLink, TPipe, CdkDropListGroup, CdkDropList, CdkDrag, DueDialog, PriorityMark],
   template: `
     <div class="toolbar">
       <div class="nav">
@@ -72,11 +73,15 @@ function addDays(dt: Date, n: number): Date {
             </div>
             <div class="items">
               @for (i of (mode() === 'week' ? items : items.slice(0, 3)); track i.id) {
-                <div class="item" role="link" tabindex="0" [attr.data-p]="prio(i)" [class.overdue]="isOverdue(i)"
+                <div class="item" role="link" tabindex="0" [attr.data-p]="isActive(i) ? prio(i) : null" [class.overdue]="isOverdue(i)"
                   [class.resolved]="i.status === 'resolved'" [title]="i.title"
                   cdkDrag [cdkDragData]="i" [cdkDragDisabled]="!canMove(i)" [cdkDragStartDelay]="{ touch: 300, mouse: 0 }"
                   (cdkDragStarted)="dragging.set(i)" (cdkDragEnded)="onDragEnded()"
                   (click)="open(i); $event.stopPropagation()" (keydown.enter)="open(i)">
+                  @if (isOverdue(i)) {
+                    <span class="bang" role="img" [attr.aria-label]="'due.overdue' | t" [title]="'due.overdue' | t">!</span>
+                  }
+                  @if (isActive(i)) { <app-priority-mark [level]="prio(i)" [manual]="manual(i)" /> }
                   <span class="num">#{{ i.number }}</span> {{ i.title }}
                 </div>
               }
@@ -131,6 +136,8 @@ function addDays(dt: Date, n: number): Date {
     .item.overdue { background: var(--danger-bg); color: var(--danger-text); }
     .item.resolved { color: var(--text-muted); }
     .item .num { color: var(--text-subtle); }
+    .item .bang { font-weight: bold; color: var(--danger-text); margin-right: 3px; }
+    .item app-priority-mark { vertical-align: middle; margin-right: 3px; }
         /* 長押しでブラウザのリンクのプレビューが出ないようにし、アプリのドラッグを優先する */
     .item { cursor: pointer; -webkit-touch-callout: none; user-select: none; }
     .cell.drop-future { background: var(--primary-bg); }
@@ -285,10 +292,16 @@ export class ProjectCalendar implements OnInit {
   }
 
   prio(i: Issue): Level {
-    return priorityOf(i);
+    return priorityOf(i, this.clock.now());
   }
   isOverdue(i: Issue) {
     return i.status !== 'resolved' && i.dueAt.toMillis() < this.clock.now();
+  }
+  isActive(i: Issue) {
+    return i.status === 'open' || i.status === 'in_progress' || i.status === 'on_hold';
+  }
+  manual(i: Issue) {
+    return isManualPriority(i);
   }
     // ---- ドラッグで期限を変える ----
   /** つかめるのは、管理者・提起者・担当者で、クローズ前の課題だけ（ルールの editAllowed と同じ） */

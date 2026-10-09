@@ -10,13 +10,14 @@ import { ProjectService } from '../../core/project.service';
 import { Invitation, Issue, Level, ProjectWithRole } from '../../core/models';
 import { IssueService } from '../../core/issue.service';
 import { Clock } from '../../core/clock';
-import { compareIssues, priorityOf } from '../../core/priority';
+import { PriorityMark } from '../../shared/priority-mark';
+import { compareIssues, isManualPriority, priorityOf } from '../../core/priority';
 import { remainingOf, shortDue } from '../../core/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 
 @Component({
   selector: 'app-projects',
-  imports: [FormsModule, RouterLink, TPipe],
+  imports: [FormsModule, RouterLink, TPipe, PriorityMark],
   template: `
    
 
@@ -55,7 +56,11 @@ import { I18nService, TPipe } from '../../i18n/i18n';
         <ul class="list">
           @for (i of visibleMine(); track i.id) {
             <li class="mine-item">
-              <span class="prio" [attr.data-p]="prio(i)"></span>
+              @if (isActive(i)) {
+                <app-priority-mark [level]="prio(i)" [manual]="manual(i)" />
+              } @else {
+                <span class="prio-none"></span>
+              }
               <a class="name" [routerLink]="['/p', i.projectId, 'i', i.id]">#{{ i.number }} {{ i.title }}</a>
               <span class="small">{{ projectName(i.projectId) }}</span>
               @if (isActive(i) && isOverdue(i)) {
@@ -124,10 +129,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .check { display: flex; align-items: center; gap: 6px; font-size: 13px; min-height: 40px; }
     .mine-item { flex-wrap: wrap; }
     .mine-item .name { flex: 1; min-width: 50%; overflow-wrap: anywhere; }
-    .prio { width: 10px; height: 10px; border-radius: 50%; background: var(--disabled); flex: none; }
-    .prio[data-p='high'] { background: var(--danger); }
-    .prio[data-p='mid'] { background: var(--warning); }
-    .prio[data-p='low'] { background: var(--success); }
+    .prio-none { width: 13px; flex: none; }
     .small { font-size: 12px; color: var(--text-muted); }
     .small.overdue { color: var(--danger); font-weight: bold; }
   `,
@@ -265,6 +267,9 @@ export class Projects implements OnInit {
   }
   prio(i: Issue): Level {
     return priorityOf(i, this.clock.now());
+  }
+  manual(i: Issue) {
+    return isManualPriority(i);
   }
   remaining(i: Issue) {
     const r = remainingOf(i.dueAt.toMillis(), this.clock.now());
