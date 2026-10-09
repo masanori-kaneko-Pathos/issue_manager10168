@@ -126,10 +126,36 @@ import { I18nService, TPipe } from '../../i18n/i18n';
           <ul class="timeline">
             @for (item of timeline(); track item.id) {
               <li [class.comment]="item.kind === 'comment'">
-                <div class="meta">
+                                <div class="meta">
                   {{ item.kind === 'comment' ? memberName(item.by) : eventText(item) }} · {{ when(item) }}
+                  @if (item.editedAt && !item.deleted) {
+                    <span class="edited" [title]="fmt(item.editedAt)">（{{ 'comment.edited' | t }}）</span>
+                  }
+                  @if (item.kind === 'comment' && !item.deleted && editingId() !== item.id && !projectArchived()) {
+                    <span class="c-actions">
+                      @if (item.by === myUid) {
+                        <button type="button" class="icon" [attr.aria-label]="'comment.edit' | t" [title]="'comment.edit' | t"
+                          (click)="startEdit(item)">✎</button>
+                      }
+                      @if (item.by === myUid || role() === 'admin') {
+                        <button type="button" class="icon" [attr.aria-label]="'comment.delete' | t" [title]="'comment.delete' | t"
+                          [disabled]="busy()" (click)="askDelete(item)">🗑</button>
+                      }
+                    </span>
+                  }
                 </div>
-                                @if (item.body) { <p class="pre">{{ item.body }}</p> }
+                @if (item.deleted) {
+                  <p class="deleted">{{ 'comment.deletedBy' | t: { name: memberName(item.deletedBy!) } }}</p>
+                } @else if (editingId() === item.id) {
+                  <textarea class="edit-box" [(ngModel)]="editBody" rows="3"></textarea>
+                  <div class="row">
+                    <button type="button" class="link" (click)="editingId.set(null)">{{ 'workflow.cancel' | t }}</button>
+                    <button type="button" class="primary" [disabled]="busy() || !editBody.trim()" (click)="saveEdit(item)">
+                      {{ 'comment.save' | t }}</button>
+                  </div>
+                } @else if (item.body) {
+                  <p class="pre">{{ item.body }}</p>
+                }
                 @if (item.changes?.dueAt; as c) {
                   <p class="change">{{ 'issue.due' | t }}：{{ fmt(c.from) }} → {{ fmt(c.to) }}</p>
                 }
@@ -211,6 +237,13 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .tools button:disabled { color: var(--text-disabled); }
     .change { font-size: 13px; color: var(--text-secondary); margin: 4px 0 0; }
     .label-row { display: flex; flex-wrap: wrap; gap: 4px; }
+    .edited { font-size: 11px; color: var(--text-subtle); }
+    .c-actions { float: right; display: inline-flex; gap: 4px; }
+    .icon { min-width: 32px; min-height: 32px; border: none; background: none; border-radius: 6px;
+      color: var(--text-muted); cursor: pointer; }
+    .icon:hover { background: var(--surface-muted); }
+    .deleted { margin: 4px 0 0; font-size: 13px; font-style: italic; color: var(--text-subtle); }
+    .edit-box { width: 100%; box-sizing: border-box; margin-top: 6px; }
   `,
 })
 export class IssueDetail implements OnInit {
@@ -248,6 +281,11 @@ export class IssueDetail implements OnInit {
   // ステータス変更のモーダル（入力が要るものだけ開く）
   active = signal<Transition | null>(null);
   comment = '';
+  // コメントのその場での編集
+  editingId = signal<string | null>(null);
+  editBody = '';
+  /** アーカイブ中のプロジェクトでは、コメントの編集・削除のボタンを出さない */
+  projectArchived = signal(false);
 
   tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
   priority = computed(() => priorityOf(this.issue()!, this.clock.now()));
@@ -299,6 +337,7 @@ export class IssueDetail implements OnInit {
         this.ps.get(this.pid),
       ]);
       this.projectLabels.set(project?.labels ?? []);
+      this.projectArchived.set(project?.archived ?? false);
       this.issue.set(issue);
       this.members.set(members);
       this.timeline.set(timeline);
@@ -430,4 +469,44 @@ export class IssueDetail implements OnInit {
       this.router.navigate(['/p', this.pid]);
     }
   }
+    // ---- コメントの編集・削除 ----
+    startEdit(item: TimelineItem) {
+      this.editingId.set(item.id);
+      this.editBody = item.body ?? '';
+    }
+  
+    async saveEdit(item: TimelineItem) {
+      const body = this.editBody.trim();
+      if (!body) return;
+      if (body === item.body) {
+        // 何も変えていなければ、保存せずに閉じる（「編集済み」を付けない）
+        this.editingId.set(null);
+        return;
+      }
+      this.busy.set(true);
+      try {
+        await this.issueService.updateComment(this.pid, this.iid, item.id, body);
+        this.editingId.set(null);
+        this.timeline.set(await this.issueService.timeline(this.pid, this.iid));
+      } catch (e) {
+        console.error(e);
+        this.error.set('common.saveError');
+      } finally {
+        this.busy.set(false);
+      }
+    }
+  
+    async askDelete(item: TimelineItem) {
+      if (!confirm(this.i18n.t('comment.deleteConfirm'))) return;
+      this.busy.set(true);
+      try {
+        await this.issueService.deleteComment(this.pid, this.iid, item.id, this.myUid);
+        this.timeline.set(await this.issueService.timeline(this.pid, this.iid));
+      } catch (e) {
+        console.error(e);
+        this.error.set('common.saveError');
+      } finally {
+        this.busy.set(false);
+      }
+    }
 }

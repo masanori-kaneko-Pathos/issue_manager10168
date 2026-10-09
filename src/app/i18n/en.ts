@@ -319,4 +319,12 @@ export const en: Dict = {
     pastWarning: 'This date is in the past. The issue will be treated as overdue right away (shown in red, with higher priority). Make sure this is intended, such as fixing a typo.',
     confirmPast: 'Confirm as overdue',
   },
+  comment: {
+    edit: 'Edit',
+    delete: 'Delete',
+    save: 'Save',
+    edited: 'edited',
+    deletedBy: '{{name}} deleted a comment',
+    deleteConfirm: 'Delete this comment? The deletion will remain in the history.',
+  },
 };

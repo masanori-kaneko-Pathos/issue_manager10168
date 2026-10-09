@@ -212,6 +212,30 @@ service cloud.firestore {
             && request.resource.data.body.size() > 0
             && request.resource.data.body.size() <= 5000
             && request.resource.data.at == request.time;
+          // 直す・消す（消したコメントは対象外、アーカイブ中は不可）
+          allow update: if isMember(pid)
+            && get(projectPath(pid)).data.archived == false
+            && resource.data.get('deleted', false) == false
+            && (
+              // 直す：書いた本人だけ。本文と直した日時だけ変えられる
+              (resource.data.by == request.auth.uid
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['body', 'editedAt'])
+                && request.resource.data.body is string
+                && request.resource.data.body.size() > 0
+                && request.resource.data.body.size() <= 5000
+                && request.resource.data.editedAt == request.time)
+              ||
+              // 消す：本人か管理者。本文を空にして、消した印を付ける
+              ((resource.data.by == request.auth.uid || isAdmin(pid))
+                && request.resource.data.diff(resource.data).affectedKeys()
+                     .hasOnly(['deleted', 'deletedBy', 'deletedAt', 'body'])
+                && request.resource.data.deleted == true
+                && request.resource.data.deletedBy == request.auth.uid
+                && request.resource.data.deletedAt == request.time
+                && request.resource.data.body == '')
+            );
+          // 文書そのものは、誰も消せない（跡を残すため）
+          allow delete: if false;
         }
       }
     }

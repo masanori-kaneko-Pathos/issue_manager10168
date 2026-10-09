@@ -125,6 +125,10 @@ export interface TimelineItem {
   body?: string;
   by: string;
   tz?: string;  // 書いた人のタイムゾーン
+  editedAt?: Timestamp;   // コメントを直した日時
+  deleted?: boolean;      // コメントを消した印（論理削除）
+  deletedBy?: string;
+  deletedAt?: Timestamp;
   at: Timestamp;
 }
 

@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import {
   Timestamp, collection, collectionGroup, doc, getDoc, getDocs, orderBy, query, runTransaction,
-  serverTimestamp, where, writeBatch, addDoc,
+  serverTimestamp, where, writeBatch, addDoc, updateDoc,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import {
@@ -127,6 +127,23 @@ export class IssueService {
   addComment(pid: string, iid: string, body: string, uid: string, tz: string) {
     return addDoc(collection(db, 'projects', pid, 'issues', iid, 'comments'), {
       body, by: uid, tz, at: serverTimestamp(),
+    });
+  }
+  /** コメントを直す（本人のみ。ルールで確認） */
+  updateComment(pid: string, iid: string, cid: string, body: string) {
+    return updateDoc(doc(db, 'projects', pid, 'issues', iid, 'comments', cid), {
+      body,
+      editedAt: serverTimestamp(),
+    });
+  }
+
+  /** コメントを消す。文書は残し、本文を空にして「消した」印を付ける（本人か管理者） */
+  deleteComment(pid: string, iid: string, cid: string, uid: string) {
+    return updateDoc(doc(db, 'projects', pid, 'issues', iid, 'comments', cid), {
+      deleted: true,
+      deletedBy: uid,
+      deletedAt: serverTimestamp(),
+      body: '',
     });
   }
 

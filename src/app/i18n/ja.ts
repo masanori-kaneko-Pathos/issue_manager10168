@@ -316,5 +316,13 @@ export const ja = {
     pastWarning: '過去の日時です。この課題はすぐに期限切れとして扱われます（赤く表示され、優先度も上がります）。入力ミスの修正など、意図した変更か確かめてください。',
     confirmPast: '期限切れとして確定',
   },
+  comment: {
+    edit: '編集',
+    delete: '削除',
+    save: '保存',
+    edited: '編集済み',
+    deletedBy: '{{name}} さんがコメントを削除しました',
+    deleteConfirm: 'このコメントを削除しますか？ 削除したことは経緯に残ります。',
+  },
 };
 export type Dict = typeof ja;
