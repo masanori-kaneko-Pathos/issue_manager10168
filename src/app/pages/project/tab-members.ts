@@ -5,12 +5,12 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { auth } from '../../core/firebase';
 import { focusById } from '../../core/dom';
 import { Invitation, Role } from '../../core/models';
-import { ProjectContext } from '../../core/project-context';
-import { ProjectService } from '../../core/project.service';
+import { ProjectContext } from './project-context';
+import { ProjectService } from '../../core/project/project.service';
 import { TPipe } from '../../i18n/i18n';
 
 @Component({
-  selector: 'app-project-members',
+  selector: 'app-tab-members',
   imports: [FormsModule, TPipe],
   template: `
     <section>

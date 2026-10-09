@@ -1,10 +1,10 @@
 import { Component, OnInit, computed, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { auth } from '../core/firebase';
-import { AuthService } from '../core/auth.service';
-import { IssueService } from '../core/issue.service';
+import { AuthService } from '../core/auth/auth.service';
+import { IssueService } from '../core/issue/issue.service';
 import { CAUSE_CATEGORIES, CauseCategory, Effect, Issue } from '../core/models';
-import { Transition } from '../core/workflow';
+import { Transition } from '../core/issue/workflow';
 import { TPipe } from '../i18n/i18n';
 
 @Component({

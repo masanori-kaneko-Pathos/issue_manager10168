@@ -1,10 +1,10 @@
 import { Component, OnInit, computed, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { auth } from '../core/firebase';
-import { AuthService } from '../core/auth.service';
-import { IssueService } from '../core/issue.service';
+import { AuthService } from '../core/auth/auth.service';
+import { IssueService } from '../core/issue/issue.service';
 import { Issue } from '../core/models';
-import { formatDateTime, toLocalInput, zonedTime } from '../core/time';
+import { formatDateTime, toLocalInput, zonedTime } from '../core/time/time';
 import { I18nService, TPipe } from '../i18n/i18n';
 
 @Component({

@@ -3,10 +3,10 @@ import {
   FirestoreError, QueryDocumentSnapshot, Timestamp, Unsubscribe, collection, collectionGroup, doc, getDoc, getDocs,
   onSnapshot, orderBy, query, runTransaction, serverTimestamp, where, writeBatch, addDoc, updateDoc,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db } from '../firebase';
 import {
   CauseCategory, Effect, Issue, IssueType, Level, OPEN_STATUSES, TimelineItem,
-} from './models';
+} from '../models';
 import { Transition } from './workflow';
 
 /** 見張りで届いた文書を課題にする。保存直後の手元の版では、サーバーの時刻が null なので仮の時刻を入れる */
@@ -255,7 +255,7 @@ export class IssueService {
   }
 
   /** 所属するすべてのプロジェクトで、自分が担当している課題 */
-  async listMine(uid: string): Promise<(Issue & { projectId: string })[]> {
+  async listMyProjects(uid: string): Promise<(Issue & { projectId: string })[]> {
     const s = await getDocs(query(collectionGroup(db, 'issues'), where('assigneeId', '==', uid)));
     return s.docs.map((d) => ({
       ...(d.data() as Omit<Issue, 'id'>),
@@ -265,7 +265,7 @@ export class IssueService {
   }
 
   /** 所属するすべてのプロジェクトで、自分が担当している課題を見張る */
-  watchMine(
+  watchMyIssues(
     uid: string,
     onData: (issues: (Issue & { projectId: string })[]) => void,
     onError: (e: FirestoreError) => void,

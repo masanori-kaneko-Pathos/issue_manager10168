@@ -1,17 +1,17 @@
-import { Component, OnInit, WritableSignal, computed, inject, input, signal } from '@angular/core';
+import { Component, OnInit, WritableSignal, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { IssueService } from '../../../core/issue.service';
-import { ProjectContext } from '../../../core/project-context';
-import { Clock } from '../../../core/clock';
-import { AuthService } from '../../../core/auth.service';
-import { HelpTip } from '../../../shared/help-tip';
-import { ISSUE_TYPES, Issue, IssueType, Label, Level, Member, OPEN_STATUSES, labelsOf } from '../../../core/models';
-import { LabelChip } from '../../../shared/label-chip';
-import { PriorityMark } from '../../../shared/priority-mark';
-import { compareIssues, isManualPriority, priorityOf } from '../../../core/priority';
-import { formatDateTime, relativeTime, remainingOf, shortDue } from '../../../core/time';
-import { I18nService, TPipe } from '../../../i18n/i18n';
+import { IssueService } from '../../core/issue/issue.service';
+import { ProjectContext } from './project-context';
+import { Clock } from '../../core/time/clock';
+import { AuthService } from '../../core/auth/auth.service';
+import { HelpTip } from '../../shared/help-tip';
+import { ISSUE_TYPES, Issue, IssueType, Level, OPEN_STATUSES, labelsOf } from '../../core/models';
+import { LabelChip } from '../../shared/label-chip';
+import { PriorityMark } from '../../shared/priority-mark';
+import { compareIssues, isManualPriority, priorityOf } from '../../core/issue/priority';
+import { formatDateTime, relativeTime, remainingOf, shortDue } from '../../core/time/time';
+import { I18nService, TPipe } from '../../i18n/i18n';
 
 type SortKey = 'priority' | 'due' | 'number' | 'updated';
 type Dir = 'asc' | 'desc';
@@ -53,7 +53,7 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
 }
 
 @Component({
-  selector: 'app-issue-list',
+  selector: 'app-tab-list',
   imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, PriorityMark],
   host: { '(document:keydown.escape)': 'showFilters.set(false); suggestOpen.set(false)' },
   template: `
@@ -311,12 +311,14 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
     .denied-wrap { display: inline-flex; align-items: center; gap: 8px; }
   `,
 })
-export class IssueList implements OnInit {
-  pid = input.required<string>();
-  members = input.required<Member[]>();
-  canCreate = input(false);
-  isViewer = input(false);
-  labels = input<Label[]>([]);
+export class TabList implements OnInit {
+  private ctx = inject(ProjectContext);
+  /** 値は入れ物の共有の置き場から直接読む（読むだけなので asReadonly） */
+  pid = this.ctx.pid.asReadonly();
+  members = this.ctx.members.asReadonly();
+  canCreate = this.ctx.canCreate;
+  isViewer = computed(() => this.ctx.role() === 'viewer');
+  labels = computed(() => this.ctx.project()?.labels ?? []);
 
   private route = inject(ActivatedRoute);
   private router = inject(Router);
@@ -329,7 +331,7 @@ export class IssueList implements OnInit {
   readonly levels: Level[] = ['high', 'mid', 'low'];
   readonly sortKeys: SortKey[] = ['priority', 'due', 'number', 'updated',];
 
-  private ctx = inject(ProjectContext);
+
   /** 未クローズは置き場の見張りから。「すべて」と検索のときだけ、クローズ済みを1回読む */
   private openIssues = computed(() => this.ctx.openIssues());
   private allIssues = signal<Issue[] | null>(null);

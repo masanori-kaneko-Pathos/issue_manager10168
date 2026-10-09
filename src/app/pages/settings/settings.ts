@@ -1,8 +1,8 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { AuthService } from '../../core/auth.service';
-import { COMMON_TIMEZONES, formatDateTime, tzOffset } from '../../core/time';
+import { AuthService } from '../../core/auth/auth.service';
+import { COMMON_TIMEZONES, formatDateTime, tzOffset } from '../../core/time/time';
 import { I18nService, Lang, TPipe } from '../../i18n/i18n';
 import { HelpTip } from '../../shared/help-tip';
 import { PASSWORD_RULE } from '../login/login';

@@ -1,7 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { AuthService } from '../../core/auth.service';
+import { AuthService } from '../../core/auth/auth.service';
 import { I18nService, TPipe } from '../../i18n/i18n';
 
 /** パスワードの決まり：8文字以上、英字と数字を両方含む（Firebaseの設定と同じ内容を、画面でも先に確かめる） */

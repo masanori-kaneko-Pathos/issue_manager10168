@@ -1,6 +1,6 @@
 import { Component, booleanAttribute, computed, input } from '@angular/core';
 import { Level } from '../core/models';
-import { PRIORITY_BARS } from '../core/priority';
+import { PRIORITY_BARS } from '../core/issue/priority';
 import { TPipe } from '../i18n/i18n';
 
 /** 3本の棒の位置と高さ（固定）。変わるのは塗るかどうかだけ */

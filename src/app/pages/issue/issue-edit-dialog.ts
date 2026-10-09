@@ -1,12 +1,12 @@
 import { Component, OnInit, computed, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { auth } from '../../../core/firebase';
-import { AuthService } from '../../../core/auth.service';
-import { IssueEdits, IssueService } from '../../../core/issue.service';
-import { ISSUE_TYPES, Issue, IssueType, Label, Level, Member } from '../../../core/models';
-import { LabelPicker } from '../../../shared/label-picker';
-import { endOfDayIn, formatDateTime, parseLocalInput, toLocalInput } from '../../../core/time';
-import { I18nService, TPipe } from '../../../i18n/i18n';
+import { auth } from '../../core/firebase';
+import { AuthService } from '../../core/auth/auth.service';
+import { IssueEdits, IssueService } from '../../core/issue/issue.service';
+import { ISSUE_TYPES, Issue, IssueType, Label, Level, Member } from '../../core/models';
+import { LabelPicker } from '../../shared/label-picker';
+import { endOfDayIn, formatDateTime, parseLocalInput, toLocalInput } from '../../core/time/time';
+import { I18nService, TPipe } from '../../i18n/i18n';
 
 /** 並び順を無視して、同じ id の組み合わせかを比べる */
 function sameIds(a: string[], b: string[]) {
@@ -14,7 +14,7 @@ function sameIds(a: string[], b: string[]) {
 }
 
 @Component({
-  selector: 'app-issue-edit',
+  selector: 'app-issue-edit-dialog',
   imports: [FormsModule, TPipe, LabelPicker],
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>

@@ -4,16 +4,16 @@ import { CdkDrag, CdkDragDrop, CdkDropList, CdkDropListGroup } from '@angular/cd
 import { Unsubscribe } from 'firebase/firestore';
 import { CdkScrollable } from '@angular/cdk/scrolling';
 import { auth } from '../../core/firebase';
-import { AuthService } from '../../core/auth.service';
-import { Clock } from '../../core/clock';
-import { EMPTY_STATUS_PAYLOAD, IssueService } from '../../core/issue.service';
+import { AuthService } from '../../core/auth/auth.service';
+import { Clock } from '../../core/time/clock';
+import { EMPTY_STATUS_PAYLOAD, IssueService } from '../../core/issue/issue.service';
 import { Issue, IssueStatus, Level, labelsOf } from '../../core/models';
 import { LabelChip } from '../../shared/label-chip';
 import { PriorityMark } from '../../shared/priority-mark';
-import { compareIssues, isManualPriority, priorityOf } from '../../core/priority';
-import { ProjectContext } from '../../core/project-context';
-import { endOfDayIn, remainingOf, shortDue } from '../../core/time';
-import { Transition, availableTransitions } from '../../core/workflow';
+import { compareIssues, isManualPriority, priorityOf } from '../../core/issue/priority';
+import { ProjectContext } from './project-context';
+import { endOfDayIn, remainingOf, shortDue } from '../../core/time/time';
+import { Transition, availableTransitions } from '../../core/issue/workflow';
 import { HelpTip } from '../../shared/help-tip';
 import { StatusDialog } from '../../shared/status-dialog';
 import { I18nService, TPipe } from '../../i18n/i18n';
@@ -42,7 +42,7 @@ const EMPTY_PAYLOAD = {
 };
 
 @Component({
-  selector: 'app-project-board',
+  selector: 'app-tab-board',
   imports: [CdkDropListGroup, CdkDropList, CdkDrag, 
     CdkScrollable, RouterLink, TPipe, HelpTip, StatusDialog, LabelChip, PriorityMark],
   template: `

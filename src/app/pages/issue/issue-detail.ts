@@ -4,19 +4,19 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Location } from '@angular/common';
 import { auth } from '../../core/firebase';
-import { AuthService } from '../../core/auth.service';
-import { Clock } from '../../core/clock';
-import { ProjectService } from '../../core/project.service';
-import { EMPTY_STATUS_PAYLOAD, IssueService } from '../../core/issue.service';
+import { AuthService } from '../../core/auth/auth.service';
+import { Clock } from '../../core/time/clock';
+import { ProjectService } from '../../core/project/project.service';
+import { EMPTY_STATUS_PAYLOAD, IssueService } from '../../core/issue/issue.service';
 import { Issue, Label, Level, Member, Role, TimelineItem, labelsOf } from '../../core/models';
 import { StatusDialog } from '../../shared/status-dialog';
 import { LabelChip } from '../../shared/label-chip';
-import { IssueEdit } from './issue-edit/issue-edit';
+import { IssueEdit } from './issue-edit-dialog';
 import { HelpTip } from '../../shared/help-tip';
 import { PriorityMark } from '../../shared/priority-mark';
-import { priorityOf } from '../../core/priority';
-import { formatDateTime, remainingOf } from '../../core/time';
-import { Transition, availableTransitions } from '../../core/workflow';
+import { priorityOf } from '../../core/issue/priority';
+import { formatDateTime, remainingOf } from '../../core/time/time';
+import { Transition, availableTransitions } from '../../core/issue/workflow';
 import { I18nService, TPipe } from '../../i18n/i18n';
 
 @Component({
@@ -109,7 +109,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
         }
 
         @if (editing()) {
-          <app-issue-edit [issue]="base()!" [members]="members()" [pid]="pid" [labels]="projectLabels()"
+          <app-issue-edit-dialog [issue]="base()!" [members]="members()" [pid]="pid" [labels]="projectLabels()"
             (saved)="onEdited()" (cancel)="editing.set(false)" />
         }
 

@@ -2,11 +2,11 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { auth } from '../../core/firebase';
-import { AuthService } from '../../core/auth.service';
-import { ProjectService } from '../../core/project.service';
-import { IssueService } from '../../core/issue.service';
+import { AuthService } from '../../core/auth/auth.service';
+import { ProjectService } from '../../core/project/project.service';
+import { IssueService } from '../../core/issue/issue.service';
 import { ISSUE_TYPES, IssueType, Level, Member, ProjectWithRole } from '../../core/models';
-import { endOfDayIn, formatDateTime, parseLocalInput, toLocalInput, zonedTime } from '../../core/time';
+import { endOfDayIn, formatDateTime, parseLocalInput, toLocalInput, zonedTime } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { HelpTip } from '../../shared/help-tip';
 import { LabelPicker } from '../../shared/label-picker';
@@ -209,7 +209,7 @@ export class IssueNew implements OnInit {
   async ngOnInit() {
     try {
       // 登録できるのは、管理者かメンバーで、アーカイブされていないプロジェクト
-      const all = await this.ps.listMine(this.myUid);
+      const all = await this.ps.listMyProjects(this.myUid);
       const writable = all.filter((p) => !p.archived && (p.role === 'admin' || p.role === 'member'));
       this.projects.set(writable);
 

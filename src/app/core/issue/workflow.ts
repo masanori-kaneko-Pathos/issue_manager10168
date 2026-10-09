@@ -1,4 +1,4 @@
-import { Issue, IssueStatus, Role } from './models';
+import { Issue, IssueStatus, Role } from '../models';
 
 export type TransitionKey =
   'start' | 'hold' | 'resume' | 'resolve' | 'sendBack' | 'close' | 'reject' | 'reopen';

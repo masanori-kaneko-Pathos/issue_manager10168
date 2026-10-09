@@ -4,13 +4,13 @@ import { CdkDrag, CdkDragDrop, CdkDropList, CdkDropListGroup } from '@angular/cd
 import { auth } from '../../core/firebase';
 import { DueDialog } from '../../shared/due-dialog';
 import { PriorityMark } from '../../shared/priority-mark';
-import { AuthService } from '../../core/auth.service';
-import { Clock } from '../../core/clock';
-import { IssueService } from '../../core/issue.service';
+import { AuthService } from '../../core/auth/auth.service';
+import { Clock } from '../../core/time/clock';
+import { IssueService } from '../../core/issue/issue.service';
 import { Issue, Level } from '../../core/models';
-import { compareIssues, isManualPriority, priorityOf } from '../../core/priority';
-import { ProjectContext } from '../../core/project-context';
-import { dateKey } from '../../core/time';
+import { compareIssues, isManualPriority, priorityOf } from '../../core/issue/priority';
+import { ProjectContext } from './project-context';
+import { dateKey } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 
 type Mode = 'month' | 'week';
@@ -32,7 +32,7 @@ function addDays(dt: Date, n: number): Date {
 }
 
 @Component({
-  selector: 'app-project-calendar',
+  selector: 'app-tab-calendar',
   imports: [RouterLink, TPipe, CdkDropListGroup, CdkDropList, CdkDrag, DueDialog, PriorityMark],
   template: `
     <div class="toolbar">

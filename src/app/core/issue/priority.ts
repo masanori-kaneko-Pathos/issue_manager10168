@@ -1,4 +1,4 @@
-import { Issue, Level } from './models';
+import { Issue, Level } from '../models';
 
 const HOUR = 60 * 60 * 1000;
 

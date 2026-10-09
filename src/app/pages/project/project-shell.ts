@@ -1,11 +1,11 @@
 import { Component, computed, inject } from '@angular/core';
 import { ActivatedRoute, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ProjectContext } from '../../core/project-context';
+import { ProjectContext } from './project-context';
 import { TPipe } from '../../i18n/i18n';
 
 @Component({
-  selector: 'app-project-home',
+  selector: 'app-project-shell',
   imports: [RouterLink, RouterLinkActive, RouterOutlet, TPipe],
   providers: [ProjectContext],
   template: `

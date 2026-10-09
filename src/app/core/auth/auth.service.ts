@@ -8,8 +8,8 @@ import {
 import {
   collectionGroup, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch,
 } from 'firebase/firestore';
-import { auth, db } from './firebase';
-import { I18nService } from '../i18n/i18n';
+import { auth, db } from '../firebase';
+import { I18nService } from '../../i18n/i18n';
 
 export interface UserProfile {
   displayName: string;

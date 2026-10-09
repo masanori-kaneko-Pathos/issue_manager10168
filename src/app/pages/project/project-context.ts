@@ -1,9 +1,9 @@
 import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
 import { Unsubscribe } from 'firebase/firestore';
-import { auth } from './firebase';
-import { Issue, Label, Member, Project, Role } from './models';
-import { ProjectService } from './project.service';
-import { IssueService } from './issue.service';
+import { auth } from '../../core/firebase';
+import { Issue, Label, Member, Project, Role } from '../../core/models';
+import { ProjectService } from '../../core/project/project.service';
+import { IssueService } from '../../core/issue/issue.service';
 
 /** プロジェクト画面の中で共有する情報。入れ物（project-home）ごとに1つ作られる */
 @Injectable()

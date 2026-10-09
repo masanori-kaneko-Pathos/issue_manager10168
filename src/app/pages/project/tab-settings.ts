@@ -3,14 +3,14 @@ import { FormsModule } from '@angular/forms';
 import {
   LABEL_COLORS, Label, LabelColor, MAX_LABELS_PER_PROJECT, labelColor,
 } from '../../core/models';
-import { ProjectContext } from '../../core/project-context';
-import { ProjectService } from '../../core/project.service';
+import { ProjectContext } from './project-context';
+import { ProjectService } from '../../core/project/project.service';
 import { HelpTip } from '../../shared/help-tip';
 import { LabelChip } from '../../shared/label-chip';
 import { I18nService, TPipe } from '../../i18n/i18n';
 
 @Component({
-  selector: 'app-project-settings',
+  selector: 'app-tab-settings',
   imports: [FormsModule, TPipe, HelpTip, LabelChip],
   host: { '(window:beforeunload)': 'onBeforeUnload($event)' },
   template: `

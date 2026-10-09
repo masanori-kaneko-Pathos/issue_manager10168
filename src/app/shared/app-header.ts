@@ -1,9 +1,9 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
-import { AuthService } from '../core/auth.service';
+import { AuthService } from '../core/auth/auth.service';
 import { auth } from '../core/firebase';
 import { Role } from '../core/models';
-import { ProjectService } from '../core/project.service';
+import { ProjectService } from '../core/project/project.service';
 import { TPipe } from '../i18n/i18n';
 import { HelpTip } from './help-tip';
 

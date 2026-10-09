@@ -4,11 +4,11 @@ import {
     FirestoreError, Unsubscribe, collection, collectionGroup, doc, getDoc, getDocs, onSnapshot, query, where,
     serverTimestamp, writeBatch, setDoc, deleteDoc, updateDoc,
 } from 'firebase/firestore';
-import { db } from './firebase';
-import { I18nService } from '../i18n/i18n';
+import { db } from '../firebase';
+import { I18nService } from '../../i18n/i18n';
 import {
     DEFAULT_LABEL_IDS, DEFAULT_SETTINGS, Invitation, Label, Member, Project, ProjectWithRole, Role, labelColor,
-} from './models';
+} from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class ProjectService {
@@ -42,7 +42,7 @@ export class ProjectService {
     }
 
     /** 自分が所属するプロジェクトの一覧（ロールつき） */
-    async listMine(uid: string): Promise<ProjectWithRole[]> {
+    async listMyProjects(uid: string): Promise<ProjectWithRole[]> {
         const snap = await getDocs(query(collectionGroup(db, 'members'), where('uid', '==', uid)));
         const list = await Promise.all(
             snap.docs.map(async (m) => {
