@@ -1,5 +1,5 @@
 import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
-import { Unsubscribe } from 'firebase/firestore';
+import { FirestoreError, Unsubscribe } from 'firebase/firestore';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Location } from '@angular/common';
@@ -307,6 +307,8 @@ export class IssueDetail implements OnInit {
   editBody = '';
   /** アーカイブ中のプロジェクトでは、コメントの編集・削除のボタンを出さない */
   projectArchived = signal(false);
+  /** 外されたときの知らせに使うプロジェクト名 */
+  private projectName = '';
 
   tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
   priority = computed(() => priorityOf(this.issue()!, this.clock.now()));
@@ -360,26 +362,27 @@ export class IssueDetail implements OnInit {
           this.issueReady.set(true);
         },
         (e) => {
-          console.error(e);
           this.issue.set(null);
           this.issueReady.set(true);
+          this.onWatchError(e);
         },
       ),
       this.issueService.watchTimeline(this.pid, this.iid, (items) => this.timeline.set(items), (e) => console.error(e)),
     );
   }
 
-  /** 役割・メンバー・プロジェクトは、開いたときに1回読む（メンバーの見張りは後の工程で） */
+  /** 役割とメンバーは見張る。プロジェクト（ラベル・アーカイブ）は開いたときに1回読む */
   async load() {
     try {
+      // メンバーでなければ、ここでルールに止められて例外になる
       this.role.set(await this.ps.myRole(this.pid, this.myUid));
-      const [members, project] = await Promise.all([
-        this.ps.listMembers(this.pid),
+      const [project] = await Promise.all([
         this.ps.get(this.pid),
+        this.watchMembers(), // 最初の1回が届くまで待つ
       ]);
       this.projectLabels.set(project?.labels ?? []);
       this.projectArchived.set(project?.archived ?? false);
-      this.members.set(members);
+      this.projectName = project?.name ?? '';
     } catch (e) {
       console.error(e);
       this.issue.set(null);
@@ -388,6 +391,47 @@ export class IssueDetail implements OnInit {
     }
   }
 
+  /** メンバーを見張る。最初の1回が届いたら、待っている load() に知らせる */
+  private watchMembers() {
+    return new Promise<void>((resolve, reject) => {
+      this.stops.push(this.ps.watchMembers(
+        this.pid,
+        (members) => {
+          this.applyMembers(members);
+          resolve();
+        },
+        (e) => {
+          this.onWatchError(e);
+          reject(e);
+        },
+      ));
+    });
+  }
+
+  /** 自分の役割も、メンバー一覧から取り直す */
+  private applyMembers(members: Member[]) {
+    const me = members.find((m) => m.uid === this.myUid);
+    if (!me) {
+      this.lostAccess();
+      return;
+    }
+    this.members.set(members);
+    this.role.set(me.role);
+  }
+
+  /** 開き終わったあとに読めなくなった＝メンバーから外された（開く前なら「見つからない」のまま） */
+  private onWatchError(e: FirestoreError) {
+    console.error(e);
+    if (e.code === 'permission-denied' && !this.metaLoading()) this.lostAccess();
+  }
+
+  /** 外されたら、ホームへ戻して知らせる（「戻る」で見られない画面に戻らないよう、履歴を置き換える） */
+  private lostAccess() {
+    this.stops.forEach((stop) => stop());
+    this.stops = [];
+    this.router.navigate(['/'], { replaceUrl: true, state: { removedFrom: this.projectName } });
+  }
+  
   click(t: Transition) {
     if (t.needs === 'none') {
       this.applyNow(t);

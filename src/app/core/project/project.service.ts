@@ -71,6 +71,18 @@ export class ProjectService {
         return s.docs.map((d) => d.data() as Member)
             .sort((a, b) => a.displayName.localeCompare(b.displayName));
     }
+    
+    /** メンバー一覧を見張る（役割の変更や、外されたことがすぐ届く） */
+    watchMembers(
+        pid: string, onData: (members: Member[]) => void, onError: (e: FirestoreError) => void,
+    ): Unsubscribe {
+        return onSnapshot(
+            collection(db, 'projects', pid, 'members'),
+            (s) => onData(s.docs.map((d) => d.data({ serverTimestamps: 'estimate' }) as Member)
+                .sort((a, b) => a.displayName.localeCompare(b.displayName))),
+            onError,
+        );
+    }
 
     async listInvitations(pid: string): Promise<Invitation[]> {
         const s = await getDocs(collection(db, 'projects', pid, 'invitations'));
