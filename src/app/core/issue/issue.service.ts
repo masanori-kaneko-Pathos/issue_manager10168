@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import {
   DocumentReference, FirestoreError, QueryDocumentSnapshot, Timestamp, Transaction, Unsubscribe, collection,
-  collectionGroup, doc, getDoc, getDocs, onSnapshot, orderBy, query, runTransaction, serverTimestamp, where,
+  doc, getDoc, getDocs, onSnapshot, orderBy, query, runTransaction, serverTimestamp, where,
   addDoc, updateDoc, deleteField, deleteDoc, writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -359,25 +359,19 @@ export class IssueService {
     return s.docs.map((d) => ({ ...(d.data() as Omit<Issue, 'id'>), id: d.id }));
   }
 
-  /** 所属するすべてのプロジェクトで、自分が担当している課題 */
-  async listMyProjects(uid: string): Promise<(Issue & { projectId: string })[]> {
-    const s = await getDocs(query(collectionGroup(db, 'issues'), where('assigneeId', '==', uid)));
-    return s.docs.map((d) => ({
-      ...(d.data() as Omit<Issue, 'id'>),
-      id: d.id,
-      projectId: d.ref.parent.parent!.id,
-    }));
-  }
 
-  /** 所属するすべてのプロジェクトで、自分が担当している課題を見張る */
-  watchMyIssues(
-    uid: string,
+  /**
+   * 1つのプロジェクトで、自分が担当している課題を見張る（ホームの「自分の課題」用。プロジェクトごとに1本）。
+   * コレクショングループでまとめて探すと、ルールで「そのプロジェクトのメンバーか」を確かめられないため
+   */
+  watchMyIssuesIn(
+    pid: string, uid: string,
     onData: (issues: (Issue & { projectId: string })[]) => void,
     onError: (e: FirestoreError) => void,
   ): Unsubscribe {
     return onSnapshot(
-      query(collectionGroup(db, 'issues'), where('assigneeId', '==', uid)),
-      (s) => onData(s.docs.map((d) => ({ ...toIssue(d), projectId: d.ref.parent.parent!.id }))),
+      query(collection(db, 'projects', pid, 'issues'), where('assigneeId', '==', uid)),
+      (s) => onData(s.docs.map((d) => ({ ...toIssue(d), projectId: pid }))),
       onError,
     );
   }

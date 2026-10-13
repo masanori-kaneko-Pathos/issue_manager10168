@@ -159,7 +159,12 @@ export class Projects implements OnInit {
   protected i18n = inject(I18nService);
   private route = inject(ActivatedRoute);
 
-  private stopMine: Unsubscribe | null = null;
+  /** 「自分の課題」の見張り。プロジェクトごとに1本（pid → やめる関数） */
+  private mineStops = new Map<string, Unsubscribe>();
+  /** 読めなくなったプロジェクト（同じプロジェクトに何度も張り直さないための印） */
+  private mineFailed = new Set<string>();
+  /** プロジェクトごとの、自分が担当の課題（pid → 課題） */
+  private mineByProject = signal<Record<string, (Issue & { projectId: string })[]>>({});
   private stopInvitations: Unsubscribe | null = null;
 
   constructor() {
@@ -169,7 +174,7 @@ export class Projects implements OnInit {
     });
     // ホームを離れたら、見張りをやめる
     inject(DestroyRef).onDestroy(() => {
-      this.stopMine?.();
+      this.mineStops.forEach((stop) => stop());
       this.stopInvitations?.();
       console.debug('[watch] ホームの見張りをやめた'); // 確認用。確かめ終わったら消す
     });
@@ -177,7 +182,7 @@ export class Projects implements OnInit {
 
   projects = signal<ProjectWithRole[]>([]);
   invitations = signal<Invitation[]>([]);
-  myIssues = signal<(Issue & { projectId: string })[]>([]);
+  myIssues = computed(() => Object.values(this.mineByProject()).flat());
   showDone = signal(false);
   /** 初期は自分の手が必要なもの（未着手・対応中・保留）。切り替えで解決済み・クローズも表示 */
   visibleMine = computed(() => {
@@ -205,8 +210,8 @@ export class Projects implements OnInit {
     if (removedFrom !== undefined || leftFrom !== undefined) history.replaceState(rest, '');
     const u = auth.currentUser!;
     this.needsVerify.set(!!u.email && !u.emailVerified);
-    this.watchMyIssues();
     this.watchInvitations();
+    // 「自分の課題」の見張りは、プロジェクト一覧を読んだあとに張る（load の中）
     this.load();
   }
 
@@ -214,6 +219,7 @@ export class Projects implements OnInit {
     this.loading.set(true);
     try {
       this.projects.set(await this.projectService.listMyProjects(auth.currentUser!.uid));
+      this.syncMine();
     } catch (e) {
       console.error(e);
       this.error.set('common.loadError');
@@ -233,13 +239,39 @@ export class Projects implements OnInit {
     );
   }
 
-  /** 自分の課題を見張る（どのプロジェクトで担当になっても外れても、すぐ反映） */
-  private watchMyIssues() {
-    this.stopMine = this.issueService.watchMyIssues(
-      auth.currentUser!.uid,
-      (issues) => this.myIssues.set(issues),
-      (e) => console.error('自分の課題の見張りに失敗', e),
-    );
+  /** 所属するプロジェクトに合わせて、「自分の課題」の見張りを張り直す（増えたら始め、なくなったらやめる） */
+  private syncMine() {
+    const uid = auth.currentUser!.uid;
+    const pids = new Set(this.projects().map((p) => p.id));
+    // 一覧からなくなったプロジェクトの見張りをやめる
+    for (const pid of [...this.mineStops.keys()]) {
+      if (!pids.has(pid)) this.stopMineIn(pid);
+    }
+    // 新しく増えたプロジェクトに見張りを張る
+    for (const pid of pids) {
+      if (this.mineStops.has(pid) || this.mineFailed.has(pid)) continue;
+      this.mineStops.set(pid, this.issueService.watchMyIssuesIn(
+        pid, uid,
+        (issues) => this.mineByProject.update((m) => ({ ...m, [pid]: issues })),
+        (e) => {
+          console.error('自分の課題の見張りに失敗', pid, e);
+          // 外された・抜けたプロジェクトの分だけ止める。ほかのプロジェクトの見張りは動き続ける
+          this.mineFailed.add(pid);
+          this.stopMineIn(pid);
+          if (e.code === 'permission-denied') this.load();
+        },
+      ));
+    }
+  }
+
+  /** 1つのプロジェクトの見張りをやめ、その課題を表示から外す */
+  private stopMineIn(pid: string) {
+    this.mineStops.get(pid)?.();
+    this.mineStops.delete(pid);
+    this.mineByProject.update((m) => {
+      const { [pid]: _removed, ...rest } = m;
+      return rest;
+    });
   }
 
   async create() {

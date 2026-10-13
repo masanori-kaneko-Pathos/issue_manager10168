@@ -316,9 +316,7 @@ service cloud.firestore {
     
     // 「自分の課題」：所属するすべてのプロジェクトから、自分が担当の課題を探す
     match /{path=**}/issues/{issueId} {
-      allow read: if signedIn() && resource.data.assigneeId == request.auth.uid
-        // そのプロジェクトのメンバーであること（外れた人に、担当だった課題を見せない）
-        && exists(/databases/$(database)/documents/$(path)/members/$(request.auth.uid));
+      allow read: if signedIn() && resource.data.assigneeId == request.auth.uid;
     }
   }
 }
