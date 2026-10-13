@@ -165,6 +165,7 @@ export const ja = {
     reject: '却下する',
     reopen: '再開する',
     unreject: '却下を取り消す',
+    unstart: '未着手に戻す',
     reason: '理由',
     reasonHint: {
       hold: '何を待っているか、なぜ止まっているか',

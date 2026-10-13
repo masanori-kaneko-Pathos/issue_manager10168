@@ -168,6 +168,7 @@ export const en: Dict = {
     reject: 'Reject',
     reopen: 'Reopen',
     unreject: 'Undo rejection',
+    unstart: 'Move back to Open',
     reason: 'Reason',
     reasonHint: {
       hold: 'What are you waiting for? Why is it stuck?',

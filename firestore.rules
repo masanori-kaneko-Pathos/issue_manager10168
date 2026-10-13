@@ -87,6 +87,7 @@ service cloud.firestore {
       let from = resource.data.status;
       let to = request.resource.data.status;
       return (worker && from == 'open' && to == 'in_progress')
+        || (worker && from == 'in_progress' && to == 'open')
         || (worker && from in ['open', 'in_progress'] && to == 'on_hold' && hasReason())
         || (worker && from == 'on_hold' && to == 'in_progress')
         || (worker && from == 'in_progress' && to == 'resolved' && resolutionOk())

@@ -1,7 +1,7 @@
 import { Issue, IssueStatus, Role } from '../models';
 
 export type TransitionKey =
-'start' | 'hold' | 'resume' | 'resolve' | 'sendBack' | 'close' | 'reject' | 'reopen' | 'unreject';
+'start' | 'hold' | 'resume' | 'resolve' | 'sendBack' | 'close' | 'reject' | 'reopen' | 'unreject' | 'unstart';
 
 export interface Transition {
   key: TransitionKey;
@@ -18,6 +18,7 @@ export const TRANSITIONS: Transition[] = [
   { key: 'resolve',  from: ['in_progress'],           to: 'resolved',    who: 'worker', needs: 'resolve' },
   { key: 'sendBack', from: ['resolved'],              to: 'in_progress', who: 'owner',  needs: 'reason' },
   { key: 'close',    from: ['resolved'],              to: 'closed',      who: 'owner',  needs: 'close' },
+  { key: 'unstart',  from: ['in_progress'],           to: 'open',        who: 'worker', needs: 'none' },
   { key: 'reject',   from: ['open', 'in_progress', 'on_hold'], to: 'rejected', who: 'admin', needs: 'reason' },
   { key: 'unreject', from: ['rejected'],              to: 'open',        who: 'admin',  needs: 'reason' },
   { key: 'reopen',   from: ['closed'],                to: 'in_progress', who: 'admin',  needs: 'reason' },
