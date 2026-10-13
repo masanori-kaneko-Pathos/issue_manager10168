@@ -60,6 +60,7 @@ export const en: Dict = {
   project: {
     back: '← Projects',
     notFound: 'Project not found, or you do not have access.',
+    menu: 'Project menu',
     members: 'Members',
     invite: 'Invite a member',
     inviteEmail: "Invitee's email",
@@ -364,5 +365,16 @@ export const en: Dict = {
     moved: 'Moved #{{n}} to the trash.',
     undo: 'Undo',
     undone: 'Restored #{{n}}.',
+  },
+  trash: {
+    title: 'Trash',
+    back: '← Back to issues',
+    help: 'Deleted issues stay here until they are restored or deleted permanently.',
+    rolesHelp: 'Admins and the member who created an issue can restore it. Only admins can delete permanently.',
+    from: 'Before deletion: {{status}}',
+    purge: 'Delete permanently',
+    purgeConfirm: 'Delete #{{n}} "{{title}}" permanently? Its history and comments will also be deleted. This cannot be undone.',
+    empty: 'The trash is empty.',
+    open: 'Open trash',
   },
 };

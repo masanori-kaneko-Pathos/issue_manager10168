@@ -57,6 +57,7 @@ export const ja = {
   project: {
     back: '← プロジェクト一覧',
     notFound: 'プロジェクトが見つからないか、閲覧する権限がありません。',
+    menu: 'プロジェクトのメニュー',
     members: 'メンバー',
     invite: 'メンバーを招待',
     inviteEmail: '招待する人のメールアドレス',
@@ -360,6 +361,17 @@ export const ja = {
     moved: '#{{n}} を削除フォルダに移しました。',
     undo: '元に戻す',
     undone: '#{{n}} を元に戻しました。',
+  },
+  trash: {
+    title: '削除フォルダ',
+    back: '← 課題の一覧へ',
+    help: '削除した課題は、復元するか完全に削除するまで、ここに残ります。',
+    rolesHelp: '復元できるのは、管理者と、課題を登録した本人（メンバー）です。完全に削除できるのは管理者だけです。',
+    from: '削除前：{{status}}',
+    purge: '完全に削除',
+    purgeConfirm: '#{{n}}「{{title}}」を完全に削除しますか？ 経緯とコメントも消え、元に戻せません。',
+    empty: '削除フォルダは空です。',
+    open: '削除フォルダを開く',
   },
 };
 export type Dict = typeof ja;

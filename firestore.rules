@@ -127,6 +127,12 @@ service cloud.firestore {
         && !('deletedFrom' in d)
         && (myRole(pid) == 'admin' || resource.data.reporterId == request.auth.uid);
     }
+    // 完全削除のときだけ、経緯とコメントも消せる（親の課題が削除フォルダにあり、アーカイブ中でないとき）
+    function purgeChildAllowed(pid, iid) {
+      return isAdmin(pid)
+        && get(/databases/$(database)/documents/projects/$(pid)/issues/$(iid)).data.status == 'deleted'
+        && get(projectPath(pid)).data.archived == false;
+    }
 
     match /projects/{pid} {
       allow read: if isMember(pid);
@@ -227,9 +233,15 @@ service cloud.firestore {
             || restoreAllowed(pid)
           );
 
+        // 完全削除：管理者が、削除フォルダの中の課題だけ（アーカイブ中は不可）。元に戻せない
+        allow delete: if isAdmin(pid)
+          && resource.data.status == 'deleted'
+          && get(projectPath(pid)).data.archived == false;
+
         match /events/{eid} {
           allow read: if isMember(pid);
           allow create: if canWrite(pid) && request.resource.data.by == request.auth.uid;
+          allow delete: if purgeChildAllowed(pid, iid);
         }
 
                 // コメントは閲覧者もできる（アーカイブ中は不可）
@@ -266,8 +278,8 @@ service cloud.firestore {
                 && request.resource.data.deletedAt == request.time
                 && request.resource.data.body == '')
             );
-          // 文書そのものは、誰も消せない（跡を残すため）
-          allow delete: if false;
+          // 文書そのものは、ふだんは誰も消せない（跡を残すため）。課題ごと完全削除するときだけ消せる
+          allow delete: if purgeChildAllowed(pid, iid);
         }
       }
     }

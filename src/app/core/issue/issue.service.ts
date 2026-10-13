@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import {
   DocumentReference, FirestoreError, QueryDocumentSnapshot, Timestamp, Transaction, Unsubscribe, collection,
   collectionGroup, doc, getDoc, getDocs, onSnapshot, orderBy, query, runTransaction, serverTimestamp, where,
-  addDoc, updateDoc, deleteField,
+  addDoc, updateDoc, deleteField, deleteDoc, writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
@@ -325,6 +325,33 @@ export class IssueService {
     });
   }
 
+  /** 削除フォルダの課題を見張る（削除した日時の新しい順） */
+  watchDeleted(pid: string, onData: (issues: Issue[]) => void, onError: (e: FirestoreError) => void): Unsubscribe {
+    return onSnapshot(
+      query(collection(db, 'projects', pid, 'issues'), where('status', '==', 'deleted')),
+      (s) => onData(s.docs.map(toIssue)
+        .sort((a, b) => (b.deletedAt?.toMillis() ?? 0) - (a.deletedAt?.toMillis() ?? 0))),
+      onError,
+    );
+  }
+
+  /** 完全削除：経緯とコメントを消してから、課題を消す（管理者のみ。削除フォルダの中だけ。元に戻せない） */
+  async purgeIssue(pid: string, iid: string) {
+    const ref = doc(db, 'projects', pid, 'issues', iid);
+    const [events, comments] = await Promise.all([
+      getDocs(collection(ref, 'events')),
+      getDocs(collection(ref, 'comments')),
+    ]);
+    const children = [...events.docs, ...comments.docs].map((d) => d.ref);
+    // まとめ書きは1回500件まで。余裕をみて400件ずつ
+    for (let i = 0; i < children.length; i += 400) {
+      const batch = writeBatch(db);
+      children.slice(i, i + 400).forEach((r) => batch.delete(r));
+      await batch.commit();
+    }
+    // 親は最後に消す。子のルールは「親が削除フォルダにあるか」を見ているので、親が先に消えると子を消せなくなる
+    await deleteDoc(ref);
+  }
 
   /** クローズ・却下も含めたすべての課題（検索と「すべて」表示のときだけ使う） */
   async listAll(pid: string): Promise<Issue[]> {

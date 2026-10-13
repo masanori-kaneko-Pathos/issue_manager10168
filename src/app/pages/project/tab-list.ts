@@ -79,6 +79,7 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
             <button type="button" class="link" [disabled]="undoBusy()" (click)="undoDelete(d.iid)">
               {{ 'delete.undo' | t }}</button>
           }
+          <a class="link" [routerLink]="['/p', pid(), 'trash']">{{ 'trash.open' | t }}</a>
           <button type="button" class="link" (click)="deletedNotice.set(null)">{{ 'projects.dismiss' | t }}</button>
         </div>
       }
@@ -256,6 +257,7 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
     .notice { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 8px 0;
       padding: 4px 12px; border-radius: 8px; background: var(--surface-alt); font-size: 13px; }
     .notice span { flex: 1; min-width: 50%; }
+    .notice a.link { display: inline-flex; align-items: center; min-height: 40px; text-decoration: none; }
     .search-wrap { position: relative; margin-top: 8px; }
     .search { position: relative; z-index: 12; width: 100%; box-sizing: border-box; min-height: 44px;
       font-size: 16px; padding: 0 12px; }
@@ -353,11 +355,9 @@ export class TabList implements OnInit {
   showFilters = signal(false);
   suggestOpen = signal(false);
   active = signal(-1); // ↑↓キーで選んでいる候補（-1 は未選択）
-  /** 詳細画面で削除して戻ってきたときの知らせ（undone＝元に戻した）。
-   *  このタブは、入れ物がプロジェクトを読み終えてから作られ、そのときにはもう移動が終わっている。
-   *  そのため、移動の最中にしか読めない currentNavigation ではなく、履歴に残った state から読む */
+  /** 詳細画面で削除して戻ってきたときの知らせ（undone＝元に戻した） */
   deletedNotice = signal<{ iid: string; number: number; undone: boolean } | null>((() => {
-    const d = (history.state as Record<string, unknown> | null)?.['deleted'] as
+    const d = this.router.currentNavigation()?.extras.state?.['deleted'] as
       { iid: string; number: number } | undefined;
     return d ? { ...d, undone: false } : null;
   })());

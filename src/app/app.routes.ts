@@ -29,7 +29,10 @@ export const routes: Routes = [
           loadComponent: () => import('./pages/project/tab-members').then((m) => m.ProjectMembers) },
         { path: 'settings', canDeactivate: [unsavedGuard],
           loadComponent: () => import('./pages/project/tab-settings').then((m) => m.ProjectSettings) },
-      ] },
+        // 削除フォルダ（タブには出さず、「⋮」メニューから開く）
+        { path: 'trash',
+          loadComponent: () => import('./pages/project/trash').then((m) => m.Trash) },
+        ] },
   { path: 'settings', canActivate: [authGuard], canDeactivate: [unsavedGuard],
     loadComponent: () => import('./pages/settings/settings').then((m) => m.Settings) },
   { path: '**', redirectTo: '' },
