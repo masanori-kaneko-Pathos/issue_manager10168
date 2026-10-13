@@ -78,6 +78,12 @@ const FIELD_LABEL_KEYS: Record<string, string> = { assigneeId: 'assignee', dueAt
           @if (i.description.trim()) {
             <dt>{{ 'issue.description' | t }}</dt><dd class="pre">{{ i.description }}</dd>
           }
+          @if (i.occurredOn) {
+            <dt>{{ 'issue.occurredOn' | t }}</dt><dd>{{ dayLabel(i.occurredOn) }}</dd>
+          }
+          @if (i.impact) {
+            <dt>{{ 'issue.impact' | t }}</dt><dd class="pre">{{ i.impact }}</dd>
+          }
           @if (i.cause) {
             <dt>{{ 'workflow.cause' | t }}</dt><dd class="pre">{{ i.cause }}</dd>
             <dt>{{ 'workflow.countermeasure' | t }}</dt><dd class="pre">{{ i.countermeasure }}</dd>
@@ -630,6 +636,14 @@ export class IssueDetail implements OnInit {
     return formatDateTime(ts.toDate(), this.tz(), this.i18n.lang());
   }
 
+  /** 'YYYY-MM-DD' を「2026年10月13日(火)」のように出す（暦の日付なので、タイムゾーンで変えない） */
+  dayLabel(key: string) {
+    const [y, m, d] = key.split('-').map(Number);
+    return new Intl.DateTimeFormat(this.i18n.lang() === 'ja' ? 'ja-JP' : 'en-US', {
+      year: 'numeric', month: 'short', day: 'numeric', weekday: 'short', timeZone: 'UTC',
+    }).format(new Date(Date.UTC(y, m - 1, d)));
+  }
+  
   async onEdited() {
     this.editing.set(false);
 

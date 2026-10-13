@@ -93,6 +93,8 @@ export const ja = {
     description: '内容',
     priority: '優先度',
     labelIds: 'ラベル',
+    occurredOn: '発生日',
+    impact: '影響範囲',
   },
   issueTypes: { bug: '不具合', request: '要望・改善', question: '質問・確認', task: '作業', risk: 'リスク・懸念' },
   importance: { high: '大', mid: '中', low: '小' },
@@ -129,6 +131,8 @@ export const ja = {
     archivedCannotCreate: 'このプロジェクトはアーカイブ中のため、課題を登録できません。',
     priority: '重要度と、期限までの残り時間から自動で決まります。棒が多いほど優先度が高く、高は3本・中は2本・低は1本です。担当者と管理者は、理由をつけて手動で変えられます。',
     reject: '却下は「この課題には対応しない」と決めることで、解決済みになる前まで選べます。解決したのに効果が出なかったときは、却下ではなく「対応中に戻す」を使います。',
+    occurredOn: '問題が起きた日、または気づいた日です（任意）。今日より後の日は選べません。',
+    impact: '影響を受ける人や機能、範囲を一言で書きます（任意）。検索の対象になります。',
   },
   issueNew: {
     title: '課題を登録',
@@ -141,6 +145,7 @@ export const ja = {
     project: 'プロジェクト',
     noProject: '課題を登録できるプロジェクトがありません。先にプロジェクトを作成するか、招待を受けてください。',
     toProjects: 'プロジェクト一覧へ',
+    impactPlaceholder: '例：A社の請求画面、ログインしている全員',
   },
   status: {
     open: '未着手', in_progress: '対応中', on_hold: '保留',

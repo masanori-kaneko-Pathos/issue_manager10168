@@ -394,7 +394,7 @@ export class TabList implements OnInit {
 
     if (q) {
       list = list.filter((i) =>
-        [i.title, i.description, i.cause, i.countermeasure, i.learning, '#' + i.number]
+        [i.title, i.description, i.impact, i.cause, i.countermeasure, i.learning, '#' + i.number]
           .some((text) => !!text && normalize(text).includes(q)));
     }
     const assignee = this.assignee();
@@ -430,6 +430,7 @@ export class TabList implements OnInit {
       } else {
         const fields: [string, string | undefined][] = [
           ['issue.description', i.description],
+          ['issue.impact', i.impact],
           ['workflow.cause', i.cause],
           ['workflow.countermeasure', i.countermeasure],
           ['workflow.learning', i.learning],

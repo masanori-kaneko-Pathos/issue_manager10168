@@ -49,6 +49,8 @@ export interface NewIssue {
   doneCriteria: string;
   description: string;
   labelIds: string[];
+  occurredOn: string | null;
+  impact: string;
 }
 
 export interface StatusPayload {
@@ -75,6 +77,8 @@ export interface IssueEdits {
   doneCriteria?: string;
   description?: string;
   labelIds?: string[];
+  occurredOn?: string | null; // null は「空にする」
+  impact?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -103,6 +107,8 @@ export class IssueService {
         assigneeId: input.assigneeId,
         reporterId: uid,
         labelIds: input.labelIds,
+        occurredOn: input.occurredOn,
+        impact: input.impact,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         updatedBy: uid,

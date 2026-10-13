@@ -7,7 +7,7 @@ import { ProjectService } from '../../core/project/project.service';
 import { IssueService } from '../../core/issue/issue.service';
 import { InboxService } from '../../core/inbox/inbox.service';
 import { ISSUE_TYPES, IssueType, Level, Member, ProjectWithRole } from '../../core/models';
-import { endOfDayIn, formatDateTime, parseLocalInput, toLocalInput, zonedTime } from '../../core/time/time';
+import { dateKey, endOfDayIn, formatDateTime, parseLocalInput, toLocalInput, zonedTime } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { HelpTip } from '../../shared/help-tip';
 import { LabelPicker } from '../../shared/label-picker';
@@ -123,6 +123,15 @@ function writeLastProject(pid: string) {
           <label class="field">{{ 'issue.description' | t }}
             <textarea name="description" [(ngModel)]="description" rows="6"></textarea>
           </label>
+          <div class="field">
+            <span><label for="f-occurred">{{ 'issue.occurredOn' | t }}</label> <app-help-tip [keys]="['help.occurredOn']" /></span>
+            <input id="f-occurred" type="date" name="occurredOn" [(ngModel)]="occurredOn" [max]="today()" />
+          </div>
+          <div class="field">
+            <span><label for="f-impact">{{ 'issue.impact' | t }}</label> <app-help-tip [keys]="['help.impact']" /></span>
+            <input id="f-impact" name="impact" [(ngModel)]="impact" maxlength="200"
+              [placeholder]="'issueNew.impactPlaceholder' | t" />
+          </div>
         }
 
         @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
@@ -199,6 +208,10 @@ export class IssueNew implements OnInit {
   dueInput = '';
   doneCriteria = '';
   description = '';
+  occurredOn = '';
+  impact = '';
+  /** 発生日に選べる最後の日（自分のタイムゾーンでの今日） */
+  today = computed(() => dateKey(new Date(), this.tz()));
 
   tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
   dueLabel = computed(() => {
@@ -303,6 +316,8 @@ export class IssueNew implements OnInit {
         doneCriteria: this.doneCriteria.trim(),
         description: this.description,
         labelIds: this.labelIds(),
+        occurredOn: this.occurredOn || null,
+        impact: this.impact.trim(),
       }, this.myUid, this.tz(), this.memoId ?? undefined);
       writeLastProject(pid);
       await this.router.navigate(['/p', pid]);

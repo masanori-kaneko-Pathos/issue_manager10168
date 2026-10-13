@@ -110,6 +110,8 @@ export interface Issue {
   assigneeId: string;
   reporterId: string;
   labelIds: string[];
+  occurredOn?: string | null; // 発生日（'YYYY-MM-DD'。書いた人の暦の日付。時刻は持たない）。任意
+  impact?: string;            // 影響範囲（自由に1行）。任意
   createdAt: Timestamp;
   updatedAt: Timestamp;
   updatedBy?: string;         // 最後に書き込んだ人の uid

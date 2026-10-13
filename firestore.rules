@@ -102,8 +102,10 @@ service cloud.firestore {
     function editAllowed(pid) {
       let d = request.resource.data;
       return d.diff(resource.data).affectedKeys().hasOnly([
-             'title', 'type', 'importance', 'dueAt', 'assigneeId', 'doneCriteria', 'description', 'labelIds',
-              'updatedAt', 'updatedBy'])
+               'title', 'type', 'importance', 'dueAt', 'assigneeId', 'doneCriteria', 'description', 'labelIds',
+               'updatedAt', 'updatedBy', 'occurredOn', 'impact'])
+        && (d.get('occurredOn', null) == null || d.occurredOn.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))
+        && d.get('impact', '') is string && d.get('impact', '').size() <= 200
         && d.labelIds is list && d.labelIds.size() <= 5
         && !(resource.data.status in ['closed', 'deleted'])
         && (myRole(pid) == 'admin'
@@ -244,7 +246,11 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly([
                'number', 'title', 'type', 'status', 'importance', 'priorityOverride',
                'dueAt', 'startAt', 'doneCriteria', 'description', 'assigneeId',
-               'reporterId', 'labelIds', 'createdAt', 'updatedAt', 'updatedBy'])
+               'reporterId', 'labelIds', 'createdAt', 'updatedAt', 'updatedBy', 'occurredOn', 'impact'])
+          && (request.resource.data.get('occurredOn', null) == null
+            || request.resource.data.occurredOn.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))
+          && request.resource.data.get('impact', '') is string
+          && request.resource.data.get('impact', '').size() <= 200
           && request.resource.data.reporterId == request.auth.uid
           && request.resource.data.updatedBy == request.auth.uid
           && request.resource.data.status == 'open'

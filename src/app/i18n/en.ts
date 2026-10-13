@@ -96,6 +96,8 @@ export const en: Dict = {
     description: 'Description',
     priority: 'Priority',
     labelIds: 'Labels',
+    occurredOn: 'Occurred on',
+    impact: 'Impact',
   },
   issueTypes: { bug: 'Bug', request: 'Request', question: 'Question', task: 'Task', risk: 'Risk' },
   importance: { high: 'High', mid: 'Medium', low: 'Low' },
@@ -132,6 +134,8 @@ export const en: Dict = {
     archivedCannotCreate: 'This project is archived, so issues cannot be created.',
     priority: 'Set automatically from importance and the time left until the due date. More bars mean higher priority: 3 for High, 2 for Medium, 1 for Low. The assignee and admins can change it manually with a reason.',
     reject: 'Rejecting means deciding not to work on this issue. It is available until the issue is resolved. If a fix did not work, use "Send back" instead of rejecting.',
+    occurredOn: 'The day the problem happened or was noticed (optional). Future dates cannot be chosen.',
+    impact: 'Who or what is affected, in a few words (optional). Included in search.',
   },
   issueNew: {
     title: 'New issue',
@@ -144,6 +148,7 @@ export const en: Dict = {
     project: 'Project',
     noProject: 'No project where you can create issues. Create a project first, or accept an invitation.',
     toProjects: 'Go to projects',
+    impactPlaceholder: 'e.g. Billing page for Client A, all signed-in users',
   },
   status: {
     open: 'Open', in_progress: 'In progress', on_hold: 'On hold',

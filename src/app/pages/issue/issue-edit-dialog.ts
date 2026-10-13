@@ -5,7 +5,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { ConflictError, IssueEdits, IssueService, conflictWho } from '../../core/issue/issue.service';
 import { ISSUE_TYPES, Issue, IssueType, Label, Level, Member } from '../../core/models';
 import { LabelPicker } from '../../shared/label-picker';
-import { endOfDayIn, formatDateTime, parseLocalInput, toLocalInput } from '../../core/time/time';
+import { dateKey, endOfDayIn, formatDateTime, parseLocalInput, toLocalInput } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 
 /** 並び順を無視して、同じ id の組み合わせかを比べる */
@@ -77,6 +77,14 @@ function sameIds(a: string[], b: string[]) {
 
       <label class="field">{{ 'issue.description' | t }}
         <textarea [(ngModel)]="description" rows="5"></textarea>
+      </label>
+
+      <label class="field">{{ 'issue.occurredOn' | t }}
+        <input type="date" [(ngModel)]="occurredOn" [max]="today()" />
+      </label>
+
+      <label class="field">{{ 'issue.impact' | t }}
+        <input [(ngModel)]="impact" maxlength="200" [placeholder]="'issueNew.impactPlaceholder' | t" />
       </label>
 
       @if (needsReason()) {
@@ -182,6 +190,9 @@ export class IssueEdit implements OnInit {
   doneCriteria = '';
   description = '';
   reason = '';
+  occurredOn = '';
+  impact = '';
+
     /** 比べる相手（開いた時点の課題。取り込んだあとは最新） */
   private base = signal<Issue | null>(null);
   /** 保存しようとしたら、ほかの人が先に更新していた（中身は最新の課題） */
@@ -193,6 +204,7 @@ export class IssueEdit implements OnInit {
     this.bothChanged().map((k) => this.i18n.t('issue.' + k)).join(this.i18n.lang() === 'ja' ? '・' : ', '));
 
   tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
+  today = computed(() => dateKey(new Date(), this.tz()));
   assignable = computed(() => this.members().filter((m) => m.role !== 'viewer'));
   dueLabel = computed(() => {
     const d = this.dueAt();
@@ -219,6 +231,8 @@ export class IssueEdit implements OnInit {
     this.labelIds.set(i.labelIds ?? []);
     this.doneCriteria = i.doneCriteria;
     this.description = i.description;
+    this.occurredOn = i.occurredOn ?? '';
+    this.impact = i.impact ?? '';
   }
 
   pickPreset(days: number) {
@@ -251,6 +265,10 @@ export class IssueEdit implements OnInit {
     if (doneCriteria !== i.doneCriteria) edits.doneCriteria = doneCriteria;
     if (this.description !== i.description) edits.description = this.description;
     if (!sameIds(this.labelIds(), i.labelIds ?? [])) edits.labelIds = this.labelIds();
+    const occurredOn = this.occurredOn || null;
+    if (occurredOn !== (i.occurredOn ?? null)) edits.occurredOn = occurredOn;
+    const impact = this.impact.trim();
+    if (impact !== (i.impact ?? '')) edits.impact = impact;
 
     if (Object.keys(edits).length === 0) { this.cancel.emit(); return; }
 
@@ -299,6 +317,9 @@ export class IssueEdit implements OnInit {
     merge('doneCriteria', this.doneCriteria.trim(), was.doneCriteria, latest.doneCriteria,
       (v) => (this.doneCriteria = v));
     merge('description', this.description, was.description, latest.description, (v) => (this.description = v));
+    merge('occurredOn', this.occurredOn || null, was.occurredOn ?? null, latest.occurredOn ?? null,
+      (v) => (this.occurredOn = v ?? ''));
+    merge('impact', this.impact.trim(), was.impact ?? '', latest.impact ?? '', (v) => (this.impact = v));
 
     // 比べる相手を最新にする。これで次の保存は、自分が変えた欄だけを送る
     this.base.set(latest);
