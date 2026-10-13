@@ -2,6 +2,7 @@ import { Component, OnInit, WritableSignal, computed, inject, signal } from '@an
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { IssueService } from '../../core/issue/issue.service';
+import { auth } from '../../core/firebase';
 import { ProjectContext } from './project-context';
 import { Clock } from '../../core/time/clock';
 import { AuthService } from '../../core/auth/auth.service';
@@ -71,6 +72,16 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
         }
       </div>
 
+      @if (deletedNotice(); as d) {
+        <div class="notice" role="status">
+          <span>{{ (d.undone ? 'delete.undone' : 'delete.moved') | t: { n: '' + d.number } }}</span>
+          @if (!d.undone) {
+            <button type="button" class="link" [disabled]="undoBusy()" (click)="undoDelete(d.iid)">
+              {{ 'delete.undo' | t }}</button>
+          }
+          <button type="button" class="link" (click)="deletedNotice.set(null)">{{ 'projects.dismiss' | t }}</button>
+        </div>
+      }
       <div class="search-wrap">
         <input type="search" class="search" [ngModel]="q()" (ngModelChange)="onQ($event)"
           (focus)="suggestOpen.set(true)" (keydown)="onSearchKey($event)"
@@ -242,6 +253,9 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
       background: var(--primary); color: var(--on-primary); border: none; border-radius: 8px; text-decoration: none; font-size: 14px; }
     .primary:disabled { background: var(--disabled); }
     .help { font-size: 12px; color: var(--text-muted); margin: 4px 0; }
+    .notice { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 8px 0;
+      padding: 4px 12px; border-radius: 8px; background: var(--surface-alt); font-size: 13px; }
+    .notice span { flex: 1; min-width: 50%; }
     .search-wrap { position: relative; margin-top: 8px; }
     .search { position: relative; z-index: 12; width: 100%; box-sizing: border-box; min-height: 44px;
       font-size: 16px; padding: 0 12px; }
@@ -339,6 +353,15 @@ export class TabList implements OnInit {
   showFilters = signal(false);
   suggestOpen = signal(false);
   active = signal(-1); // ↑↓キーで選んでいる候補（-1 は未選択）
+  /** 詳細画面で削除して戻ってきたときの知らせ（undone＝元に戻した）。
+   *  このタブは、入れ物がプロジェクトを読み終えてから作られ、そのときにはもう移動が終わっている。
+   *  そのため、移動の最中にしか読めない currentNavigation ではなく、履歴に残った state から読む */
+  deletedNotice = signal<{ iid: string; number: number; undone: boolean } | null>((() => {
+    const d = (history.state as Record<string, unknown> | null)?.['deleted'] as
+      { iid: string; number: number } | undefined;
+    return d ? { ...d, undone: false } : null;
+  })());
+  undoBusy = signal(false);
 
   // 条件（URLと同期する）
   q = signal('');
@@ -364,7 +387,7 @@ export class TabList implements OnInit {
     const useAll = !!q || this.scope() === 'all';
     // 「すべて」のときも、未クローズの分は見張りの最新を使い、クローズ済みの分だけ1回読んだものを足す
     let list = useAll && this.allIssues()
-      ? [...this.openIssues(), ...this.allIssues()!.filter((i) => !OPEN_STATUSES.includes(i.status))]
+      ? [...this.openIssues(), ...this.allIssues()!.filter((i) => !OPEN_STATUSES.includes(i.status) && i.status !== 'deleted')]
       : this.openIssues();
 
     if (q) {
@@ -393,52 +416,55 @@ export class TabList implements OnInit {
     return [...list].sort((a, b) => sign * by(a, b));
   });
 
-    /** 検索の候補（最大8件）。一覧と同じ条件・並び順で、一致した場所を添える */
-    suggestions = computed<Suggestion[]>(() => {
-      const q = normalize(this.q().trim());
-      if (!q) return [];
-      const out: Suggestion[] = [];
-      for (const i of this.visible()) {
-        const inTitle = findMatch(i.title, q);
-        if (inTitle) {
-          out.push({ issue: i, title: segments(i.title, inTitle) });
-        } else {
-          const fields: [string, string | undefined][] = [
-            ['issue.description', i.description],
-            ['workflow.cause', i.cause],
-            ['workflow.countermeasure', i.countermeasure],
-            ['workflow.learning', i.learning],
-          ];
-          let added = false;
-          for (const [label, text] of fields) {
-            if (!text) continue;
-            const m = findMatch(text, q);
-            if (!m) continue;
-            // 一致した部分の前20文字・後ろ40文字だけ抜き出す
-            const from = Math.max(0, m[0] - 20);
-            const to = Math.min(text.length, m[1] + 40);
-            out.push({
-              issue: i,
-              title: segments(i.title, null),
-              field: label,
-              snippet: [
-                ...(from > 0 ? [{ text: '…', hit: false }] : []),
-                ...segments(text, m, from, to),
-                ...(to < text.length ? [{ text: '…', hit: false }] : []),
-              ],
-            });
-            added = true;
-            break;
-          }
-          // 番号（#3 など）で見つかったもの
-          if (!added) out.push({ issue: i, title: segments(i.title, null) });
+  /** 検索の候補（最大8件）。一覧と同じ条件・並び順で、一致した場所を添える */
+  suggestions = computed<Suggestion[]>(() => {
+    const q = normalize(this.q().trim());
+    if (!q) return [];
+    const out: Suggestion[] = [];
+    for (const i of this.visible()) {
+      const inTitle = findMatch(i.title, q);
+      if (inTitle) {
+        out.push({ issue: i, title: segments(i.title, inTitle) });
+      } else {
+        const fields: [string, string | undefined][] = [
+          ['issue.description', i.description],
+          ['workflow.cause', i.cause],
+          ['workflow.countermeasure', i.countermeasure],
+          ['workflow.learning', i.learning],
+        ];
+        let added = false;
+        for (const [label, text] of fields) {
+          if (!text) continue;
+          const m = findMatch(text, q);
+          if (!m) continue;
+          // 一致した部分の前20文字・後ろ40文字だけ抜き出す
+          const from = Math.max(0, m[0] - 20);
+          const to = Math.min(text.length, m[1] + 40);
+          out.push({
+            issue: i,
+            title: segments(i.title, null),
+            field: label,
+            snippet: [
+              ...(from > 0 ? [{ text: '…', hit: false }] : []),
+              ...segments(text, m, from, to),
+              ...(to < text.length ? [{ text: '…', hit: false }] : []),
+            ],
+          });
+          added = true;
+          break;
         }
-        if (out.length >= 8) break;
+        // 番号（#3 など）で見つかったもの
+        if (!added) out.push({ issue: i, title: segments(i.title, null) });
       }
-      return out;
-    });
+      if (out.length >= 8) break;
+    }
+    return out;
+  });
 
   async ngOnInit() {
+    // 削除の知らせは1回だけ。読んだら履歴から消し、再読み込みで出し直さない
+    const { deleted, ...rest } = (history.state ?? {}) as Record<string, unknown>;
+    if (deleted !== undefined) history.replaceState(rest, '');
     // URLから条件を復元する
     const p = this.route.snapshot.queryParamMap;
     this.q.set(p.get('q') ?? '');
@@ -463,6 +489,19 @@ export class TabList implements OnInit {
       this.allIssues.set(await this.issueService.listAll(this.pid()));
     } catch (e) {
       console.error(e);
+    }
+  }
+
+  /** 削除の直後の「元に戻す」 */
+  async undoDelete(iid: string) {
+    this.undoBusy.set(true);
+    try {
+      await this.issueService.restoreIssue(this.pid(), iid, auth.currentUser!.uid, this.tz());
+      this.deletedNotice.update((d) => (d ? { ...d, undone: true } : d));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      this.undoBusy.set(false);
     }
   }
 

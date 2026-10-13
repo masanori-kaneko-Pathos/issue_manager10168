@@ -44,12 +44,23 @@ import { I18nService, TPipe } from '../../i18n/i18n';
             </span>
             <app-help-tip [keys]="['help.priority']" />
           }
-          @if (i.status !== 'closed' && i.status !== 'rejected') {
+          @if (i.status !== 'closed' && i.status !== 'rejected' && i.status !== 'deleted') {
             <span class="due" [class.overdue]="overdue()">{{ dueText() }}</span>
           }
         </div>
         @if (i.statusReason && (i.status === 'on_hold' || i.status === 'rejected')) {
           <p class="reason">{{ i.statusReason }}</p>
+        }
+        @if (i.status === 'deleted') {
+          <div class="trash" role="status">
+            <p><strong>{{ 'delete.inTrash' | t }}</strong></p>
+            <p>{{ 'delete.by' | t: { name: memberName(i.deletedBy ?? ''), when: i.deletedAt ? fmt(i.deletedAt) : '' } }}</p>
+            @if (i.deletedReason) { <p class="pre">{{ i.deletedReason }}</p> }
+            @if (canRestore()) {
+              <button type="button" class="primary" [disabled]="busy()" (click)="restore()">{{ 'delete.restore' | t }}</button>
+            }
+            @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
+          </div>
         }
 
         <dl class="fields">
@@ -76,10 +87,13 @@ import { I18nService, TPipe } from '../../i18n/i18n';
           }
         </dl>
 
-                <section class="tools">
+        @if (i.status !== 'deleted') {
+        <section class="tools">
           <button type="button" [disabled]="!canEdit()" (click)="openEdit()">{{ 'edit.open' | t }}</button>
           <button type="button" [disabled]="!canSetPriority()" (click)="openPriority()">
             {{ 'priorityEdit.open' | t }}</button>
+          <button type="button" class="danger-btn" [disabled]="!canDelete()" (click)="openDelete()">
+            {{ 'delete.open' | t }}</button>
           @if (toolDenied().length) { <app-help-tip kind="denied" [keys]="toolDenied()" /> }
         </section>
 
@@ -120,6 +134,29 @@ import { I18nService, TPipe } from '../../i18n/i18n';
           </section>
         }
 
+        @if (delPanel()) {
+          <section class="panel">
+            <h2>{{ 'delete.title' | t }}</h2>
+            <p class="help">{{ 'delete.note' | t }}</p>
+            <label class="field">{{ 'delete.reason' | t }}
+              <textarea [(ngModel)]="delReason" rows="2" [placeholder]="'delete.reasonHint' | t"></textarea>
+            </label>
+            @if (delConflict(); as c) {
+              @let w = who(c);
+              <div class="conflict" role="alert">
+                <p>{{ w.key | t: w.params }}</p>
+                <p>{{ 'conflict.retry' | t }}</p>
+              </div>
+            }
+            @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
+            <div class="row">
+              <button type="button" class="link" (click)="delPanel.set(false)">{{ 'workflow.cancel' | t }}</button>
+              <button type="button" class="primary danger" [disabled]="busy() || !delReason.trim()"
+                (click)="confirmDelete()">{{ 'delete.confirm' | t }}</button>
+            </div>
+          </section>
+        }
+
         @if (editing()) {
           <app-issue-edit-dialog [issue]="base()!" [members]="members()" [pid]="pid" [labels]="projectLabels()"
             (saved)="onEdited()" (cancel)="editing.set(false)" />
@@ -131,6 +168,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
               (click)="click(a.t)">{{ 'workflow.' + a.t.key | t }}</button>
           }
           @if (deniedReasons().length) { <app-help-tip kind="denied" [keys]="deniedReasons()" /> }
+          @if (showRejectHelp()) { <app-help-tip [keys]="['help.reject']" /> }
         </section>
         @if (actionConflict(); as c) {
           @let w = who(c);
@@ -141,6 +179,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
           <app-status-dialog [issue]="base()!" [transition]="t" [pid]="pid" [members]="members()"
             (done)="onStatusDone()" (cancel)="active.set(null)" />
         }
+        } <!-- ここまで、削除フォルダにない課題だけ -->
 
         <section>
           <h2>{{ 'detail.timeline' | t }}</h2>
@@ -152,7 +191,8 @@ import { I18nService, TPipe } from '../../i18n/i18n';
                   @if (item.editedAt && !item.deleted) {
                     <span class="edited" [title]="fmt(item.editedAt)">（{{ 'comment.edited' | t }}）</span>
                   }
-                  @if (item.kind === 'comment' && !item.deleted && editingId() !== item.id && !projectArchived()) {
+                  @if (item.kind === 'comment' && !item.deleted && editingId() !== item.id && !projectArchived()
+                    && i.status !== 'deleted') {
                     <span class="c-actions">
                       @if (item.by === myUid) {
                         <button type="button" class="icon" [attr.aria-label]="'comment.edit' | t" [title]="'comment.edit' | t"
@@ -190,11 +230,13 @@ import { I18nService, TPipe } from '../../i18n/i18n';
               </li>
             }
           </ul>
-          <div class="comment-box">
-            <textarea [(ngModel)]="comment" rows="3" [placeholder]="'detail.commentPlaceholder' | t"></textarea>
-            <button type="button" class="primary" [disabled]="busy() || !comment.trim()" (click)="sendComment()">
-              {{ 'detail.send' | t }}</button>
-          </div>
+          @if (i.status !== 'deleted') {
+            <div class="comment-box">
+              <textarea [(ngModel)]="comment" rows="3" [placeholder]="'detail.commentPlaceholder' | t"></textarea>
+              <button type="button" class="primary" [disabled]="busy() || !comment.trim()" (click)="sendComment()">
+                {{ 'detail.send' | t }}</button>
+            </div>
+          }
         </section>
       }
     </main>
@@ -251,6 +293,13 @@ import { I18nService, TPipe } from '../../i18n/i18n';
       background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
     .conflict p { margin: 0 0 4px; }
     .conflict p:last-child { margin-bottom: 0; }
+      .status[data-s='deleted'] { background: var(--danger-bg); color: var(--danger-text); }
+    .trash { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; padding: 12px;
+      border-radius: 8px; background: var(--danger-bg); color: var(--danger-text); }
+    .trash p { margin: 0; }
+    .trash .primary { align-self: flex-start; }
+    .primary.danger { background: var(--danger); }
+    .tools .danger-btn { color: var(--danger-text); }
     .timeline { list-style: none; padding: 0; margin: 0; }
     .timeline li { padding: 8px 0; border-bottom: 1px solid var(--border); }
     .timeline li.comment { background: var(--surface-alt); padding: 8px 12px; }
@@ -298,6 +347,12 @@ export class IssueDetail implements OnInit {
   prioConflict = signal<{ latest: Issue; blocked: boolean } | null>(null);
   /** 入力の要らないステータス変更で衝突したときの、最新の課題 */
   actionConflict = signal<Issue | null>(null);
+  // 削除
+  delPanel = signal(false);
+  delReason = '';
+  /** 削除のパネルを開いた時点の課題（衝突のあとは最新） */
+  private delBase = signal<Issue | null>(null);
+  delConflict = signal<Issue | null>(null);
 
   issue = signal<Issue | null>(null);
   role = signal<Role | null>(null);
@@ -352,9 +407,21 @@ export class IssueDetail implements OnInit {
     if (!i || !r || i.status === 'closed' || i.status === 'rejected') return false;
     return r === 'admin' || (r === 'member' && i.assigneeId === this.myUid);
   });
+
+  /** 削除は管理者だけ（アーカイブ中は不可） */
+  canDelete = computed(() => this.role() === 'admin' && !this.projectArchived());
+  /** 復元は、管理者と、提起した本人（メンバー） */
+  canRestore = computed(() => {
+    const i = this.issue();
+    const r = this.role();
+    if (!i || this.projectArchived()) return false;
+    return r === 'admin' || (r === 'member' && i.reporterId === this.myUid);
+  });
+
   toolDenied = computed(() => [
     ...(this.canEdit() ? [] : ['edit.denied']),
     ...(this.canSetPriority() ? [] : ['priorityEdit.denied']),
+    ...(this.canDelete() ? [] : ['delete.denied']),
   ]);
   overdue = computed(() => this.issue()!.dueAt.toMillis() < this.clock.now());
   dueText = computed(() => {
@@ -371,6 +438,8 @@ export class IssueDetail implements OnInit {
   deniedReasons = computed(() => [
     ...new Set(this.transitions().filter((a) => !a.allowed).map((a) => 'workflow.denied.' + a.t.who)),
   ]);
+  /** 却下か差し戻しのボタンが並ぶときだけ、違いの説明を出す */
+  showRejectHelp = computed(() => this.transitions().some((a) => a.t.key === 'reject' || a.t.key === 'sendBack'));
 
   async ngOnInit() {
     // 見張りを先に始めて、役割などの読み込みと並行して届くようにする
@@ -587,6 +656,50 @@ export class IssueDetail implements OnInit {
         console.error(e);
         this.error.set('common.saveError');
       }
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  openDelete() {
+    this.delBase.set(this.issue());
+    this.delConflict.set(null);
+    this.delReason = '';
+    this.error.set('');
+    this.delPanel.set(true);
+  }
+
+  /** 削除したら、リストへ戻って「元に戻す」を出す */
+  async confirmDelete() {
+    const base = this.delBase()!;
+    this.busy.set(true);
+    this.error.set('');
+    this.delConflict.set(null);
+    try {
+      await this.issueService.deleteIssue(this.pid, base, this.delReason.trim(), this.myUid, this.tz());
+      this.router.navigate(['/p', this.pid, 'list'], { state: { deleted: { iid: this.iid, number: base.number } } });
+    } catch (e) {
+      if (e instanceof ConflictError) {
+        this.delBase.set(e.latest);
+        this.delConflict.set(e.latest);
+      } else {
+        console.error(e);
+        this.error.set('common.saveError');
+      }
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  async restore() {
+    this.busy.set(true);
+    this.error.set('');
+    try {
+      // 戻ったことは見張りで届くので、ここでは何もしない
+      await this.issueService.restoreIssue(this.pid, this.iid, this.myUid, this.tz());
+    } catch (e) {
+      console.error(e);
+      this.error.set('common.saveError');
     } finally {
       this.busy.set(false);
     }

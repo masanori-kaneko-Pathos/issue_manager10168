@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import {
   DocumentReference, FirestoreError, QueryDocumentSnapshot, Timestamp, Transaction, Unsubscribe, collection,
   collectionGroup, doc, getDoc, getDocs, onSnapshot, orderBy, query, runTransaction, serverTimestamp, where,
-  addDoc, updateDoc,
+  addDoc, updateDoc, deleteField,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
@@ -279,6 +279,53 @@ export class IssueService {
       });
     });
   }
+
+  /** 削除：削除フォルダへ移す（管理者のみ。ルールで確認）。元のステータスは deletedFrom に残す */
+  async deleteIssue(pid: string, issue: Issue, reason: string, uid: string, tz: string) {
+    const ref = doc(db, 'projects', pid, 'issues', issue.id);
+    await runTransaction(db, async (tx) => {
+      await assertUnchanged(tx, ref, issue);
+      tx.update(ref, {
+        status: 'deleted',
+        deletedFrom: issue.status,
+        deletedReason: reason,
+        deletedAt: serverTimestamp(),
+        deletedBy: uid,
+        updatedAt: serverTimestamp(),
+        updatedBy: uid,
+      });
+      tx.set(doc(collection(ref, 'events')), {
+        type: 'status', from: issue.status, to: 'deleted', reason, by: uid, tz, at: serverTimestamp(),
+      });
+    });
+  }
+
+  /** 復元：削除する前のステータスに戻す（管理者か、提起した本人。ルールで確認） */
+  async restoreIssue(pid: string, iid: string, uid: string, tz: string) {
+    const ref = doc(db, 'projects', pid, 'issues', iid);
+    await runTransaction(db, async (tx) => {
+      const s = await tx.get(ref);
+      if (!s.exists()) throw new Error('issue-not-found');
+      const latest = { ...(s.data() as Omit<Issue, 'id'>), id: s.id };
+      // ほかの人がもう復元していたら、何もしない
+      if (latest.status !== 'deleted') throw new ConflictError(latest);
+      const to = latest.deletedFrom ?? 'open';
+      tx.update(ref, {
+        status: to,
+        deletedFrom: deleteField(),
+        deletedReason: deleteField(),
+        deletedAt: deleteField(),
+        deletedBy: deleteField(),
+        updatedAt: serverTimestamp(),
+        updatedBy: uid,
+      });
+      tx.set(doc(collection(ref, 'events')), {
+        type: 'status', from: 'deleted', to, by: uid, tz, at: serverTimestamp(),
+      });
+    });
+  }
+
+
   /** クローズ・却下も含めたすべての課題（検索と「すべて」表示のときだけ使う） */
   async listAll(pid: string): Promise<Issue[]> {
     const s = await getDocs(collection(db, 'projects', pid, 'issues'));

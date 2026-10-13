@@ -177,7 +177,7 @@ export class Projects implements OnInit {
   visibleMine = computed(() => {
     const now = this.clock.now();
     return this.myIssues()
-      .filter((i) => this.showDone() || this.isActive(i))
+    .filter((i) => i.status !== 'deleted' && (this.showDone() || this.isActive(i)))
       .sort((a, b) => compareIssues(a, b, now));
   });
   needsVerify = signal(false);

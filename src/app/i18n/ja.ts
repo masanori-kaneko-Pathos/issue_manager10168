@@ -125,6 +125,7 @@ export const ja = {
     assignee: '担当者は必ず1人です。最初は自分になっています。チームや部署は選べません。',
     archivedCannotCreate: 'このプロジェクトはアーカイブ中のため、課題を登録できません。',
     priority: '重要度と、期限までの残り時間から自動で決まります。棒が多いほど優先度が高く、高は3本・中は2本・低は1本です。担当者と管理者は、理由をつけて手動で変えられます。',
+    reject: '却下は「この課題には対応しない」と決めることで、解決済みになる前まで選べます。解決したのに効果が出なかったときは、却下ではなく「対応中に戻す」を使います。',
   },
   issueNew: {
     title: '課題を登録',
@@ -140,7 +141,7 @@ export const ja = {
   },
   status: {
     open: '未着手', in_progress: '対応中', on_hold: '保留',
-    resolved: '解決済み', closed: 'クローズ', rejected: '却下',
+    resolved: '解決済み', closed: 'クローズ', rejected: '却下', deleted: '削除済み',
   },
   causeCategories: {
     requirements: '仕様・要件の不足',
@@ -160,12 +161,14 @@ export const ja = {
     close: 'クローズする',
     reject: '却下する',
     reopen: '再開する',
+    unreject: '却下を取り消す',
     reason: '理由',
     reasonHint: {
       hold: '何を待っているか、なぜ止まっているか',
       sendBack: '効果が出なかった点など、戻す理由',
       reject: '却下する理由',
       reopen: '再開する理由',
+      unreject: '取り消して、もう一度対応する理由',
     },
     cause: '原因',
     countermeasure: '対策',
@@ -180,7 +183,7 @@ export const ja = {
     denied: {
       worker: '担当者または管理者だけが変更できます。',
       owner: '提起者または管理者だけが変更できます。',
-      admin: '却下と再開は管理者だけができます。必要な場合は、管理者に依頼してください。',
+      admin: '却下・却下の取り消し・再開は、管理者だけができます。必要な場合は、管理者に依頼してください。',
     },
   },
   detail: {
@@ -342,6 +345,21 @@ export const ja = {
     closed: 'この課題はクローズされたため、変更できなくなりました。閉じてください。',
     again: '最新の状態を確かめて、もう一度押してください。',
     notMoved: '#{{n}} を移動できませんでした。',
+  },
+  delete: {
+    open: '削除',
+    title: '課題を削除',
+    note: '削除した課題は削除フォルダに移り、一覧・通知・集計の対象から外れます。削除フォルダから、いつでも復元できます。',
+    reason: '削除の理由',
+    reasonHint: '例：重複して登録したため',
+    confirm: '削除フォルダへ移す',
+    denied: '削除できるのは管理者だけです。必要な場合は、管理者に依頼してください。',
+    inTrash: 'この課題は削除フォルダにあります',
+    by: '{{name}} さんが {{when}} に削除',
+    restore: '復元する',
+    moved: '#{{n}} を削除フォルダに移しました。',
+    undo: '元に戻す',
+    undone: '#{{n}} を元に戻しました。',
   },
 };
 export type Dict = typeof ja;

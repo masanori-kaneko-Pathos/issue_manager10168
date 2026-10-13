@@ -67,7 +67,7 @@ export const DEFAULT_LABEL_IDS = ['customer', 'internal', 'spec', 'ops', 'qualit
 
 export type IssueType = 'bug' | 'request' | 'question' | 'task' | 'risk';
 export type Level = 'high' | 'mid' | 'low'; // 重要度・緊急度・優先度で共通
-export type IssueStatus = 'open' | 'in_progress' | 'on_hold' | 'resolved' | 'closed' | 'rejected';
+export type IssueStatus = 'open' | 'in_progress' | 'on_hold' | 'resolved' | 'closed' | 'rejected' | 'deleted';
 
 export const ISSUE_TYPES: IssueType[] = ['bug', 'request', 'question', 'task', 'risk'];
 export const OPEN_STATUSES: IssueStatus[] = ['open', 'in_progress', 'on_hold', 'resolved'];
@@ -99,6 +99,10 @@ export interface Issue {
   learning?: string;
   resolvedAt?: Timestamp;
   closedAt?: Timestamp;
+  deletedFrom?: IssueStatus;  // 削除する前のステータス（復元で戻す）
+  deletedReason?: string;
+  deletedAt?: Timestamp;
+  deletedBy?: string;
 }
 export const CAUSE_CATEGORIES = [
   'requirements', 'design', 'testing', 'operation', 'communication', 'external', 'other',

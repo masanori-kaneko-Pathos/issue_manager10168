@@ -70,7 +70,8 @@ service cloud.firestore {
         || (worker && from == 'in_progress' && to == 'resolved' && resolutionOk())
         || (owner && from == 'resolved' && to == 'in_progress' && hasReason())
         || (owner && from == 'resolved' && to == 'closed' && closeOk())
-        || (admin && from in ['open', 'in_progress', 'on_hold', 'resolved'] && to == 'rejected' && hasReason())
+        || (admin && from in ['open', 'in_progress', 'on_hold'] && to == 'rejected' && hasReason())
+        || (admin && from == 'rejected' && to == 'open' && hasReason())
         || (admin && from == 'closed' && to == 'in_progress' && hasReason());
     }
 
@@ -81,7 +82,7 @@ service cloud.firestore {
              'title', 'type', 'importance', 'dueAt', 'assigneeId', 'doneCriteria', 'description', 'labelIds',
               'updatedAt', 'updatedBy'])
         && d.labelIds is list && d.labelIds.size() <= 5
-        && resource.data.status != 'closed'
+        && !(resource.data.status in ['closed', 'deleted'])
         && (myRole(pid) == 'admin'
             || resource.data.reporterId == request.auth.uid
             || resource.data.assigneeId == request.auth.uid)
@@ -97,9 +98,34 @@ service cloud.firestore {
     function priorityAllowed(pid) {
       let d = request.resource.data;
       return d.diff(resource.data).affectedKeys().hasOnly(['priorityOverride', 'updatedAt', 'updatedBy'])
-        && !(resource.data.status in ['closed', 'rejected'])
+        && !(resource.data.status in ['closed', 'rejected', 'deleted'])
         && (myRole(pid) == 'admin' || resource.data.assigneeId == request.auth.uid)
         && (d.priorityOverride == null || d.priorityOverride in ['high', 'mid', 'low']);
+    }
+  
+      // 削除：管理者のみ。削除フォルダにないものだけ。元のステータスと理由を残す
+    function deleteAllowed(pid) {
+      let d = request.resource.data;
+      return d.diff(resource.data).affectedKeys()
+               .hasOnly(['status', 'deletedFrom', 'deletedReason', 'deletedAt', 'deletedBy', 'updatedAt', 'updatedBy'])
+        && myRole(pid) == 'admin'
+        && resource.data.status != 'deleted'
+        && d.status == 'deleted'
+        && d.deletedFrom == resource.data.status
+        && d.deletedReason is string && d.deletedReason.size() > 0 && d.deletedReason.size() <= 1000
+        && d.deletedBy == request.auth.uid
+        && d.deletedAt == request.time;
+    }
+
+    // 復元：管理者（すべて）と、提起した本人。削除する前のステータスに戻すだけ
+    function restoreAllowed(pid) {
+      let d = request.resource.data;
+      return d.diff(resource.data).affectedKeys()
+               .hasOnly(['status', 'deletedFrom', 'deletedReason', 'deletedAt', 'deletedBy', 'updatedAt', 'updatedBy'])
+        && resource.data.status == 'deleted'
+        && d.status == resource.data.get('deletedFrom', 'open')
+        && !('deletedFrom' in d)
+        && (myRole(pid) == 'admin' || resource.data.reporterId == request.auth.uid);
     }
 
     match /projects/{pid} {
@@ -197,6 +223,8 @@ service cloud.firestore {
              && statusChangeAllowed(pid))
             || editAllowed(pid)
             || priorityAllowed(pid)
+            || deleteAllowed(pid)
+            || restoreAllowed(pid)
           );
 
         match /events/{eid} {
@@ -209,6 +237,7 @@ service cloud.firestore {
           allow read: if isMember(pid);
           allow create: if isMember(pid)
             && get(projectPath(pid)).data.archived == false
+            && get(/databases/$(database)/documents/projects/$(pid)/issues/$(iid)).data.status != 'deleted'
             && request.resource.data.keys().hasOnly(['body', 'by', 'tz', 'at'])
             && request.resource.data.by == request.auth.uid
             && request.resource.data.body is string

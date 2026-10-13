@@ -128,6 +128,7 @@ export const en: Dict = {
     assignee: 'Every issue has exactly one assignee, initially you. Teams or departments cannot be assigned.',
     archivedCannotCreate: 'This project is archived, so issues cannot be created.',
     priority: 'Set automatically from importance and the time left until the due date. More bars mean higher priority: 3 for High, 2 for Medium, 1 for Low. The assignee and admins can change it manually with a reason.',
+    reject: 'Rejecting means deciding not to work on this issue. It is available until the issue is resolved. If a fix did not work, use "Send back" instead of rejecting.',
   },
   issueNew: {
     title: 'New issue',
@@ -143,7 +144,7 @@ export const en: Dict = {
   },
   status: {
     open: 'Open', in_progress: 'In progress', on_hold: 'On hold',
-    resolved: 'Resolved', closed: 'Closed', rejected: 'Rejected',
+    resolved: 'Resolved', closed: 'Closed', rejected: 'Rejected', deleted: 'Deleted',
   },
   causeCategories: {
     requirements: 'Unclear requirements',
@@ -163,12 +164,14 @@ export const en: Dict = {
     close: 'Close',
     reject: 'Reject',
     reopen: 'Reopen',
+    unreject: 'Undo rejection',
     reason: 'Reason',
     reasonHint: {
       hold: 'What are you waiting for? Why is it stuck?',
       sendBack: 'Why it is being sent back (e.g. no effect)',
       reject: 'Reason for rejecting',
       reopen: 'Reason for reopening',
+      unreject: 'Why this should be worked on again',
     },
     cause: 'Cause',
     countermeasure: 'Countermeasure',
@@ -183,7 +186,7 @@ export const en: Dict = {
     denied: {
       worker: 'Only the assignee or an admin can change this.',
       owner: 'Only the reporter or an admin can change this.',
-      admin: 'Only admins can reject or reopen. Please ask an admin if needed.',
+      admin: 'Only admins can reject, undo a rejection, or reopen. Please ask an admin if needed.',
     },
   },
   detail: {
@@ -345,5 +348,21 @@ export const en: Dict = {
     closed: 'This issue was closed and can no longer be changed. Please close this.',
     again: 'Check the latest state and press it again.',
     notMoved: 'Could not move #{{n}}.',
+  },
+
+  delete: {
+    open: 'Delete',
+    title: 'Delete issue',
+    note: 'Deleted issues move to the trash and are left out of lists, notifications, and reports. You can restore them from the trash at any time.',
+    reason: 'Reason for deleting',
+    reasonHint: 'e.g. Registered twice by mistake',
+    confirm: 'Move to trash',
+    denied: 'Only admins can delete issues. Please ask an admin if needed.',
+    inTrash: 'This issue is in the trash',
+    by: 'Deleted by {{name}} on {{when}}',
+    restore: 'Restore',
+    moved: 'Moved #{{n}} to the trash.',
+    undo: 'Undo',
+    undone: 'Restored #{{n}}.',
   },
 };
