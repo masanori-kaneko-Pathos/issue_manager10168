@@ -355,9 +355,11 @@ export class TabList implements OnInit {
   showFilters = signal(false);
   suggestOpen = signal(false);
   active = signal(-1); // ↑↓キーで選んでいる候補（-1 は未選択）
-  /** 詳細画面で削除して戻ってきたときの知らせ（undone＝元に戻した） */
+  /** 詳細画面で削除して戻ってきたときの知らせ（undone＝元に戻した）。
+   *  このタブは、入れ物がプロジェクトを読み終えてから作られ、そのときにはもう移動が終わっている。
+   *  そのため、移動の最中にしか読めない currentNavigation ではなく、履歴に残った state から読む */
   deletedNotice = signal<{ iid: string; number: number; undone: boolean } | null>((() => {
-    const d = this.router.currentNavigation()?.extras.state?.['deleted'] as
+    const d = (history.state as Record<string, unknown> | null)?.['deleted'] as
       { iid: string; number: number } | undefined;
     return d ? { ...d, undone: false } : null;
   })());
@@ -461,7 +463,9 @@ export class TabList implements OnInit {
     return out;
   });
 
+
   async ngOnInit() {
+    console.log('[deleted] init', JSON.stringify(history.state), this.deletedNotice()); // 確認用。あとで消す
     // 削除の知らせは1回だけ。読んだら履歴から消し、再読み込みで出し直さない
     const { deleted, ...rest } = (history.state ?? {}) as Record<string, unknown>;
     if (deleted !== undefined) history.replaceState(rest, '');
