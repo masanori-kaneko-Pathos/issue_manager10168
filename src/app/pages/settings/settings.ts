@@ -59,7 +59,7 @@ type Section = 'general' | 'password';
             <input type="password" [(ngModel)]="currentPw" autocomplete="current-password" />
           </label>
           <label class="field">{{ 'settings.newPw' | t }}
-            <input type="password" [(ngModel)]="newPw" autocomplete="new-password" minlength="6" />
+            <input type="password" [(ngModel)]="newPw" autocomplete="new-password" minlength="8" />
           </label>
           <div class="row">
             @if (msg()?.section === 'password') { <span class="msg" [class.ng]="!msg()!.ok">{{ msg()!.key | t }}</span> }
@@ -158,7 +158,8 @@ export class Settings implements OnInit {
     const name = this.displayName().trim();
     if (name !== s.displayName) changes.displayName = name;
     if (this.language() !== s.language) changes.language = this.language();
-
+    if (this.timeZone() !== s.timeZone) changes.timeZone = this.timeZone();
+    if (this.defaultView() !== s.defaultView) changes.defaultView = this.defaultView();
 
     await this.run('general', async () => {
       await this.authService.updateProfile(changes);
@@ -175,6 +176,7 @@ export class Settings implements OnInit {
     this.displayName.set(s.displayName);
     this.language.set(s.language);
     this.timeZone.set(s.timeZone);
+    this.defaultView.set(s.defaultView);
     this.msg.set(null);
   }
 

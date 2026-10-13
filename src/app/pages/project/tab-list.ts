@@ -466,7 +466,6 @@ export class TabList implements OnInit {
 
 
   async ngOnInit() {
-    console.log('[deleted] init', JSON.stringify(history.state), this.deletedNotice()); // 確認用。あとで消す
     // 削除の知らせは1回だけ。読んだら履歴から消し、再読み込みで出し直さない
     const { deleted, ...rest } = (history.state ?? {}) as Record<string, unknown>;
     if (deleted !== undefined) history.replaceState(rest, '');

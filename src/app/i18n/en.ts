@@ -293,7 +293,7 @@ export const en: Dict = {
   tip: { help: 'Show help', whyDisabled: 'Why is this disabled?' },
   tabs: { list: 'List', board: 'Board', calendar: 'Calendar', gantt: 'Gantt', members: 'Members', settings: 'Settings' },
   board: {
-    all: 'Evreyone',
+    all: 'Everyone',
     dueAll: 'Any due date',
     mine: 'Mine',
     due: { today: 'Due today', week: 'Within a week', overdue: 'Overdue' },
