@@ -78,7 +78,8 @@ service cloud.firestore {
     function editAllowed(pid) {
       let d = request.resource.data;
       return d.diff(resource.data).affectedKeys().hasOnly([
-               'title', 'type', 'importance', 'dueAt', 'assigneeId', 'doneCriteria', 'description', 'labelIds', 'updatedAt'])
+             'title', 'type', 'importance', 'dueAt', 'assigneeId', 'doneCriteria', 'description', 'labelIds',
+              'updatedAt', 'updatedBy'])
         && d.labelIds is list && d.labelIds.size() <= 5
         && resource.data.status != 'closed'
         && (myRole(pid) == 'admin'
@@ -95,7 +96,7 @@ service cloud.firestore {
     // 優先度の手動変更：担当者と管理者。クローズ・却下は不可
     function priorityAllowed(pid) {
       let d = request.resource.data;
-      return d.diff(resource.data).affectedKeys().hasOnly(['priorityOverride', 'updatedAt'])
+      return d.diff(resource.data).affectedKeys().hasOnly(['priorityOverride', 'updatedAt', 'updatedBy'])
         && !(resource.data.status in ['closed', 'rejected'])
         && (myRole(pid) == 'admin' || resource.data.assigneeId == request.auth.uid)
         && (d.priorityOverride == null || d.priorityOverride in ['high', 'mid', 'low']);
@@ -166,8 +167,9 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly([
                'number', 'title', 'type', 'status', 'importance', 'priorityOverride',
                'dueAt', 'startAt', 'doneCriteria', 'description', 'assigneeId',
-               'reporterId', 'labelIds', 'createdAt', 'updatedAt'])
+               'reporterId', 'labelIds', 'createdAt', 'updatedAt', 'updatedBy'])
           && request.resource.data.reporterId == request.auth.uid
+          && request.resource.data.updatedBy == request.auth.uid
           && request.resource.data.status == 'open'
           && request.resource.data.priorityOverride == null
           && request.resource.data.title is string
@@ -187,9 +189,10 @@ service cloud.firestore {
           && getAfter(projectPath(pid)).data.issueSeq == get(projectPath(pid)).data.issueSeq + 1;
         allow update: if canWrite(pid)
           && request.resource.data.updatedAt == request.time
+          && request.resource.data.updatedBy == request.auth.uid
           && (
             (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-               'status', 'statusReason', 'updatedAt', 'cause', 'countermeasure', 'causeCategory',
+               'status', 'statusReason', 'updatedAt', 'updatedBy', 'cause', 'countermeasure', 'causeCategory',
                'doneCriteriaMet', 'resolvedAt', 'effect', 'learning', 'closedAt'])
              && statusChangeAllowed(pid))
             || editAllowed(pid)

@@ -2,7 +2,7 @@ import { Component, OnInit, computed, inject, input, output, signal } from '@ang
 import { FormsModule } from '@angular/forms';
 import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth/auth.service';
-import { IssueEdits, IssueService } from '../../core/issue/issue.service';
+import { ConflictError, IssueEdits, IssueService, conflictWho } from '../../core/issue/issue.service';
 import { ISSUE_TYPES, Issue, IssueType, Label, Level, Member } from '../../core/models';
 import { LabelPicker } from '../../shared/label-picker';
 import { endOfDayIn, formatDateTime, parseLocalInput, toLocalInput } from '../../core/time/time';
@@ -85,10 +85,28 @@ function sameIds(a: string[], b: string[]) {
         </label>
       }
 
+      @if (conflict(); as c) {
+        @let w = who(c);
+        <div class="conflict" role="alert">
+          <p>{{ w.key | t: w.params }}</p>
+          @if (c.status === 'closed') {
+            <p>{{ 'conflict.closed' | t }}</p>
+          } @else {
+            <p>{{ 'conflict.editHint' | t }}</p>
+            <button type="button" class="pull" (click)="pullLatest()">{{ 'conflict.pull' | t }}</button>
+          }
+        </div>
+      }
+      @if (info()) {
+        <div class="pulled" role="status">
+          <p>{{ info() | t }}</p>
+          @if (bothChanged().length) { <p>{{ 'conflict.both' | t: { fields: bothLabels() } }}</p> }
+        </div>
+      }
       @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
       <div class="row">
         <button type="button" class="link" (click)="cancel.emit()">{{ 'workflow.cancel' | t }}</button>
-        <button type="button" class="primary" [class.danger]="dueChanged() && isPastDue()" [disabled]="busy()"
+        <button type="button" class="primary" [class.danger]="dueChanged() && isPastDue()" [disabled]="busy() || !!conflict()"
           (click)="save()">{{ (dueChanged() && isPastDue() ? 'dueDialog.confirmPast' : 'edit.save') | t }}</button>
       </div>
     </section>
@@ -120,6 +138,13 @@ function sameIds(a: string[], b: string[]) {
     .primary:disabled { background: var(--disabled); }     
     .primary.danger { background: var(--danger); }
     .error { color: var(--danger-text); }
+    .conflict, .pulled { padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: normal; }
+    .conflict { background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
+    .pulled { background: var(--surface-alt); }
+    .conflict p, .pulled p { margin: 0 0 6px; }
+    .conflict p:last-child, .pulled p:last-child { margin-bottom: 0; }
+    .pull { min-height: 44px; padding: 0 16px; border: 1px solid var(--primary); color: var(--primary);
+      background: var(--surface); border-radius: 8px; font-size: 14px; }
     .warn { margin: 4px 0; padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: normal;
       background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
   `,
@@ -157,6 +182,15 @@ export class IssueEdit implements OnInit {
   doneCriteria = '';
   description = '';
   reason = '';
+    /** 比べる相手（開いた時点の課題。取り込んだあとは最新） */
+  private base = signal<Issue | null>(null);
+  /** 保存しようとしたら、ほかの人が先に更新していた（中身は最新の課題） */
+  conflict = signal<Issue | null>(null);
+  /** 自分もほかの人も変えていた欄（翻訳キー issue.〇〇 の〇〇） */
+  bothChanged = signal<string[]>([]);
+  info = signal('');
+  bothLabels = computed(() =>
+    this.bothChanged().map((k) => this.i18n.t('issue.' + k)).join(this.i18n.lang() === 'ja' ? '・' : ', '));
 
   tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
   assignable = computed(() => this.members().filter((m) => m.role !== 'viewer'));
@@ -164,17 +198,18 @@ export class IssueEdit implements OnInit {
     const d = this.dueAt();
     return d ? formatDateTime(d, this.tz(), this.i18n.lang()) : '';
   });
-  dueChanged = computed(() => this.dueAt()?.getTime() !== this.issue().dueAt.toMillis());
+  dueChanged = computed(() => this.dueAt()?.getTime() !== this.base()?.dueAt.toMillis());
 
   isPastDue = computed(() => {
     const d = this.dueAt();
     return !!d && d.getTime() <= Date.now();
   });
   /** 期限か担当者を変えたときだけ、理由が必須 */
-  needsReason = computed(() => this.dueChanged() || this.assigneeId() !== this.issue().assigneeId);
+  needsReason = computed(() => this.dueChanged() || this.assigneeId() !== this.base()?.assigneeId);
 
   ngOnInit() {
     const i = this.issue();
+    this.base.set(i);
     this.title = i.title;
     this.type.set(i.type);
     this.importance.set(i.importance);
@@ -198,7 +233,7 @@ export class IssueEdit implements OnInit {
   }
 
   async save() {
-    const i = this.issue();
+    const i = this.base()!;
     const title = this.title.trim();
     const doneCriteria = this.doneCriteria.trim();
     const due = this.dueAt();
@@ -221,16 +256,58 @@ export class IssueEdit implements OnInit {
 
     this.busy.set(true);
     this.error.set('');
+    this.info.set('');
     try {
       await this.issueService.updateIssue(
         this.pid(), i, edits, this.reason.trim(), auth.currentUser!.uid, this.tz(),
       );
       this.saved.emit();
     } catch (e) {
-      console.error(e);
-      this.error.set('common.saveError');
+      if (e instanceof ConflictError) {
+        this.conflict.set(e.latest);
+      } else {
+        console.error(e);
+        this.error.set('common.saveError');
+      }
     } finally {
       this.busy.set(false);
     }
+  }
+
+  /** 最新の内容を取り込む。自分が触っていない欄は最新に、両方が変えた欄は自分の入力を残す */
+  pullLatest() {
+    const latest = this.conflict();
+    const was = this.base();
+    if (!latest || !was) return;
+    const both: string[] = [];
+    /** mine＝今の入力、before＝開いた時点、after＝最新 */
+    const merge = <T>(key: string, mine: T, before: T, after: T, apply: (v: T) => void,
+      eq: (a: T, b: T) => boolean = (a, b) => a === b) => {
+      if (eq(mine, before)) apply(after);                               // 自分は触っていない → 最新に
+      else if (!eq(after, before) && !eq(mine, after)) both.push(key);  // 両方が別々に変えた → 自分の入力を残す
+    };
+    merge('title', this.title.trim(), was.title, latest.title, (v) => (this.title = v));
+    merge('type', this.type(), was.type, latest.type, (v) => this.type.set(v));
+    merge('importance', this.importance(), was.importance, latest.importance, (v) => this.importance.set(v));
+    merge('due', this.dueAt()?.getTime() ?? 0, was.dueAt.toMillis(), latest.dueAt.toMillis(), (v) => {
+      const d = new Date(v);
+      this.dueAt.set(d);
+      this.dueInput = toLocalInput(d, this.tz());
+    });
+    merge('assignee', this.assigneeId(), was.assigneeId, latest.assigneeId, (v) => this.assigneeId.set(v));
+    merge('labelIds', this.labelIds(), was.labelIds ?? [], latest.labelIds ?? [], (v) => this.labelIds.set(v), sameIds);
+    merge('doneCriteria', this.doneCriteria.trim(), was.doneCriteria, latest.doneCriteria,
+      (v) => (this.doneCriteria = v));
+    merge('description', this.description, was.description, latest.description, (v) => (this.description = v));
+
+    // 比べる相手を最新にする。これで次の保存は、自分が変えた欄だけを送る
+    this.base.set(latest);
+    this.bothChanged.set(both);
+    this.conflict.set(null);
+    this.info.set('conflict.pulled');
+  }
+
+  who(latest: Issue) {
+    return conflictWho(latest, this.members(), auth.currentUser!.uid);
   }
 }

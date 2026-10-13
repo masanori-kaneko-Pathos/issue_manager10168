@@ -332,4 +332,18 @@ export const en: Dict = {
     deletedBy: '{{name}} deleted a comment',
     deleteConfirm: 'Delete this comment? The deletion will remain in the history.',
   },
+  conflict: {
+    byName: '{{name}} updated this issue before you.',
+    byOther: 'Someone else updated this issue before you.',
+    bySelf: 'You updated this issue in another window.',
+    editHint: 'Press "Load latest" to update the fields you have not changed. Fields you changed keep your input.',
+    pull: 'Load latest',
+    pulled: 'Loaded the latest content. Check it and save again.',
+    both: 'Also changed by someone else: {{fields}}. Your input was kept for these fields.',
+    retry: 'Updated to the latest content. Check it and press "Confirm" again.',
+    statusChanged: 'The status is now "{{status}}", so this action is no longer available. Close this and choose again from the latest state.',
+    closed: 'This issue was closed and can no longer be changed. Please close this.',
+    again: 'Check the latest state and press it again.',
+    notMoved: 'Could not move #{{n}}.',
+  },
 };

@@ -95,7 +95,7 @@ function addDays(dt: Date, n: number): Date {
       </div>
     }
     @if (pending(); as p) {
-      <app-due-dialog [issue]="p.issue" [date]="p.date" [pid]="ctx.pid()"
+      <app-due-dialog [issue]="p.issue" [date]="p.date" [pid]="ctx.pid()" [members]="ctx.members()"
         (done)="onDialogDone()" (cancel)="pending.set(null)" />
     }
   `,

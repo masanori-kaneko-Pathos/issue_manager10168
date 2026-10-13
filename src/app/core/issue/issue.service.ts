@@ -1,17 +1,43 @@
 import { Injectable } from '@angular/core';
 import {
-  FirestoreError, QueryDocumentSnapshot, Timestamp, Unsubscribe, collection, collectionGroup, doc, getDoc, getDocs,
-  onSnapshot, orderBy, query, runTransaction, serverTimestamp, where, writeBatch, addDoc, updateDoc,
+  DocumentReference, FirestoreError, QueryDocumentSnapshot, Timestamp, Transaction, Unsubscribe, collection,
+  collectionGroup, doc, getDoc, getDocs, onSnapshot, orderBy, query, runTransaction, serverTimestamp, where,
+  addDoc, updateDoc,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
-  CauseCategory, Effect, Issue, IssueType, Level, OPEN_STATUSES, TimelineItem,
+  CauseCategory, Effect, Issue, IssueType, Level, Member, OPEN_STATUSES, TimelineItem,
 } from '../models';
 import { Transition } from './workflow';
 
 /** 見張りで届いた文書を課題にする。保存直後の手元の版では、サーバーの時刻が null なので仮の時刻を入れる */
 function toIssue(d: QueryDocumentSnapshot): Issue {
   return { ...(d.data({ serverTimestamps: 'estimate' }) as Omit<Issue, 'id'>), id: d.id };
+}
+
+/** 開いた時点（base）から、ほかの人が課題を更新していた。latest は今の課題 */
+export class ConflictError extends Error {
+  constructor(readonly latest: Issue) {
+    super('conflict');
+  }
+}
+
+/** 衝突のメッセージの1文目：だれが先に更新したか（翻訳キーと差し込む値） */
+export function conflictWho(
+  latest: Issue, members: Member[], myUid: string,
+): { key: string; params?: Record<string, string> } {
+  if (latest.updatedBy === myUid) return { key: 'conflict.bySelf' };
+  const name = members.find((m) => m.uid === latest.updatedBy)?.displayName;
+  // updatedBy の無い古い課題や、外れた人のときは「ほかの人」
+  return name ? { key: 'conflict.byName', params: { name } } : { key: 'conflict.byOther' };
+}
+
+/** トランザクションの中で、課題が base から変わっていないかを確かめる。変わっていたら ConflictError */
+async function assertUnchanged(tx: Transaction, ref: DocumentReference, base: Issue) {
+  const s = await tx.get(ref);
+  if (!s.exists()) throw new Error('issue-not-found');
+  const latest = { ...(s.data() as Omit<Issue, 'id'>), id: s.id };
+  if (!latest.updatedAt.isEqual(base.updatedAt)) throw new ConflictError(latest);
 }
 
 export interface NewIssue {
@@ -78,6 +104,7 @@ export class IssueService {
         labelIds: input.labelIds,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+        updatedBy: uid,
       });
       tx.set(doc(collection(issueRef, 'events')), { type: 'created', by: uid, tz, at: serverTimestamp() });
       return number;
@@ -115,6 +142,7 @@ export class IssueService {
       status: t.to,
       statusReason: p.reason,
       updatedAt: serverTimestamp(),
+      updatedBy: uid,
     };
     if (t.needs === 'resolve') {
       Object.assign(update, {
@@ -133,12 +161,14 @@ export class IssueService {
         closedAt: serverTimestamp(),
       });
     }
-    const batch = writeBatch(db);
-    batch.update(ref, update);
-    batch.set(doc(collection(ref, 'events')), {
-      type: 'status', from: issue.status, to: t.to, reason: p.reason, by: uid, tz, at: serverTimestamp(),
+    // issue は、モーダルを開いた時点（かんばんならつかんだ時点）の課題
+    await runTransaction(db, async (tx) => {
+      await assertUnchanged(tx, ref, issue);
+      tx.update(ref, update);
+      tx.set(doc(collection(ref, 'events')), {
+        type: 'status', from: issue.status, to: t.to, reason: p.reason, by: uid, tz, at: serverTimestamp(),
+      });
     });
-    await batch.commit();
   }
 
   addComment(pid: string, iid: string, body: string, uid: string, tz: string) {
@@ -211,7 +241,7 @@ export class IssueService {
     const ref = doc(db, 'projects', pid, 'issues', issue.id);
     const keys = (Object.keys(edits) as (keyof IssueEdits)[]).filter((k) => edits[k] !== undefined);
 
-    const update: Record<string, unknown> = { updatedAt: serverTimestamp() };
+    const update: Record<string, unknown> = { updatedAt: serverTimestamp(), updatedBy: uid };
     for (const k of keys) {
       update[k] = k === 'dueAt' ? Timestamp.fromDate(edits.dueAt!) : edits[k];
     }
@@ -223,12 +253,13 @@ export class IssueService {
       changes['doneCriteria'] = { from: issue.doneCriteria, to: edits.doneCriteria };
     }
 
-    const batch = writeBatch(db);
-    batch.update(ref, update);
-    batch.set(doc(collection(ref, 'events')), {
-      type: 'edit', fields: keys, changes, reason, by: uid, tz, at: serverTimestamp(),
+    await runTransaction(db, async (tx) => {
+      await assertUnchanged(tx, ref, issue);
+      tx.update(ref, update);
+      tx.set(doc(collection(ref, 'events')), {
+        type: 'edit', fields: keys, changes, reason, by: uid, tz, at: serverTimestamp(),
+      });
     });
-    await batch.commit();
   }
 
   /** 優先度の手動変更。value が null なら「自動に戻す」 */
@@ -236,18 +267,18 @@ export class IssueService {
     pid: string, issue: Issue, value: Level | null, auto: Level, reason: string, uid: string, tz: string,
   ) {
     const ref = doc(db, 'projects', pid, 'issues', issue.id);
-    const batch = writeBatch(db);
-    batch.update(ref, { priorityOverride: value, updatedAt: serverTimestamp() });
-    batch.set(doc(collection(ref, 'events')), {
-      type: 'priority',
-      fromPriority: issue.priorityOverride ?? null,
-      toPriority: value,
-      autoPriority: auto,
-      reason, by: uid, tz, at: serverTimestamp(),
+    await runTransaction(db, async (tx) => {
+      await assertUnchanged(tx, ref, issue);
+      tx.update(ref, { priorityOverride: value, updatedAt: serverTimestamp(), updatedBy: uid });
+      tx.set(doc(collection(ref, 'events')), {
+        type: 'priority',
+        fromPriority: issue.priorityOverride ?? null,
+        toPriority: value,
+        autoPriority: auto,
+        reason, by: uid, tz, at: serverTimestamp(),
+      });
     });
-    await batch.commit();
   }
-
   /** クローズ・却下も含めたすべての課題（検索と「すべて」表示のときだけ使う） */
   async listAll(pid: string): Promise<Issue[]> {
     const s = await getDocs(collection(db, 'projects', pid, 'issues'));

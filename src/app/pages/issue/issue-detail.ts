@@ -7,7 +7,7 @@ import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth/auth.service';
 import { Clock } from '../../core/time/clock';
 import { ProjectService } from '../../core/project/project.service';
-import { EMPTY_STATUS_PAYLOAD, IssueService } from '../../core/issue/issue.service';
+import { ConflictError, EMPTY_STATUS_PAYLOAD, IssueService, conflictWho } from '../../core/issue/issue.service';
 import { Issue, Label, Level, Member, Role, TimelineItem, labelsOf } from '../../core/models';
 import { StatusDialog } from '../../shared/status-dialog';
 import { LabelChip } from '../../shared/label-chip';
@@ -99,10 +99,22 @@ import { I18nService, TPipe } from '../../i18n/i18n';
             <label class="field">{{ 'priorityEdit.reason' | t }}
               <textarea [(ngModel)]="prioReason" rows="2" [placeholder]="'priorityEdit.reasonHint' | t"></textarea>
             </label>
+            @if (prioConflict(); as c) {
+              @let w = who(c.latest);
+              <div class="conflict" role="alert">
+                <p>{{ w.key | t: w.params }}</p>
+                @if (c.blocked) {
+                  <p>{{ 'conflict.statusChanged' | t: { status: i18n.t('status.' + c.latest.status) } }}</p>
+                } @else {
+                  <p>{{ 'conflict.retry' | t }}</p>
+                }
+              </div>
+            }
             @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
             <div class="row">
               <button type="button" class="link" (click)="prioPanel.set(false)">{{ 'workflow.cancel' | t }}</button>
-              <button type="button" class="primary" [disabled]="busy() || !prioChoice() || !prioReason.trim()"
+              <button type="button" class="primary"
+                [disabled]="busy() || !prioChoice() || !prioReason.trim() || !!prioConflict()?.blocked"
                 (click)="confirmPriority()">{{ 'workflow.confirm' | t }}</button>
             </div>
           </section>
@@ -120,9 +132,13 @@ import { I18nService, TPipe } from '../../i18n/i18n';
           }
           @if (deniedReasons().length) { <app-help-tip kind="denied" [keys]="deniedReasons()" /> }
         </section>
+        @if (actionConflict(); as c) {
+          @let w = who(c);
+          <p class="error" role="alert">{{ w.key | t: w.params }} {{ 'conflict.again' | t }}</p>
+        }
 
           @if (active(); as t) {
-          <app-status-dialog [issue]="base()!" [transition]="t" [pid]="pid"
+          <app-status-dialog [issue]="base()!" [transition]="t" [pid]="pid" [members]="members()"
             (done)="onStatusDone()" (cancel)="active.set(null)" />
         }
 
@@ -231,6 +247,10 @@ import { I18nService, TPipe } from '../../i18n/i18n';
       border-radius: 8px; font-size: 14px; }
     .primary:disabled { background: var(--disabled); }
     .error { color: var(--danger-text); }
+    .conflict { padding: 10px 12px; border-radius: 8px; font-size: 13px;
+      background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
+    .conflict p { margin: 0 0 4px; }
+    .conflict p:last-child { margin-bottom: 0; }
     .timeline { list-style: none; padding: 0; margin: 0; }
     .timeline li { padding: 8px 0; border-bottom: 1px solid var(--border); }
     .timeline li.comment { background: var(--surface-alt); padding: 8px 12px; }
@@ -272,6 +292,12 @@ export class IssueDetail implements OnInit {
   prioPanel = signal(false);
   prioChoice = signal<Level | 'auto' | null>(null);
   prioReason = '';
+  /** 優先度のパネルを開いた時点の課題（衝突のあとは最新） */
+  private prioBase = signal<Issue | null>(null);
+  /** 優先度の保存で衝突した（blocked＝クローズ・却下されて、もう変えられない） */
+  prioConflict = signal<{ latest: Issue; blocked: boolean } | null>(null);
+  /** 入力の要らないステータス変更で衝突したときの、最新の課題 */
+  actionConflict = signal<Issue | null>(null);
 
   issue = signal<Issue | null>(null);
   role = signal<Role | null>(null);
@@ -431,8 +457,9 @@ export class IssueDetail implements OnInit {
     this.stops = [];
     this.router.navigate(['/'], { replaceUrl: true, state: { removedFrom: this.projectName } });
   }
-  
+
   click(t: Transition) {
+    this.actionConflict.set(null);
     if (t.needs === 'none') {
       this.applyNow(t);
       return;
@@ -451,10 +478,14 @@ export class IssueDetail implements OnInit {
     this.busy.set(true);
     try {
       await this.issueService.changeStatus(this.pid, this.issue()!, t, EMPTY_STATUS_PAYLOAD, this.myUid, this.tz());
-
     } catch (e) {
-      console.error(e);
-      this.error.set('common.saveError');
+      if (e instanceof ConflictError) {
+        // 画面は見張りで最新になっているので、ボタンもすでに最新の状態に合っている
+        this.actionConflict.set(e.latest);
+      } else {
+        console.error(e);
+        this.error.set('common.saveError');
+      }
     } finally {
       this.busy.set(false);
     }
@@ -481,6 +512,10 @@ export class IssueDetail implements OnInit {
 
   memberName(uid: string) {
     return this.members().find((m) => m.uid === uid)?.displayName ?? '—';
+  }
+
+  who(latest: Issue) {
+    return conflictWho(latest, this.members(), this.myUid);
   }
 
   eventText(item: TimelineItem) {
@@ -523,6 +558,8 @@ export class IssueDetail implements OnInit {
   }
 
   openPriority() {
+    this.prioBase.set(this.issue());
+    this.prioConflict.set(null);
     this.prioChoice.set(null);
     this.prioReason = '';
     this.error.set('');
@@ -535,14 +572,21 @@ export class IssueDetail implements OnInit {
     const value = choice === 'auto' ? null : choice;
     this.busy.set(true);
     this.error.set('');
+    this.prioConflict.set(null);
     try {
       await this.issueService.setPriority(
-        this.pid, this.issue()!, value, this.autoPriority(), this.prioReason.trim(), this.myUid, this.tz(),
+        this.pid, this.prioBase()!, value, this.autoPriority(), this.prioReason.trim(), this.myUid, this.tz(),
       );
       this.prioPanel.set(false);
     } catch (e) {
-      console.error(e);
-      this.error.set('common.saveError');
+      if (e instanceof ConflictError) {
+        const blocked = e.latest.status === 'closed' || e.latest.status === 'rejected';
+        if (!blocked) this.prioBase.set(e.latest);
+        this.prioConflict.set({ latest: e.latest, blocked });
+      } else {
+        console.error(e);
+        this.error.set('common.saveError');
+      }
     } finally {
       this.busy.set(false);
     }

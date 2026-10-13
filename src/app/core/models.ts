@@ -89,6 +89,7 @@ export interface Issue {
   labelIds: string[];
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  updatedBy?: string;         // 最後に書き込んだ人の uid
   statusReason?: string;      // 直近の保留・却下などの理由
   cause?: string;
   countermeasure?: string;

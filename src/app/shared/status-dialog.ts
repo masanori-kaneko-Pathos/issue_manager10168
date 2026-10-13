@@ -2,10 +2,10 @@ import { Component, OnInit, computed, inject, input, output, signal } from '@ang
 import { FormsModule } from '@angular/forms';
 import { auth } from '../core/firebase';
 import { AuthService } from '../core/auth/auth.service';
-import { IssueService } from '../core/issue/issue.service';
-import { CAUSE_CATEGORIES, CauseCategory, Effect, Issue } from '../core/models';
+import { ConflictError, IssueService, conflictWho } from '../core/issue/issue.service';
+import { CAUSE_CATEGORIES, CauseCategory, Effect, Issue, Member } from '../core/models';
 import { Transition } from '../core/issue/workflow';
-import { TPipe } from '../i18n/i18n';
+import { I18nService, TPipe } from '../i18n/i18n';
 
 @Component({
   selector: 'app-status-dialog',
@@ -56,7 +56,7 @@ import { TPipe } from '../i18n/i18n';
       }
       @if (transition().needs === 'resolve' || transition().needs === 'close') {
         <div class="criteria">
-          <p class="pre">{{ issue().doneCriteria }}</p>
+          <p class="pre">{{ current().doneCriteria }}</p>
           <label class="check">
             <input type="checkbox" [checked]="doneMet()" (change)="doneMet.set(!doneMet())" />
             {{ 'workflow.doneCriteriaMet' | t }}
@@ -64,10 +64,22 @@ import { TPipe } from '../i18n/i18n';
         </div>
       }
 
+      @if (conflict(); as c) {
+        @let w = who(c.latest);
+        <div class="conflict" role="alert">
+          <p>{{ w.key | t: w.params }}</p>
+          @if (c.blocked) {
+            <p>{{ 'conflict.statusChanged' | t: { status: i18n.t('status.' + c.latest.status) } }}</p>
+          } @else {
+            <p>{{ 'conflict.retry' | t }}</p>
+          }
+        </div>
+      }
       @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
       <div class="row">
         <button type="button" class="link" (click)="cancel.emit()">{{ 'workflow.cancel' | t }}</button>
-        <button type="button" class="primary" [disabled]="busy() || !canConfirm()" (click)="confirm()">
+        <button type="button" class="primary" [disabled]="busy() || !canConfirm() || !!conflict()?.blocked"
+          (click)="confirm()">
           {{ 'workflow.confirm' | t }}</button>
       </div>
     </section>
@@ -101,10 +113,16 @@ import { TPipe } from '../i18n/i18n';
       border-radius: 8px; font-size: 14px; }
     .primary:disabled { background: var(--disabled); }
     .error { color: var(--danger-text); }
+    .conflict { padding: 10px 12px; border-radius: 8px; font-size: 13px;
+      background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
+    .conflict p { margin: 0 0 4px; }
+    .conflict p:last-child { margin-bottom: 0; }
   `,
 })
 export class StatusDialog implements OnInit {
   issue = input.required<Issue>();
+  /** 「だれが先に更新したか」の名前を引くため */
+  members = input<Member[]>([]);
   transition = input.required<Transition>();
   pid = input.required<string>();
   done = output<void>();
@@ -112,6 +130,7 @@ export class StatusDialog implements OnInit {
 
   private issueService = inject(IssueService);
   private authService = inject(AuthService);
+  protected i18n = inject(I18nService);
 
   readonly causeCategories = CAUSE_CATEGORIES;
   readonly effects: Effect[] = ['yes', 'partial', 'no'];
@@ -125,6 +144,11 @@ export class StatusDialog implements OnInit {
   doneMet = signal(false);
   busy = signal(false);
   error = signal('');
+  /** 保存しようとしたら、ほかの人が先に更新していた（blocked なら、この操作はもうできない） */
+  conflict = signal<{ latest: Issue; blocked: boolean } | null>(null);
+  /** 衝突のあとは、最新の課題を土台にする */
+  private base = signal<Issue | null>(null);
+  current = computed(() => this.base() ?? this.issue());
 
   private tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
 
@@ -148,8 +172,9 @@ export class StatusDialog implements OnInit {
   async confirm() {
     this.busy.set(true);
     this.error.set('');
+    this.conflict.set(null);
     try {
-      await this.issueService.changeStatus(this.pid(), this.issue(), this.transition(), {
+      await this.issueService.changeStatus(this.pid(), this.current(), this.transition(), {
         reason: this.reason.trim(),
         cause: this.cause.trim(),
         countermeasure: this.countermeasure.trim(),
@@ -160,10 +185,25 @@ export class StatusDialog implements OnInit {
       }, auth.currentUser!.uid, this.tz());
       this.done.emit();
     } catch (e) {
-      console.error(e);
-      this.error.set('common.saveError');
+      if (e instanceof ConflictError) {
+        this.onConflict(e.latest);
+      } else {
+        console.error(e);
+        this.error.set('common.saveError');
+      }
     } finally {
       this.busy.set(false);
     }
+  }
+
+  /** ステータスが同じなら、最新を土台にしてやり直せる。変わっていたら、この操作はもうできない */
+  private onConflict(latest: Issue) {
+    const blocked = latest.status !== this.current().status;
+    if (!blocked) this.base.set(latest);
+    this.conflict.set({ latest, blocked });
+  }
+
+  who(latest: Issue) {
+    return conflictWho(latest, this.members(), auth.currentUser!.uid);
   }
 }

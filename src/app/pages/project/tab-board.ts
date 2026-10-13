@@ -6,7 +6,7 @@ import { CdkScrollable } from '@angular/cdk/scrolling';
 import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth/auth.service';
 import { Clock } from '../../core/time/clock';
-import { EMPTY_STATUS_PAYLOAD, IssueService } from '../../core/issue/issue.service';
+import { ConflictError, EMPTY_STATUS_PAYLOAD, IssueService, conflictWho } from '../../core/issue/issue.service';
 import { Issue, IssueStatus, Level, labelsOf } from '../../core/models';
 import { LabelChip } from '../../shared/label-chip';
 import { PriorityMark } from '../../shared/priority-mark';
@@ -62,6 +62,10 @@ const EMPTY_PAYLOAD = {
       }
     </div>
 
+    @if (notMoved(); as m) {
+      @let w = who(m.latest);
+      <p class="notice" role="status">{{ 'conflict.notMoved' | t: { n: '' + m.n } }} {{ w.key | t: w.params }}</p>
+    }
     @if (loading()) {
       <p>{{ 'common.loading' | t }}</p>
     } @else {
@@ -156,7 +160,7 @@ const EMPTY_PAYLOAD = {
     }
 
     @if (pending(); as p) {
-      <app-status-dialog [issue]="p.issue" [transition]="p.t" [pid]="ctx.pid()"
+      <app-status-dialog [issue]="p.issue" [transition]="p.t" [pid]="ctx.pid()" [members]="ctx.members()"
         (done)="onDialogDone()" (cancel)="pending.set(null)" />
     }
   `,
@@ -166,6 +170,8 @@ const EMPTY_PAYLOAD = {
     .chips button { min-height: 36px; padding: 0 14px; border: 1px solid var(--border-strong); background: var(--surface);
       border-radius: 18px; font-size: 13px; cursor: pointer; }
     .chips button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+    .notice { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; font-size: 13px;
+      background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
 
     .board { position: relative; display: flex; gap: 12px; align-items: flex-start; overflow-x: auto; padding-bottom: 8px; }
     .col { flex: 1 1 0; min-width: 220px; background: var(--surface-alt); border-radius: 10px;
@@ -271,6 +277,9 @@ export class ProjectBoard implements OnInit {
   menuFor = signal<string | null>(null);
   mine = signal(false);
   due = signal<DueFilter | null>(null);
+  /** 移動できなかったときの知らせ（数秒で消える） */
+  notMoved = signal<{ n: number; latest: Issue } | null>(null);
+  private noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
   private mq = window.matchMedia('(max-width: 600px)');
   isMobile = signal(this.mq.matches);
@@ -329,6 +338,7 @@ export class ProjectBoard implements OnInit {
     inject(DestroyRef).onDestroy(() => {
       this.mq.removeEventListener('change', onChange);
       this.stopClosed?.();
+      clearTimeout(this.noticeTimer);
       console.debug('[watch] 完了の列の見張りをやめた'); // 確認用。確かめ終わったら消す
     });
   }
@@ -424,8 +434,20 @@ export class ProjectBoard implements OnInit {
     try {
       await this.issueService.changeStatus(this.ctx.pid(), issue, t, EMPTY_STATUS_PAYLOAD, this.myUid, this.tz());
     } catch (e) {
-      console.error(e);
+      if (e instanceof ConflictError) this.showNotMoved(issue, e.latest);
+      else console.error(e);
     }
+  }
+
+  /** 先に更新されていて動かせなかったことを、6秒だけ知らせる */
+  private showNotMoved(issue: Issue, latest: Issue) {
+    this.notMoved.set({ n: issue.number, latest });
+    clearTimeout(this.noticeTimer);
+    this.noticeTimer = setTimeout(() => this.notMoved.set(null), 6000);
+  }
+
+  who(latest: Issue) {
+    return conflictWho(latest, this.ctx.members(), this.myUid);
   }
 
   async onDialogDone() {
