@@ -36,7 +36,7 @@ export const en: Dict = {
       default: 'Sign-in failed. Please try again.',
     },
   },
-  home: { welcome: 'Welcome, {{name}}', logout: 'Sign out' },
+
   common: {
     logout: 'Sign out',
     back: '← Back',
@@ -221,7 +221,7 @@ export const en: Dict = {
     autoLabel: 'Auto ({{p}})',
     reason: 'Reason for change',
     reasonHint: 'e.g. The work takes 5 days, so there is little real slack',
-    denied: 'Only the assignee or an admin can change priority.',
+    denied: 'Only the assignee or an admin can change priority. It cannot be changed once an issue is resolved, closed, or rejected.',
   },
 
   list: {
@@ -423,7 +423,6 @@ export const en: Dict = {
     onlyYou: 'Only you can see your inbox. Notes are not tracked for due dates or notifications until they become issues.',
     empty: 'No notes.',
     toIssue: 'Create issue',
-    edit: 'Edit',
     discard: 'Discard',
     old: 'Over 7 days',
     seeAll: 'See all ({{n}})',

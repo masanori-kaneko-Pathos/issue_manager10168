@@ -407,7 +407,7 @@ export class IssueDetail implements OnInit {
   canSetPriority = computed(() => {
     const i = this.issue();
     const r = this.role();
-    if (!i || !r || i.status === 'closed' || i.status === 'rejected') return false;
+    if (!i || !r || !this.isActive(i)) return false;
     return r === 'admin' || (r === 'member' && i.assigneeId === this.myUid);
   });
 

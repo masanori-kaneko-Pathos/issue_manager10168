@@ -120,7 +120,7 @@ service cloud.firestore {
     function priorityAllowed(pid) {
       let d = request.resource.data;
       return d.diff(resource.data).affectedKeys().hasOnly(['priorityOverride', 'updatedAt', 'updatedBy'])
-        && !(resource.data.status in ['closed', 'rejected', 'deleted'])
+        && resource.data.status in ['open', 'in_progress', 'on_hold']
         && (myRole(pid) == 'admin' || resource.data.assigneeId == request.auth.uid)
         && (d.priorityOverride == null || d.priorityOverride in ['high', 'mid', 'low']);
     }

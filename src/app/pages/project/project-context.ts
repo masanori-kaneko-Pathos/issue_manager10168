@@ -83,7 +83,6 @@ export class ProjectContext {
   }
 
   private stopWatching() {
-    if (!this.stopIssues && !this.stopMembers) return;
     this.stopIssues?.();
     this.stopMembers?.();
     this.stopIssues = null;

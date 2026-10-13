@@ -1,7 +1,7 @@
 import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { Unsubscribe } from 'firebase/firestore';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { focusById } from '../../core/dom';
 import { sendEmailVerification } from 'firebase/auth';
@@ -181,7 +181,6 @@ export class Projects implements OnInit {
   private issueService = inject(IssueService);
   private clock = inject(Clock);
   private tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
-  private router = inject(Router);
   protected i18n = inject(I18nService);
   private route = inject(ActivatedRoute);
   protected inbox = inject(InboxService);
@@ -366,11 +365,6 @@ export class Projects implements OnInit {
   remaining(i: Issue) {
     const r = remainingOf(i.dueAt.toMillis(), this.clock.now());
     return this.i18n.t(r.key, { n: String(r.n) });
-  }
-
-  async logout() {
-    await this.authService.logout();
-    await this.router.navigateByUrl('/login');
   }
   dueLabel(i: Issue) {
     return shortDue(i.dueAt.toDate(), this.tz(), this.i18n.lang(), this.clock.now());

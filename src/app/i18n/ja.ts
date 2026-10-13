@@ -34,7 +34,7 @@ export const ja = {
       default: 'ログインできませんでした。もう一度お試しください。',
     },
   },
-  home: { welcome: 'ようこそ、{{name}} さん', logout: 'ログアウト' },
+
   common: {
     logout: 'ログアウト',
     back: '← 戻る',
@@ -218,7 +218,7 @@ export const ja = {
     autoLabel: '自動（{{p}}）',
     reason: '変更の理由',
     reasonHint: '例：作業に5日かかるため、実際の余裕が少ない',
-    denied: '優先度を変えられるのは、担当者と管理者です。',
+    denied: '優先度を変えられるのは、担当者と管理者です。解決済み・クローズ・却下した課題では変えられません。',
   },
 
   list: {
@@ -419,7 +419,6 @@ export const ja = {
     onlyYou: '受信箱のメモは、あなたにしか見えません。課題にするまでは、期限や通知の対象になりません。',
     empty: 'メモはありません。',
     toIssue: '課題として登録',
-    edit: '編集',
     discard: '破棄',
     old: '7日以上前',
     seeAll: 'すべて見る（{{n}}件）',
