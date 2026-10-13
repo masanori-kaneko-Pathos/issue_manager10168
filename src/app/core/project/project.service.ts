@@ -5,6 +5,7 @@ import {
     serverTimestamp, writeBatch, setDoc, deleteDoc, updateDoc, runTransaction,
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { AuthService } from '../auth/auth.service';
 import { I18nService } from '../../i18n/i18n';
 import {
     DEFAULT_LABEL_IDS, DEFAULT_SETTINGS, Invitation, IssueStatus, Label, Member, OPEN_STATUSES, Project,
@@ -17,6 +18,13 @@ export type MemberChange = { kind: 'role'; role: Role } | { kind: 'remove' } | {
 @Injectable({ providedIn: 'root' })
 export class ProjectService {
     private i18n = inject(I18nService);
+    private authService = inject(AuthService);
+
+    /** 自分の表示名。設定で変えた名前（プロフィール）を正とし、まだ読めていなければ Auth の名前を使う */
+    private myName(user: User): string {
+        return this.authService.profile()?.displayName
+            || user.displayName || user.email?.split('@')[0] || '';
+    }
 
     /** プロジェクトと「自分が管理者」のメンバー文書を、1回でまとめて作る */
     async create(name: string, user: User): Promise<string> {
@@ -37,7 +45,7 @@ export class ProjectService {
         batch.set(doc(projectRef, 'members', user.uid), {
             uid: user.uid,
             role: 'admin',
-            displayName: user.displayName ?? user.email?.split('@')[0] ?? '',
+            displayName: this.myName(user),
             photoURL: user.photoURL ?? null,
             joinedAt: serverTimestamp(),
         });
@@ -102,7 +110,7 @@ export class ProjectService {
             role,
             projectName: project.name,
             invitedBy: inviter.uid,
-            invitedByName: inviter.displayName ?? inviter.email ?? '',
+            invitedByName: this.myName(inviter),
             createdAt: serverTimestamp(),
         });
     }
@@ -141,7 +149,7 @@ export class ProjectService {
         batch.set(doc(db, 'projects', inv.projectId, 'members', user.uid), {
             uid: user.uid,
             role: inv.role,
-            displayName: user.displayName ?? user.email?.split('@')[0] ?? '',
+            displayName: this.myName(user),
             photoURL: user.photoURL ?? null,
             joinedAt: serverTimestamp(),
         });
@@ -158,7 +166,7 @@ export class ProjectService {
     }
 
     /*途中で止まって「担当者がプロジェクトにいない課題」が残らないようにするため*/
-    
+
     async changeMember(
         pid: string, target: Member, issueIds: string[], to: string | null, reason: string,
         change: MemberChange, by: string, tz: string,
