@@ -19,6 +19,8 @@ import { formatDateTime, remainingOf } from '../../core/time/time';
 import { Transition, availableTransitions } from '../../core/issue/workflow';
 import { I18nService, TPipe } from '../../i18n/i18n';
 
+/** 経緯の「編集した欄」の項目名 → 翻訳キー（issue.〇〇）。名前が違うものだけ書く */
+const FIELD_LABEL_KEYS: Record<string, string> = { assigneeId: 'assignee', dueAt: 'due' };
 @Component({
   selector: 'app-issue-detail',
   imports: [FormsModule, RouterLink, TPipe, IssueEdit, HelpTip, LabelChip, StatusDialog, PriorityMark],
@@ -373,7 +375,6 @@ export class IssueDetail implements OnInit {
     // 詳細画面を離れたら、見張りをやめる
     inject(DestroyRef).onDestroy(() => {
       this.stops.forEach((stop) => stop());
-      console.debug('[watch] 詳細画面の見張りをやめた'); // 確認用。確かめ終わったら消す
     });
   }
   busy = signal(false);
@@ -597,7 +598,9 @@ export class IssueDetail implements OnInit {
     const name = this.memberName(item.by);
     if (item.type === 'created') return this.i18n.t('detail.events.created', { name });
     if (item.type === 'edit') {
-      const fields = (item.fields ?? []).map((f) => this.i18n.t('issue.' + f)).join('・');
+      const fields = (item.fields ?? [])
+        .map((f) => this.i18n.t('issue.' + (FIELD_LABEL_KEYS[f] ?? f)))
+        .join(this.i18n.lang() === 'ja' ? '・' : ', ');
       return this.i18n.t('detail.events.edit', { name, fields });
     }
     if (item.type === 'priority') {
