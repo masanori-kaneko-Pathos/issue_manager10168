@@ -10,11 +10,12 @@ import { HelpTip } from '../../shared/help-tip';
 import { HandoverDialog, HandoverMode } from './handover-dialog';
 import { ProjectContext } from './project-context';
 import { ProjectService } from '../../core/project/project.service';
-import { TPipe } from '../../i18n/i18n';
+import { I18nService, TPipe } from '../../i18n/i18n';
 
 @Component({
   selector: 'app-tab-members',
   imports: [FormsModule, TPipe, HelpTip, HandoverDialog],
+  host: { '(document:keydown.escape)': 'menuFor.set(null)' },
   template: `
     <section>
       <h2>{{ 'project.members' | t }}</h2>
@@ -24,10 +25,24 @@ import { TPipe } from '../../i18n/i18n';
           <li class="member">
             <span class="name">{{ m.displayName }}{{ m.uid === myUid ? ('issueNew.you' | t) : '' }}</span>
             @if (manageable(m)) {
-              <div class="roles small" role="group" [attr.aria-label]="'members.role' | t">
-                @for (r of roles; track r) {
-                  <button type="button" [class.on]="m.role === r" [attr.aria-pressed]="m.role === r"
-                    [disabled]="busy()" (click)="pickRole(m, r)">{{ 'roles.' + r | t }}</button>
+              <div class="role-menu">
+                <button type="button" class="role-btn" aria-haspopup="menu" [attr.aria-expanded]="menuFor() === m.uid"
+                  [attr.aria-label]="'members.changeRole' | t: { name: m.displayName }" [disabled]="busy()"
+                  (click)="menuFor.set(menuFor() === m.uid ? null : m.uid)">
+                  {{ 'roles.' + m.role | t }} <span aria-hidden="true">▾</span></button>
+                @if (menuFor() === m.uid) {
+                  <div class="backdrop" (click)="menuFor.set(null)"></div>
+                  <div class="menu" role="menu">
+                    @for (r of roleOrder; track r) {
+                      <button type="button" role="menuitemradio" [attr.aria-checked]="m.role === r" (click)="pickRole(m, r)">
+                        <span class="check" aria-hidden="true">{{ m.role === r ? '✓' : '' }}</span>
+                        <span class="opt">
+                          <span class="opt-name">{{ 'roles.' + r | t }}</span>
+                          <span class="opt-help">{{ 'roleHelp.' + r | t }}</span>
+                        </span>
+                      </button>
+                    }
+                  </div>
                 }
               </div>
               <span class="count">{{ 'members.count' | t: { n: '' + n } }}</span>
@@ -100,8 +115,20 @@ import { TPipe } from '../../i18n/i18n';
     .role { font-size: 12px; padding: 2px 8px; border-radius: 12px; background: var(--chip-bg); }
     .error { color: var(--danger-text); }
         .member { flex-wrap: wrap; padding: 6px 0; }
-    .roles.small { gap: 4px; }
-    .roles.small button { flex: none; min-height: 36px; padding: 0 10px; font-size: 13px; }
+    .role-menu { position: relative; }
+    .role-btn { min-height: 36px; padding: 0 10px; font-size: 13px; border: 1px solid var(--border-strong);
+      border-radius: 8px; background: var(--surface); cursor: pointer; white-space: nowrap; }
+    .backdrop { position: fixed; inset: 0; z-index: 51; }
+    .menu { position: absolute; left: 0; top: calc(100% + 4px); z-index: 52; width: min(300px, 80vw);
+      background: var(--surface); border-radius: 10px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+      padding: 6px 0; display: flex; flex-direction: column; }
+    .menu button { display: flex; align-items: flex-start; gap: 8px; width: 100%; min-height: 48px; padding: 8px 12px;
+      background: none; border: none; text-align: left; cursor: pointer; font-size: 14px; }
+    .menu button:hover { background: var(--surface-alt); }
+    .check { width: 16px; flex: none; color: var(--primary); font-weight: bold; }
+    .opt { display: flex; flex-direction: column; gap: 2px; }
+    .opt-name { font-weight: bold; }
+    .opt-help { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
     .count { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
     .link:disabled { color: var(--text-disabled); }
     .danger { color: var(--danger-text); }
@@ -112,7 +139,13 @@ export class ProjectMembers {
   private ps = inject(ProjectService);
   private route = inject(ActivatedRoute);
 
+  /** 招待欄の役割（よく選ぶものを先に） */
   readonly roles: Role[] = ['member', 'viewer', 'admin'];
+  /** 役割のメニュー（権限の強い順） */
+  readonly roleOrder: Role[] = ['admin', 'member', 'viewer'];
+  /** 役割のメニューを開いているメンバー */
+  menuFor = signal<string | null>(null);
+  private i18n = inject(I18nService);
   invitations = signal<Invitation[]>([]);
   busy = signal(false);
   error = signal('');
@@ -143,7 +176,10 @@ export class ProjectMembers {
 
   /** 閲覧者に変えるときは、担当があれば先に引き継ぐ。それ以外は、すぐ変える */
   async pickRole(m: Member, r: Role) {
+    this.menuFor.set(null);
     if (m.role === r) return;
+    // 管理者は、メンバーを外したり、ほかの管理者を降格したりできる強い権限なので、渡す前に確かめる
+    if (r === 'admin' && !confirm(this.i18n.t('members.promoteConfirm', { name: m.displayName }))) return;
     if (r === 'viewer' && (this.assignedCount()[m.uid] ?? 0) > 0) {
       this.dialog.set({ mode: 'role', member: m, role: r });
       return;

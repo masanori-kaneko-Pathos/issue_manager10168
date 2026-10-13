@@ -388,6 +388,13 @@ export const en: Dict = {
     selfNote: 'Your own role is changed by another admin. This keeps at least one admin in every project.',
     leave: 'Leave project',
     leaveAdmin: 'Admins cannot leave. Ask another admin to change your role or remove you.',
+    changeRole: "Change {{name}}'s role",
+    promoteConfirm: 'Make {{name}} an admin? Admins can remove members and change other admins\' roles.',
+  },
+  roleHelp: {
+    admin: 'Manage members, change settings, reject and delete issues',
+    member: 'Create, edit, and update the status of issues',
+    viewer: 'View issues, comment, and export CSV',
   },
   handover: {
     title: {
