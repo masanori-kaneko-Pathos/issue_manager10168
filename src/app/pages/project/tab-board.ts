@@ -339,7 +339,6 @@ export class ProjectBoard implements OnInit {
       this.mq.removeEventListener('change', onChange);
       this.stopClosed?.();
       clearTimeout(this.noticeTimer);
-      console.debug('[watch] 完了の列の見張りをやめた'); // 確認用。確かめ終わったら消す
     });
   }
 

@@ -88,7 +88,6 @@ export class ProjectContext {
     this.stopMembers?.();
     this.stopIssues = null;
     this.stopMembers = null;
-    console.debug('[watch] 課題とメンバーの見張りをやめた'); // 確認用。確かめ終わったら消す
   }
     /** メンバーを見張る。最初の1回が届いたら、待っている load() に知らせる */
     private watchMembers(pid: string) {

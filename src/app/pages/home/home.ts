@@ -203,7 +203,6 @@ export class Projects implements OnInit {
     inject(DestroyRef).onDestroy(() => {
       this.mineStops.forEach((stop) => stop());
       this.stopInvitations?.();
-      console.debug('[watch] ホームの見張りをやめた'); // 確認用。確かめ終わったら消す
     });
   }
 
