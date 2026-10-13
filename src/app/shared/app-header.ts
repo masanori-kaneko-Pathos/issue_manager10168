@@ -4,6 +4,7 @@ import { AuthService } from '../core/auth/auth.service';
 import { auth } from '../core/firebase';
 import { Role } from '../core/models';
 import { ProjectService } from '../core/project/project.service';
+import { InboxService } from '../core/inbox/inbox.service';
 import { TPipe } from '../i18n/i18n';
 import { HelpTip } from './help-tip';
 
@@ -15,6 +16,10 @@ import { HelpTip } from './help-tip';
     <header class="app-header">
       <a routerLink="/" class="brand">{{ 'app.title' | t }}</a>
       <span class="spacer"></span>
+      <a routerLink="/inbox/new" class="pen" [attr.aria-label]="'inbox.pen' | t" [title]="'inbox.pen' | t">
+        <span class="pen-icon" aria-hidden="true">✎</span>
+        @if (inbox.count()) { <span class="badge">{{ inbox.count() }}</span> }
+      </a>
       <div class="add">
         <button type="button" class="add-btn" [attr.aria-expanded]="addOpen()"
           [attr.aria-label]="'menu.add' | t" [title]="'menu.add' | t" (click)="toggleAdd()">＋</button>
@@ -58,6 +63,7 @@ import { HelpTip } from './help-tip';
         }
       </div>
     </header>
+    @if (inbox.flash(); as key) { <div class="toast" role="status">{{ key | t }}</div> }
   `,
   styles: `
     .app-header { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 8px;
@@ -66,6 +72,16 @@ import { HelpTip } from './help-tip';
     .spacer { flex: 1; }
     .add-btn { width: 36px; height: 36px; border-radius: 50%; border: none; background: var(--on-primary);
       color: var(--primary); font-size: 22px; font-weight: bold; line-height: 1; cursor: pointer; }
+    .pen { position: relative; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center;
+      justify-content: center; color: var(--on-primary); text-decoration: none; font-size: 20px;
+      background: rgba(255, 255, 255, 0.15); }
+    .pen-icon { display: inline-block; transform: scaleX(-1); }
+    .badge { position: absolute; top: -4px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px;
+      border-radius: 9px; background: var(--on-primary); color: var(--primary); font-size: 11px; font-weight: bold;
+      line-height: 18px; text-align: center; box-sizing: border-box; }
+    .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+      z-index: 200; padding: 10px 18px; border-radius: 20px; background: var(--text); color: var(--surface);
+      font-size: 14px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); }
     .add { position: relative; }
     .primary-item { font-weight: bold; color: var(--primary) !important; }
     .item-row { display: flex; align-items: center; padding-right: 12px; }
@@ -94,6 +110,8 @@ export class AppHeader {
   private authService = inject(AuthService);
   private router = inject(Router);
   private projectService = inject(ProjectService);
+  /** 受信箱（件数と、保存したときの知らせ） */
+  protected inbox = inject(InboxService);
 
   addOpen = signal(false);
   /** メニューを開いたときにいたプロジェクトと、そこでの自分のロール */

@@ -5,6 +5,7 @@ import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth/auth.service';
 import { ProjectService } from '../../core/project/project.service';
 import { IssueService } from '../../core/issue/issue.service';
+import { InboxService } from '../../core/inbox/inbox.service';
 import { ISSUE_TYPES, IssueType, Level, Member, ProjectWithRole } from '../../core/models';
 import { endOfDayIn, formatDateTime, parseLocalInput, toLocalInput, zonedTime } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
@@ -168,7 +169,10 @@ export class IssueNew implements OnInit {
   pid = signal<string | null>(null);
   projects = signal<ProjectWithRole[]>([]);
   loadingProjects = signal(true);
-  backLink = computed(() => (this.fromPid ? ['/p', this.fromPid] : ['/']));
+  /** 受信箱のメモから来たときの、メモの id */
+  private readonly memoId = this.route.snapshot.queryParamMap.get('memo');
+  private inbox = inject(InboxService);
+  backLink = computed(() => (this.memoId ? ['/inbox'] : this.fromPid ? ['/p', this.fromPid] : ['/']));
   readonly myUid = auth.currentUser!.uid;
   readonly types = ISSUE_TYPES;
   readonly levels: Level[] = ['high', 'mid', 'low'];
@@ -224,6 +228,17 @@ export class IssueNew implements OnInit {
         const d = zonedTime(+m[1], +m[2], +m[3], 23, 59, this.tz());
         this.dueAt.set(d);
         this.dueInput = toLocalInput(d, this.tz());
+      }
+      // 受信箱のメモから来たら、タイトルと内容を入れておく
+      if (this.memoId) {
+        const memo = await this.inbox.get(this.memoId);
+        if (memo) {
+          this.title = memo.title;
+          if (memo.body) {
+            this.description = memo.body;
+            this.showDetail.set(true);
+          }
+        }
       }
     } catch (e) {
       console.error(e);
@@ -288,7 +303,7 @@ export class IssueNew implements OnInit {
         doneCriteria: this.doneCriteria.trim(),
         description: this.description,
         labelIds: this.labelIds(),
-      }, this.myUid, this.tz());
+      }, this.myUid, this.tz(), this.memoId ?? undefined);
       writeLastProject(pid);
       await this.router.navigate(['/p', pid]);
     } catch (e) {

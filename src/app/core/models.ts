@@ -59,6 +59,17 @@ export interface Invitation {
   createdAt: Timestamp;
 }
 
+/** 受信箱のメモ（本人にしか見えない。課題にするまで、期限・通知・集計の対象外） */
+export interface InboxMemo {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  discardedAt?: Timestamp;  // ゴミ箱に入れた日時（ゴミ箱の中だけ）
+  expireAt?: Timestamp;     // この日時を過ぎると、Firestore が自動で消す（TTL。ゴミ箱の中だけ）
+}
+
 /** 管理ログ（今は書くだけ。見る画面は後日） */
 export interface AdminLog {
   type: 'role' | 'remove' | 'leave' | 'handover';

@@ -80,7 +80,8 @@ export interface IssueEdits {
 @Injectable({ providedIn: 'root' })
 export class IssueService {
   /** 課題番号の採番と、課題・履歴の作成を、1つのトランザクションで行う */
-  create(pid: string, input: NewIssue, uid: string, tz: string): Promise<number> {
+  /** memoId があれば、受信箱のメモも同じトランザクションで消す（課題になったメモを残さないため） */
+  create(pid: string, input: NewIssue, uid: string, tz: string, memoId?: string): Promise<number> {
     return runTransaction(db, async (tx) => {
       const projectRef = doc(db, 'projects', pid);
       const project = await tx.get(projectRef);
@@ -107,6 +108,7 @@ export class IssueService {
         updatedBy: uid,
       });
       tx.set(doc(collection(issueRef, 'events')), { type: 'created', by: uid, tz, at: serverTimestamp() });
+      if (memoId) tx.delete(doc(db, 'users', uid, 'inbox', memoId));
       return number;
     });
   }

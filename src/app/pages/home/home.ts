@@ -10,6 +10,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { ProjectService } from '../../core/project/project.service';
 import { Invitation, Issue, Level, ProjectWithRole } from '../../core/models';
 import { IssueService } from '../../core/issue/issue.service';
+import { InboxService } from '../../core/inbox/inbox.service';
 import { Clock } from '../../core/time/clock';
 import { PriorityMark } from '../../shared/priority-mark';
 import { compareIssues, isManualPriority, priorityOf } from '../../core/issue/priority';
@@ -59,6 +60,26 @@ import { I18nService, TPipe } from '../../i18n/i18n';
           }
         </ul>
       }
+
+      <section class="inbox">
+        <div class="mine-head">
+          <h2>{{ 'inbox.title' | t }}</h2>
+          <a routerLink="/inbox/new" class="link">{{ 'inbox.write' | t }}</a>
+        </div>
+        <ul class="list">
+          @for (m of inbox.active().slice(0, 3); track m.id) {
+            <li class="memo">
+              <a class="name" [routerLink]="['/inbox', m.id]">{{ m.title }}</a>
+              @if (inbox.isOld(m)) { <span class="old">{{ 'inbox.old' | t }}</span> }
+            </li>
+          } @empty {
+            <li class="empty">{{ 'inbox.empty' | t }}</li>
+          }
+        </ul>
+        @if (inbox.count()) {
+          <a routerLink="/inbox" class="link see-all">{{ 'inbox.seeAll' | t: { n: '' + inbox.count() } }}</a>
+        }
+      </section>
 
             <section class="mine">
         <div class="mine-head">
@@ -140,6 +161,11 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .invitation { flex-wrap: wrap; padding: 8px 12px !important; }
     .invitation .name { flex-basis: 100%; }
     .mine { margin-bottom: 24px; }
+    .inbox { margin-bottom: 24px; }
+    .inbox a.link { text-decoration: none; display: inline-flex; align-items: center; min-height: 40px; }
+    .memo { min-height: 44px !important; }
+    .old { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: var(--warning-bg); color: var(--warning-text); }
+    .see-all { font-size: 13px; }
     .mine-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
     .check { display: flex; align-items: center; gap: 6px; font-size: 13px; min-height: 40px; }
     .mine-item { flex-wrap: wrap; }
@@ -158,6 +184,7 @@ export class Projects implements OnInit {
   private router = inject(Router);
   protected i18n = inject(I18nService);
   private route = inject(ActivatedRoute);
+  protected inbox = inject(InboxService);
 
   /** 「自分の課題」の見張り。プロジェクトごとに1本（pid → やめる関数） */
   private mineStops = new Map<string, Unsubscribe>();

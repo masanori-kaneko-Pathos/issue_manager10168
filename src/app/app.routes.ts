@@ -33,7 +33,14 @@ export const routes: Routes = [
         { path: 'trash',
           loadComponent: () => import('./pages/project/trash').then((m) => m.Trash) },
         ] },
-  { path: 'settings', canActivate: [authGuard], canDeactivate: [unsavedGuard],
+        { path: 'inbox', canActivate: [authGuard],
+          loadComponent: () => import('./pages/inbox/inbox').then((m) => m.Inbox) },
+        { path: 'inbox/new', canActivate: [authGuard],
+          loadComponent: () => import('./pages/inbox/inbox-new').then((m) => m.InboxNew) },
+        // ':id' は 'new' より後に置く（先に置くと、'new' がメモの id として扱われてしまう）
+        { path: 'inbox/:id', canActivate: [authGuard], canDeactivate: [unsavedGuard],
+          loadComponent: () => import('./pages/inbox/inbox-memo').then((m) => m.InboxMemo) },
+        { path: 'settings', canActivate: [authGuard], canDeactivate: [unsavedGuard],
     loadComponent: () => import('./pages/settings/settings').then((m) => m.Settings) },
   { path: '**', redirectTo: '' },
 ];
