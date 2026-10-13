@@ -148,13 +148,18 @@ service cloud.firestore {
         && getAfter(memberPath(pid)).data.role == 'admin';
       allow update: if (isAdmin(pid)
           && request.resource.data.diff(resource.data).affectedKeys()
-               .hasOnly(['name', 'archived', 'labels', 'settings'])
+            .hasOnly(['name', 'archived', 'labels', 'settings', 'formerMembers'])
           && request.resource.data.labels is list
           && request.resource.data.labels.size() <= 30)
       // 課題の登録時の採番（1つ増やすだけ）
         || (canWrite(pid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['issueSeq'])
-        && request.resource.data.issueSeq == resource.data.issueSeq + 1);
+        && request.resource.data.issueSeq == resource.data.issueSeq + 1)
+      // 自分から抜けるとき：自分の名前だけを formerMembers に残せる
+        || (isMember(pid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['formerMembers'])
+        && request.resource.data.formerMembers.diff(resource.data.get('formerMembers', {})).affectedKeys()
+             .hasOnly([request.auth.uid]));
       allow delete: if false;
 
       match /members/{uid} {
@@ -170,12 +175,20 @@ service cloud.firestore {
             && request.resource.data.role == get(myInvitationPath(pid)).data.role
             && !existsAfter(myInvitationPath(pid)))
         );
-        // 自分の表示名・アイコンの写しだけ、本人が書き換えられる
-        allow update: if signedIn() && uid == request.auth.uid
+        // ① 自分の表示名・アイコンの写しだけ、本人が書き換えられる
+        // ② 管理者は、自分以外の役割を変えられる（自分の役割は変えられない＝最後の管理者が必ず残る）
+        allow update: if (signedIn() && uid == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'photoURL'])
           && request.resource.data.displayName is string
           && request.resource.data.displayName.size() > 0
-          && request.resource.data.displayName.size() <= 50;
+          && request.resource.data.displayName.size() <= 50)
+          || (isAdmin(pid) && uid != request.auth.uid
+          && get(projectPath(pid)).data.archived == false
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
+          && request.resource.data.role in ['admin', 'member', 'viewer']);
+        // 外す：管理者が自分以外を。抜ける：管理者以外が自分を（管理者は抜けられない）
+        allow delete: if (isAdmin(pid) && uid != request.auth.uid)
+          || (signedIn() && uid == request.auth.uid && resource.data.role != 'admin');
        }
 
       match /invitations/{email} {
@@ -191,6 +204,15 @@ service cloud.firestore {
         // 取り消し（管理者）と、承諾・辞退（招待された本人）
         allow delete: if isAdmin(pid)
           || (emailVerified() && email == request.auth.token.email.lower());
+      }
+      // 管理ログ：管理者だけが読める。書くのは管理者と、自分から抜ける本人（type が leave のときだけ）
+      match /adminLogs/{lid} {
+        allow read: if isAdmin(pid);
+        allow create: if request.resource.data.by == request.auth.uid
+          && request.resource.data.at == request.time
+          && (isAdmin(pid)
+            || (isMember(pid) && request.resource.data.type == 'leave'
+                && request.resource.data.target == request.auth.uid));
       }
 
       match /issues/{iid} {
@@ -294,7 +316,9 @@ service cloud.firestore {
     
     // 「自分の課題」：所属するすべてのプロジェクトから、自分が担当の課題を探す
     match /{path=**}/issues/{issueId} {
-      allow read: if signedIn() && resource.data.assigneeId == request.auth.uid;
+      allow read: if signedIn() && resource.data.assigneeId == request.auth.uid
+        // そのプロジェクトのメンバーであること（外れた人に、担当だった課題を見せない）
+        && exists(/databases/$(database)/documents/$(path)/members/$(request.auth.uid));
     }
   }
 }

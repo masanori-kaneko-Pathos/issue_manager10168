@@ -31,6 +31,12 @@ import { I18nService, TPipe } from '../../i18n/i18n';
           <button type="button" class="link" (click)="removedFrom.set(null)">{{ 'projects.dismiss' | t }}</button>
         </div>
       }
+      @if (leftFrom() !== null) {
+        <div class="notice" role="status">
+          <p>{{ 'projects.leftNotice' | t: { project: leftFrom()! } }}</p>
+          <button type="button" class="link" (click)="leftFrom.set(null)">{{ 'projects.dismiss' | t }}</button>
+        </div>
+      }
       @if (needsVerify()) {
         <div class="notice">
           <p>{{ 'verify.message' | t }}</p>
@@ -177,14 +183,17 @@ export class Projects implements OnInit {
   visibleMine = computed(() => {
     const now = this.clock.now();
     return this.myIssues()
-    .filter((i) => i.status !== 'deleted' && (this.showDone() || this.isActive(i)))
+      .filter((i) => i.status !== 'deleted' && (this.showDone() || this.isActive(i)))
       .sort((a, b) => compareIssues(a, b, now));
   });
   needsVerify = signal(false);
   info = signal('');
   /** プロジェクトから外されて戻ってきたときの知らせ（プロジェクト名。わからなければ空文字。知らせがなければ null） */
   removedFrom = signal<string | null>(
-    (this.router.currentNavigation()?.extras.state?.['removedFrom'] as string | undefined) ?? null);
+    ((history.state as Record<string, unknown> | null)?.['removedFrom'] as string | undefined) ?? null);
+  /** 自分から抜けて戻ってきたときの知らせ（プロジェクト名） */
+  leftFrom = signal<string | null>(
+    ((history.state as Record<string, unknown> | null)?.['leftFrom'] as string | undefined) ?? null);
   loading = signal(true);
   busy = signal(false);
   error = signal('');
@@ -192,8 +201,8 @@ export class Projects implements OnInit {
 
   ngOnInit() {
     // 外されたときの知らせは1回だけ。読んだら履歴から消し、再読み込みで出し直さない
-    const { removedFrom, ...rest } = (history.state ?? {}) as Record<string, unknown>;
-    if (removedFrom !== undefined) history.replaceState(rest, '');
+    const { removedFrom, leftFrom, ...rest } = (history.state ?? {}) as Record<string, unknown>;
+    if (removedFrom !== undefined || leftFrom !== undefined) history.replaceState(rest, '');
     const u = auth.currentUser!;
     this.needsVerify.set(!!u.email && !u.emailVerified);
     this.watchMyIssues();

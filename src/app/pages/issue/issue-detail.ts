@@ -390,6 +390,8 @@ export class IssueDetail implements OnInit {
   projectArchived = signal(false);
   /** 外されたときの知らせに使うプロジェクト名 */
   private projectName = '';
+  /** 外れた人の名前（uid → 名前） */
+  private formerMembers: Record<string, string> = {};
 
   tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
   priority = computed(() => priorityOf(this.issue()!, this.clock.now()));
@@ -478,6 +480,7 @@ export class IssueDetail implements OnInit {
       this.projectLabels.set(project?.labels ?? []);
       this.projectArchived.set(project?.archived ?? false);
       this.projectName = project?.name ?? '';
+      this.formerMembers = project?.formerMembers ?? {};
     } catch (e) {
       console.error(e);
       this.issue.set(null);
@@ -580,7 +583,10 @@ export class IssueDetail implements OnInit {
   }
 
   memberName(uid: string) {
-    return this.members().find((m) => m.uid === uid)?.displayName ?? '—';
+    const m = this.members().find((x) => x.uid === uid);
+    if (m) return m.displayName;
+    const former = this.formerMembers[uid];
+    return former ? this.i18n.t('project.former', { name: former }) : '—';
   }
 
   who(latest: Issue) {

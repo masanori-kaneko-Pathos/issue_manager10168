@@ -3,10 +3,13 @@ import { ActivatedRoute, RouterLink, RouterLinkActive, RouterOutlet } from '@ang
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ProjectContext } from './project-context';
 import { TPipe } from '../../i18n/i18n';
+import { auth } from '../../core/firebase';
+import { HelpTip } from '../../shared/help-tip';
+import { HandoverDialog } from './handover-dialog';
 
 @Component({
   selector: 'app-project-shell',
-  imports: [RouterLink, RouterLinkActive, RouterOutlet, TPipe],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, TPipe, HelpTip, HandoverDialog],
   providers: [ProjectContext],
   host: { '(document:keydown.escape)': 'menuOpen.set(false)' },
   template: `
@@ -28,6 +31,13 @@ import { TPipe } from '../../i18n/i18n';
               <div class="menu" role="menu">
                 <a role="menuitem" [routerLink]="['/p', ctx.pid(), 'trash']" (click)="menuOpen.set(false)">
                   {{ 'trash.title' | t }}</a>
+                <div class="item-row">
+                  <button type="button" role="menuitem" class="danger" [disabled]="ctx.role() === 'admin'"
+                    (click)="menuOpen.set(false); leaveOpen.set(true)">{{ 'members.leave' | t }}</button>
+                  @if (ctx.role() === 'admin') {
+                    <app-help-tip kind="denied" align="right" [keys]="['members.leaveAdmin']" />
+                  }
+                </div>
               </div>
             }
           </div>
@@ -38,6 +48,9 @@ import { TPipe } from '../../i18n/i18n';
           }
         </nav>
         <router-outlet />
+        @if (leaveOpen() && me(); as m) {
+          <app-handover-dialog mode="leave" [target]="m" (done)="leaveOpen.set(false)" (cancel)="leaveOpen.set(false)" />
+        }
       }
     </main>
   `,
@@ -58,6 +71,11 @@ import { TPipe } from '../../i18n/i18n';
     .menu a { padding: 0 16px; min-height: 44px; line-height: 44px; color: var(--text);
       text-decoration: none; font-size: 14px; }
     .menu a:hover { background: var(--surface-alt); }
+      .item-row { display: flex; align-items: center; padding-right: 12px; }
+    .menu button { flex: 1; text-align: left; padding: 0 16px; min-height: 44px; background: none; border: none;
+      font-size: 14px; cursor: pointer; }
+    .menu button.danger { color: var(--danger-text); }
+    .menu button:disabled { color: var(--text-disabled); cursor: default; }
     .role { font-size: 12px; padding: 2px 8px; border-radius: 12px; background: var(--chip-bg); font-weight: normal; }
     .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; overflow-x: auto; }
     .tabs a { padding: 10px 16px; min-height: 44px; box-sizing: border-box; text-decoration: none;
@@ -70,6 +88,9 @@ export class ProjectHome {
   private route = inject(ActivatedRoute);
   /** プロジェクト名の横の「⋮」メニュー（削除フォルダ。今後、アーカイブ・CSV出力などもここに置く） */
   menuOpen = signal(false);
+  leaveOpen = signal(false);
+  /** 自分のメンバー文書（抜けるときの引き継ぎに使う） */
+  me = computed(() => this.ctx.members().find((m) => m.uid === auth.currentUser!.uid) ?? null);
 
   /** タブの並び。設定は管理者だけに出す */
   tabs = computed(() =>

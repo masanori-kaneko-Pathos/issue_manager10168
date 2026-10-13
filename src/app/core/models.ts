@@ -36,6 +36,7 @@ export interface Project {
   labels: Label[];
   settings: ProjectSettings;
   issueSeq: number;          // 課題番号の連番
+  formerMembers?: Record<string, string>; // 外した・抜けた人の表示名（uid → 名前）
 }
 
 export interface ProjectWithRole extends Project { role: Role; }
@@ -56,6 +57,17 @@ export interface Invitation {
   invitedBy: string;
   invitedByName: string;
   createdAt: Timestamp;
+}
+
+/** 管理ログ（今は書くだけ。見る画面は後日） */
+export interface AdminLog {
+  type: 'role' | 'remove' | 'leave' | 'handover';
+  by: string;           // 操作した人
+  target: string;       // 対象の人
+  from: Role;           // 操作する前の役割
+  to: Role | null;      // 役割を変えたときの、変えた先
+  moved: number;        // 引き継いだ課題の数
+  at: Timestamp;
 }
 
 export const DEFAULT_SETTINGS: ProjectSettings = {

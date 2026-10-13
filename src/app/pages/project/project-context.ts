@@ -5,6 +5,7 @@ import { auth } from '../../core/firebase';
 import { Issue, Label, Member, Project, Role } from '../../core/models';
 import { ProjectService } from '../../core/project/project.service';
 import { IssueService } from '../../core/issue/issue.service';
+import { I18nService } from '../../i18n/i18n';
 
 /** プロジェクト画面の中で共有する情報。入れ物（project-home）ごとに1つ作られる */
 @Injectable()
@@ -12,6 +13,9 @@ export class ProjectContext {
   private ps = inject(ProjectService);
   private issueService = inject(IssueService);
   private router = inject(Router);
+  private i18n = inject(I18nService);
+  /** 自分から抜けている最中（見張りが「外された」と勘違いしないための印） */
+  private leaving = false;
   private stopIssues: Unsubscribe | null = null;
   private stopMembers: Unsubscribe | null = null;
 
@@ -125,10 +129,29 @@ export class ProjectContext {
     this.stopWatching();
     this.issuesLoading.set(false);
     this.removed.set(true);
+    const name = this.project()?.name ?? '';
     this.router.navigate(['/'], {
       replaceUrl: true,
-      state: { removedFrom: this.project()?.name ?? '' },
+      // 自分から抜けたのか、外されたのかで、ホームの知らせを変える
+      state: this.leaving ? { leftFrom: name } : { removedFrom: name },
     });
+  }
+
+  markLeaving(v: boolean) {
+    this.leaving = v;
+  }
+
+  /** 名前を引く。外れた人は formerMembers から「（退出）」つきで出す */
+  nameOf(uid: string) {
+    const m = this.members().find((x) => x.uid === uid);
+    if (m) return m.displayName;
+    const former = this.project()?.formerMembers?.[uid];
+    return former ? this.i18n.t('project.former', { name: former }) : '—';
+  }
+
+  /** 外した人の名前を、手元のプロジェクトにもすぐ反映する（読み直さずに済む） */
+  addFormer(uid: string, name: string) {
+    this.project.update((p) => (p ? { ...p, formerMembers: { ...(p.formerMembers ?? {}), [uid]: name } } : p));
   }
 
   /** 保存したラベルを、ほかのタブにもすぐ反映する（読み直さずに済む） */

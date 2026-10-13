@@ -472,7 +472,7 @@ export class ProjectBoard implements OnInit {
     return this.i18n.t(r.key, { n: String(r.n) });
   }
   memberName(uid: string) {
-    return this.ctx.members().find((m) => m.uid === uid)?.displayName ?? '—';
+    return this.ctx.nameOf(uid);
   }
   memberPhoto(uid: string) {
     return this.ctx.members().find((m) => m.uid === uid)?.photoURL ?? null;

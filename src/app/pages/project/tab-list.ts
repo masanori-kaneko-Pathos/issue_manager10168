@@ -594,7 +594,7 @@ export class TabList implements OnInit {
     return this.i18n.t(r.key, { n: String(r.n) });
   }
   memberName(uid: string) {
-    return this.members().find((m) => m.uid === uid)?.displayName ?? '—';
+    return this.ctx.nameOf(uid);
   }
   updated(i: Issue) {
     return relativeTime(i.updatedAt.toMillis(), this.i18n.lang(), this.clock.now());

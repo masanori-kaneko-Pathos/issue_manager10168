@@ -165,7 +165,7 @@ export class Trash implements OnInit {
   }
 
   memberName(uid: string) {
-    return this.ctx.members().find((m) => m.uid === uid)?.displayName ?? '—';
+    return this.ctx.nameOf(uid);
   }
 
   when(i: Issue) {
