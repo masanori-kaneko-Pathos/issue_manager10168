@@ -314,9 +314,7 @@ service cloud.firestore {
       allow read: if emailVerified() && resource.data.email == request.auth.token.email.lower();
     }
     
-    // 「自分の課題」：所属するすべてのプロジェクトから、自分が担当の課題を探す
-    match /{path=**}/issues/{issueId} {
-      allow read: if signedIn() && resource.data.assigneeId == request.auth.uid;
-    }
+    // 「自分の課題」は、プロジェクトごとに読む（projects/{pid}/issues のルールで、メンバーかどうかを確かめる）。
+    // コレクショングループでまとめて読む決まりは、外れた人が担当だった課題を読めてしまうため、置かない
   }
 }
