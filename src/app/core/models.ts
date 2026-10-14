@@ -81,6 +81,30 @@ export interface AdminLog {
   at: Timestamp;
 }
 
+/** 通知の種類 */
+export type NotificationType =
+  'assigned' | 'comment' | 'dueChanged' | 'resolved' | 'sentBack' | 'closed' | 'rejected' | 'restored' | 'joined';
+
+/**
+ * 画面内の通知（users/{uid}/notifications）。本人だけが読める。
+ * 一覧で他の文書を読まずに出せるよう、プロジェクト名・課題の番号とタイトル・送った人の名前の写しを持つ
+ */
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  pid: string;
+  projectName: string;
+  iid: string | null;          // 招待の承諾（joined）は課題がないので null
+  issueNumber: number | null;
+  issueTitle: string;          // 課題がないときは ''
+  by: string;                  // 送った人の uid
+  byName: string;
+  detail: string;              // コメントの書き出しなど。なければ ''
+  at: Timestamp;
+  read: boolean;
+  expireAt: Timestamp;         // この日時を過ぎると、Firestore が自動で消す（TTL）
+}
+
 export const DEFAULT_SETTINGS: ProjectSettings = {
   notifyHour: 10, staleDays: 7, effectCheckDays: 7, highPriorityLimit: 10,
   features: { effort: false, gantt: false, recurring: false },

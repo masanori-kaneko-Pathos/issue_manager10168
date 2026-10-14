@@ -34,6 +34,38 @@ service cloud.firestore {
           && validMemo()
           && (!('expireAt' in request.resource.data) || request.resource.data.expireAt is timestamp);
       }
+
+          // 通知：本人だけが読む・既読にする・消す。
+      // 作れるのは「自分も宛先も、そのプロジェクトのメンバー」のときだけ（自分宛ては作らない）
+      match /notifications/{nid} {
+        function validNotification() {
+          let d = request.resource.data;
+          let keys = ['type', 'pid', 'projectName', 'iid', 'issueNumber', 'issueTitle',
+                      'by', 'byName', 'detail', 'at', 'read', 'expireAt'];
+          return d.keys().hasOnly(keys) && d.keys().hasAll(keys)
+            && d.type in ['assigned', 'comment', 'dueChanged', 'resolved', 'sentBack',
+                          'closed', 'rejected', 'restored', 'joined']
+            && d.pid is string
+            && d.projectName is string && d.projectName.size() <= 100
+            && (d.iid == null || d.iid is string)
+            && (d.issueNumber == null || d.issueNumber is int)
+            && d.issueTitle is string && d.issueTitle.size() <= 200
+            && d.by == request.auth.uid
+            && d.byName is string && d.byName.size() <= 100
+            && d.detail is string && d.detail.size() <= 200
+            && d.at == request.time
+            && d.read == false
+            && d.expireAt is timestamp
+            // 招待の承諾では、同じバッチで自分がメンバーになるので「書いたあと」を見る
+            && existsAfter(/databases/$(database)/documents/projects/$(d.pid)/members/$(request.auth.uid))
+            && exists(/databases/$(database)/documents/projects/$(d.pid)/members/$(uid));
+        }
+        allow read, delete: if request.auth != null && request.auth.uid == uid;
+        allow update: if request.auth != null && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
+          && request.resource.data.read is bool;
+        allow create: if request.auth != null && request.auth.uid != uid && validNotification();
+      }  
     }
     function signedIn() { return request.auth != null; }
     function projectPath(pid) { return /databases/$(database)/documents/projects/$(pid); }
