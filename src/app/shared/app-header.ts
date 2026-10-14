@@ -66,7 +66,7 @@ import { HelpTip } from './help-tip';
                     @if (!n.read) { <span class="dot" role="img" [attr.aria-label]="'notify.unread' | t"></span> }
                     <span class="n-text">{{ noticeText(n) }}</span>
                     @if (n.detail) { <span class="n-detail">{{ n.detail }}</span> }
-                    <span class="n-meta">{{ n.projectName }} · {{ noticeWhen(n) }}</span>
+                    <span class="n-meta">{{ n.projectName ? n.projectName + ' · ' : '' }}{{ noticeWhen(n) }}</span>
                   </button>
                 </li>
               } @empty {
@@ -256,6 +256,15 @@ export class AppHeader {
   }
 
   noticeText(n: AppNotification) {
+    // 朝のまとめは、0件でない区分だけを「・」でつなぐ
+    if (n.type === 'daily' && n.counts) {
+      const c = n.counts;
+      const parts = (['overdue', 'today', 'tomorrow', 'in3', 'inboxOld'] as const)
+        .filter((k) => c[k] > 0)
+        .map((k) => this.i18n.t('notify.daily.' + k, { n: String(c[k]) }))
+        .join(this.i18n.lang() === 'ja' ? '・' : ', ');
+      return this.i18n.t('notify.types.daily', { parts });
+    }
     return this.i18n.t('notify.types.' + n.type, {
       name: n.byName, n: String(n.issueNumber ?? ''), title: n.issueTitle, project: n.projectName,
     });
@@ -270,7 +279,10 @@ export class AppHeader {
   async openNotice(n: AppNotification) {
     this.bellOpen.set(false);
     if (!n.read) this.notify.markRead(n.id).catch((e) => console.error(e));
-    if (n.iid) {
+    if (n.type === 'daily') {
+      // 朝のまとめは、ホームの「今日のまとめ」の欄へ
+      await this.router.navigate(['/'], { fragment: 'today' });
+    } else if (n.iid) {
       await this.router.navigate(['/p', n.pid, 'i', n.iid]);
     } else if (n.type === 'handover') {
       // 引き継いだ課題が見えるよう、自分の担当で絞ったリストへ

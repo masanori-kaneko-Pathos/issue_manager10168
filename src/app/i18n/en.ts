@@ -498,6 +498,15 @@ export const en: Dict = {
       restored: '{{name}} restored #{{n}} "{{title}}" from the trash',
       joined: '{{name}} accepted the invitation and joined "{{project}}"',
       handover: '{{name}} handed over {{n}} issues in "{{project}}" to you',
+      daily: 'Today: {{parts}}',
+      effectCheck: 'Time to check whether #{{n}} "{{title}}" worked. Check the effect and close it',
+    },
+    daily: {
+      overdue: '{{n}} overdue',
+      today: '{{n}} due today',
+      tomorrow: '{{n}} due tomorrow',
+      in3: '{{n}} due in 2–3 days',
+      inboxOld: '{{n}} old inbox notes',
     },
   },
 };

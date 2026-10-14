@@ -83,8 +83,8 @@ export interface AdminLog {
 
 /** 通知の種類 */
 export type NotificationType =
-'assigned' | 'comment' | 'dueChanged' | 'resolved' | 'sentBack' | 'closed' | 'rejected' | 'restored' | 'joined'
-| 'handover';
+  'assigned' | 'comment' | 'dueChanged' | 'resolved' | 'sentBack' | 'closed' | 'rejected' | 'restored' | 'joined'
+  | 'handover' | 'daily' | 'effectCheck';
 
 /**
  * 画面内の通知（users/{uid}/notifications）。本人だけが読める。
@@ -104,6 +104,8 @@ export interface AppNotification {
   at: Timestamp;
   read: boolean;
   expireAt: Timestamp;         // この日時を過ぎると、Firestore が自動で消す（TTL）
+  /** 朝のまとめ（daily）の件数。関数だけが書く */
+  counts?: { overdue: number; today: number; tomorrow: number; in3: number; inboxOld: number };
 }
 
 export const DEFAULT_SETTINGS: ProjectSettings = {

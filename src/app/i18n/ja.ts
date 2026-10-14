@@ -494,6 +494,15 @@ export const ja = {
       restored: '{{name}} さんが、#{{n}}「{{title}}」を削除フォルダから復元しました',
       joined: '{{name}} さんが、招待を受けて「{{project}}」に参加しました',
       handover: '{{name}} さんから、「{{project}}」の課題 {{n}} 件の担当を引き継ぎました',
+      daily: '今日のまとめ：{{parts}}',
+      effectCheck: '#{{n}}「{{title}}」の効果を確かめる時期です。確かめて、クローズしてください',
+    },
+    daily: {
+      overdue: '期限切れ {{n}}件',
+      today: '今日まで {{n}}件',
+      tomorrow: '明日まで {{n}}件',
+      in3: '2〜3日後まで {{n}}件',
+      inboxOld: '受信箱（7日以上）{{n}}件',
     },
   },
 };
