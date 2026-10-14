@@ -83,7 +83,8 @@ export interface AdminLog {
 
 /** 通知の種類 */
 export type NotificationType =
-  'assigned' | 'comment' | 'dueChanged' | 'resolved' | 'sentBack' | 'closed' | 'rejected' | 'restored' | 'joined';
+'assigned' | 'comment' | 'dueChanged' | 'resolved' | 'sentBack' | 'closed' | 'rejected' | 'restored' | 'joined'
+| 'handover';
 
 /**
  * 画面内の通知（users/{uid}/notifications）。本人だけが読める。
@@ -95,7 +96,7 @@ export interface AppNotification {
   pid: string;
   projectName: string;
   iid: string | null;          // 招待の承諾（joined）は課題がないので null
-  issueNumber: number | null;
+  issueNumber: number | null;  // 引き継ぎ（handover）のときは、引き継いだ件数
   issueTitle: string;          // 課題がないときは ''
   by: string;                  // 送った人の uid
   byName: string;

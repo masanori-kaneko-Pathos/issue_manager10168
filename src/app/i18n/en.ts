@@ -465,6 +465,7 @@ export const en: Dict = {
       rejected: '{{name}} rejected #{{n}} "{{title}}"',
       restored: '{{name}} restored #{{n}} "{{title}}" from the trash',
       joined: '{{name}} accepted the invitation and joined "{{project}}"',
+      handover: '{{name}} handed over {{n}} issues in "{{project}}" to you',
     },
   },
 };

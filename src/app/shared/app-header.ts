@@ -270,6 +270,13 @@ export class AppHeader {
   async openNotice(n: AppNotification) {
     this.bellOpen.set(false);
     if (!n.read) this.notify.markRead(n.id).catch((e) => console.error(e));
-    await this.router.navigate(n.iid ? ['/p', n.pid, 'i', n.iid] : ['/p', n.pid]);
+    if (n.iid) {
+      await this.router.navigate(['/p', n.pid, 'i', n.iid]);
+    } else if (n.type === 'handover') {
+      // 引き継いだ課題が見えるよう、自分の担当で絞ったリストへ
+      await this.router.navigate(['/p', n.pid, 'list'], { queryParams: { assignee: auth.currentUser!.uid } });
+    } else {
+      await this.router.navigate(['/p', n.pid]);
+    }
   }
 }

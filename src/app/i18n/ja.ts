@@ -461,6 +461,7 @@ export const ja = {
       rejected: '{{name}} さんが、#{{n}}「{{title}}」を却下しました',
       restored: '{{name}} さんが、#{{n}}「{{title}}」を削除フォルダから復元しました',
       joined: '{{name}} さんが、招待を受けて「{{project}}」に参加しました',
+      handover: '{{name}} さんから、「{{project}}」の課題 {{n}} 件の担当を引き継ぎました',
     },
   },
 };

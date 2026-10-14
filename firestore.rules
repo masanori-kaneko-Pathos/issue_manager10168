@@ -44,7 +44,7 @@ service cloud.firestore {
                       'by', 'byName', 'detail', 'at', 'read', 'expireAt'];
           return d.keys().hasOnly(keys) && d.keys().hasAll(keys)
             && d.type in ['assigned', 'comment', 'dueChanged', 'resolved', 'sentBack',
-                          'closed', 'rejected', 'restored', 'joined']
+                          'closed', 'rejected', 'restored', 'joined', 'handover']
             && d.pid is string
             && d.projectName is string && d.projectName.size() <= 100
             && (d.iid == null || d.iid is string)
@@ -56,8 +56,8 @@ service cloud.firestore {
             && d.at == request.time
             && d.read == false
             && d.expireAt is timestamp
-            // 招待の承諾では、同じバッチで自分がメンバーになるので「書いたあと」を見る
-            && existsAfter(/databases/$(database)/documents/projects/$(d.pid)/members/$(request.auth.uid))
+            // 「書く前」を見る（自分から抜けるときは、同じ保存で自分のメンバー文書が消えるため）
+            && exists(/databases/$(database)/documents/projects/$(d.pid)/members/$(request.auth.uid))
             && exists(/databases/$(database)/documents/projects/$(d.pid)/members/$(uid));
         }
         allow read, delete: if request.auth != null && request.auth.uid == uid;

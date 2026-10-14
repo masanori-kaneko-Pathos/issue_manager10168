@@ -6,6 +6,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { AuthService } from '../auth/auth.service';
+import { NotificationService } from '../notification/notification.service';
 import { I18nService } from '../../i18n/i18n';
 import {
     DEFAULT_LABEL_IDS, DEFAULT_SETTINGS, Invitation, IssueStatus, Label, Member, OPEN_STATUSES, Project,
@@ -19,6 +20,7 @@ export type MemberChange = { kind: 'role'; role: Role } | { kind: 'remove' } | {
 export class ProjectService {
     private i18n = inject(I18nService);
     private authService = inject(AuthService);
+    private notifications = inject(NotificationService);
 
     /** プロジェクトと「自分が管理者」のメンバー文書を、1回でまとめて作る */
     async create(name: string, user: User): Promise<string> {
@@ -149,6 +151,12 @@ export class ProjectService {
         });
         batch.delete(doc(db, 'projects', inv.projectId, 'invitations', inv.email));
         await batch.commit();
+        // 招待した人に知らせる（おまけ）。承諾のあとに別に書く：承諾する前は、招待した人が今もメンバーかを
+        // 読めないため。招待した人が抜けていれば断られるが、承諾はもう済んでいるので、失敗は記録だけにする
+        const n = this.notifications.notice(inv.invitedBy, 'joined', {
+            pid: inv.projectId, projectName: inv.projectName, iid: null, issueNumber: null, issueTitle: '',
+        });
+        if (n) await setDoc(n.ref, n.data).catch((e) => console.warn('参加の知らせを送れませんでした', e));
     }
 
     declineInvitation(inv: Invitation) {
@@ -169,7 +177,10 @@ export class ProjectService {
         const memberRef = doc(projectRef, 'members', target.uid);
         await runTransaction(db, async (tx) => {
             // トランザクションは「読むのが先、書くのは後」の決まり
-            const snaps = await Promise.all(issueIds.map((id) => tx.get(doc(projectRef, 'issues', id))));
+            const [project, ...snaps] = await Promise.all([
+                tx.get(projectRef),
+                ...issueIds.map((id) => tx.get(doc(projectRef, 'issues', id))),
+            ]);
             let moved = 0;
             for (const s of snaps) {
                 if (!s.exists() || !to) continue;
@@ -193,6 +204,13 @@ export class ProjectService {
                 type: change?.kind ?? 'handover', by, target: target.uid, from: target.role,
                 to: change?.kind === 'role' ? change.role : null, moved, at: serverTimestamp(),
             });
+            // 引き継いだ人に、まとめて1通（件数は issueNumber に入れる）
+            if (to && moved > 0) {
+                const n = this.notifications.notice(to, 'handover', {
+                    pid, projectName: project.data()?.['name'] ?? '', iid: null, issueNumber: moved, issueTitle: '',
+                }, reason);
+                if (n) tx.set(n.ref, n.data);
+            }
         });
     }
 }

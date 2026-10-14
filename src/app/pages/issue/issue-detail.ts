@@ -719,7 +719,8 @@ export class IssueDetail implements OnInit {
     this.error.set('');
     try {
       // 戻ったことは見張りで届くので、ここでは何もしない
-      await this.issueService.restoreIssue(this.pid, this.iid, this.myUid, this.tz());
+      const admins = this.role() === 'admin' ? [] : this.members().filter((m) => m.role === 'admin').map((m) => m.uid);
+      await this.issueService.restoreIssue(this.pid, this.iid, this.myUid, this.tz(), admins);
     } catch (e) {
       console.error(e);
       this.error.set('common.saveError');

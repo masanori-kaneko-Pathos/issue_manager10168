@@ -135,7 +135,7 @@ export class Trash implements OnInit {
     this.busyId.set(i.id);
     this.error.set('');
     try {
-      await this.issueService.restoreIssue(this.ctx.pid(), i.id, this.myUid, this.tz());
+      await this.issueService.restoreIssue(this.ctx.pid(), i.id, this.myUid, this.tz(), this.adminsToNotify());
       this.restored.set(i.number);
     } catch (e) {
       // ほかの人が先に復元していた場合は、見張りで一覧から消えるので、何も出さない
@@ -163,6 +163,11 @@ export class Trash implements OnInit {
       this.busyId.set(null);
     }
   }
+
+  /** メンバーが復元したときだけ、管理者に知らせる（管理者が戻したときは知らせない） */
+  private adminsToNotify() {
+    return this.ctx.role() === 'admin' ? [] : this.ctx.members().filter((m) => m.role === 'admin').map((m) => m.uid);
+  }  
 
   memberName(uid: string) {
     return this.ctx.nameOf(uid);

@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { NotificationService } from '../notification/notification.service';
+import { NoticeAbout, NotificationService } from '../notification/notification.service';
 import {
   DocumentReference, FirestoreError, QueryDocumentSnapshot, Timestamp, Transaction, Unsubscribe, collection,
   doc, getDoc, getDocs, onSnapshot, orderBy, query, runTransaction, serverTimestamp, where,
@@ -7,9 +7,9 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
-  CauseCategory, Effect, Issue, IssueType, Level, Member, OPEN_STATUSES, TimelineItem,
+  CauseCategory, Effect, Issue, IssueType, Level, Member, NotificationType, OPEN_STATUSES, TimelineItem,
 } from '../models';
-import { Transition } from './workflow';
+import { Transition, TransitionKey } from './workflow';
 
 /** 見張りで届いた文書を課題にする。保存直後の手元の版では、サーバーの時刻が null なので仮の時刻を入れる */
 function toIssue(d: QueryDocumentSnapshot): Issue {
@@ -39,6 +39,21 @@ async function assertUnchanged(tx: Transaction, ref: DocumentReference, base: Is
   if (!s.exists()) throw new Error('issue-not-found');
   const latest = { ...(s.data() as Omit<Issue, 'id'>), id: s.id };
   if (!latest.updatedAt.isEqual(base.updatedAt)) throw new ConflictError(latest);
+}
+
+/** ステータス変更のうち、知らせるものと宛先 */
+const STATUS_NOTICE: Partial<Record<TransitionKey, { type: NotificationType; to: 'assignee' | 'reporter' }>> = {
+  resolve: { type: 'resolved', to: 'reporter' },   // 提起者に確認してもらう
+  sendBack: { type: 'sentBack', to: 'assignee' },
+  close: { type: 'closed', to: 'assignee' },
+  reject: { type: 'rejected', to: 'reporter' },
+};
+
+/** 知らせたい相手と種類 */
+interface NoticeWant {
+  to: string | null | undefined;
+  type: NotificationType;
+  detail?: string;
 }
 
 export interface NewIssue {
@@ -85,6 +100,28 @@ export interface IssueEdits {
 @Injectable({ providedIn: 'root' })
 export class IssueService {
   private notifications = inject(NotificationService);
+  /**
+   * 知らせたい相手のうち、今もメンバーの人にだけ、通知を用意する（トランザクションの中で、書く前に呼ぶ）。
+   * 抜けた人を宛先にすると、ルールで断られて保存ごと失敗するので、メンバー文書を読んで確かめる
+   */
+  private async prepareNotices(
+    tx: Transaction, pid: string, issue: { id: string; number: number; title: string }, wants: NoticeWant[],
+  ) {
+    // 宛先のない人と、同じ人への2通目を除く
+    const targets = wants.filter((w, i) => !!w.to && wants.findIndex((x) => x.to === w.to) === i);
+    if (!targets.length) return [];
+    const [project, ...members] = await Promise.all([
+      tx.get(doc(db, 'projects', pid)),
+      ...targets.map((w) => tx.get(doc(db, 'projects', pid, 'members', w.to!))),
+    ]);
+    const about: NoticeAbout = {
+      pid, projectName: project.data()?.['name'] ?? '', iid: issue.id, issueNumber: issue.number, issueTitle: issue.title,
+    };
+    return targets
+      .filter((_, i) => members[i].exists())
+      .map((w) => this.notifications.notice(w.to, w.type, about, w.detail ?? ''))
+      .filter((n): n is NonNullable<typeof n> => n !== null);
+  }
 
   /** 課題番号の採番と、課題・履歴の作成を、1つのトランザクションで行う */
   /** memoId があれば、受信箱のメモも同じトランザクションで消す（課題になったメモを残さないため） */
@@ -178,18 +215,36 @@ export class IssueService {
       });
     }
     // issue は、モーダルを開いた時点（かんばんならつかんだ時点）の課題
+    const rule = STATUS_NOTICE[t.key];
     await runTransaction(db, async (tx) => {
       await assertUnchanged(tx, ref, issue);
+      const notes = rule
+        ? await this.prepareNotices(tx, pid, issue, [{
+            to: rule.to === 'assignee' ? issue.assigneeId : issue.reporterId, type: rule.type, detail: p.reason,
+          }])
+        : [];
       tx.update(ref, update);
       tx.set(doc(collection(ref, 'events')), {
         type: 'status', from: issue.status, to: t.to, reason: p.reason, by: uid, tz, at: serverTimestamp(),
       });
+      notes.forEach((n) => tx.set(n.ref, n.data));
     });
   }
 
+  /** コメント：書くのと同時に、担当者と提起者に知らせる（今もメンバーの人だけ） */
   addComment(pid: string, iid: string, body: string, uid: string, tz: string) {
-    return addDoc(collection(db, 'projects', pid, 'issues', iid, 'comments'), {
-      body, by: uid, tz, at: serverTimestamp(),
+    const issueRef = doc(db, 'projects', pid, 'issues', iid);
+    return runTransaction(db, async (tx) => {
+      const s = await tx.get(issueRef);
+      if (!s.exists()) throw new Error('issue-not-found');
+      const i = s.data() as Omit<Issue, 'id'>;
+      const detail = body.slice(0, 80);
+      const notes = await this.prepareNotices(tx, pid, { id: iid, number: i.number, title: i.title }, [
+        { to: i.assigneeId, type: 'comment', detail },
+        { to: i.reporterId, type: 'comment', detail },
+      ]);
+      tx.set(doc(collection(issueRef, 'comments')), { body, by: uid, tz, at: serverTimestamp() });
+      notes.forEach((n) => tx.set(n.ref, n.data));
     });
   }
   /** コメントを直す（本人のみ。ルールで確認） */
@@ -269,12 +324,20 @@ export class IssueService {
       changes['doneCriteria'] = { from: issue.doneCriteria, to: edits.doneCriteria };
     }
 
+    // 担当者が変わったら新しい担当者に、期限だけ変わったら担当者に知らせる（両方変わっても1通）
+    const want: NoticeWant | null = edits.assigneeId
+      ? { to: edits.assigneeId, type: 'assigned', detail: reason }
+      : edits.dueAt ? { to: issue.assigneeId, type: 'dueChanged', detail: reason } : null;
     await runTransaction(db, async (tx) => {
       await assertUnchanged(tx, ref, issue);
+      const notes = want
+        ? await this.prepareNotices(tx, pid, { id: issue.id, number: issue.number, title: edits.title ?? issue.title }, [want])
+        : [];
       tx.update(ref, update);
       tx.set(doc(collection(ref, 'events')), {
         type: 'edit', fields: keys, changes, reason, by: uid, tz, at: serverTimestamp(),
       });
+      notes.forEach((n) => tx.set(n.ref, n.data));
     });
   }
 
@@ -317,7 +380,8 @@ export class IssueService {
   }
 
   /** 復元：削除する前のステータスに戻す（管理者か、提起した本人。ルールで確認） */
-  async restoreIssue(pid: string, iid: string, uid: string, tz: string) {
+  /** adminIds：知らせる管理者（メンバーが復元したときだけ渡す。管理者が戻したときは空） */
+  async restoreIssue(pid: string, iid: string, uid: string, tz: string, adminIds: string[] = []) {
     const ref = doc(db, 'projects', pid, 'issues', iid);
     await runTransaction(db, async (tx) => {
       const s = await tx.get(ref);
@@ -326,6 +390,8 @@ export class IssueService {
       // ほかの人がもう復元していたら、何もしない
       if (latest.status !== 'deleted') throw new ConflictError(latest);
       const to = latest.deletedFrom ?? 'open';
+      const notes = await this.prepareNotices(tx, pid, latest,
+        adminIds.map((a): NoticeWant => ({ to: a, type: 'restored' })));
       tx.update(ref, {
         status: to,
         deletedFrom: deleteField(),
@@ -338,6 +404,7 @@ export class IssueService {
       tx.set(doc(collection(ref, 'events')), {
         type: 'status', from: 'deleted', to, by: uid, tz, at: serverTimestamp(),
       });
+      notes.forEach((n) => tx.set(n.ref, n.data));
     });
   }
 
