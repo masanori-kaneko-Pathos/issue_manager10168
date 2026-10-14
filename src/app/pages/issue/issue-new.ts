@@ -6,7 +6,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { ProjectService } from '../../core/project/project.service';
 import { IssueService } from '../../core/issue/issue.service';
 import { InboxService } from '../../core/inbox/inbox.service';
-import { ISSUE_TYPES, IssueType, Level, Member, ProjectWithRole } from '../../core/models';
+import { ISSUE_TYPES, IssueLink, IssueType, Level, Member, ProjectWithRole } from '../../core/models';
 import { dateKey, endOfDayIn, formatDateTime, parseLocalInput, toLocalInput, zonedTime } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { HelpTip } from '../../shared/help-tip';
@@ -37,6 +37,7 @@ function writeLastProject(pid: string) {
     <header class="bar"><a [routerLink]="backLink()" class="link">{{ 'common.back' | t }}</a></header>
     <main>
       <h1>{{ 'issueNew.title' | t }}</h1>
+      @if (fromNumber(); as n) { <p class="notice">{{ 'prevention.creating' | t: { n: '' + n } }}</p> }
       <form (ngSubmit)="save()">
               @if (!loadingProjects() && projects().length === 0) {
           <p class="notice">
@@ -181,7 +182,13 @@ export class IssueNew implements OnInit {
   /** 受信箱のメモから来たときの、メモの id */
   private readonly memoId = this.route.snapshot.queryParamMap.get('memo');
   private inbox = inject(InboxService);
-  backLink = computed(() => (this.memoId ? ['/inbox'] : this.fromPid ? ['/p', this.fromPid] : ['/']));
+  /** 再発防止課題として作るときの、元の課題の id（詳細画面の「再発防止課題を作る」から来たとき） */
+  private readonly fromIid = this.route.snapshot.queryParamMap.get('from');
+  private relatedFrom: IssueLink | null = null;
+  fromNumber = signal<number | null>(null);
+  backLink = computed(() => (this.memoId ? ['/inbox']
+    : this.fromIid && this.fromPid ? ['/p', this.fromPid, 'i', this.fromIid]
+    : this.fromPid ? ['/p', this.fromPid] : ['/']));
   readonly myUid = auth.currentUser!.uid;
   readonly types = ISSUE_TYPES;
   readonly levels: Level[] = ['high', 'mid', 'low'];
@@ -253,6 +260,8 @@ export class IssueNew implements OnInit {
           }
         }
       }
+      // 再発防止課題として作るときは、必須の欄を全部埋めておく
+      if (this.fromIid && this.fromPid) await this.fillPrevention(this.fromPid, this.fromIid);
     } catch (e) {
       console.error(e);
     } finally {
@@ -263,6 +272,10 @@ export class IssueNew implements OnInit {
   /** プロジェクトを変えたら、担当者の選択肢をそのプロジェクトのメンバーに入れ替える */
   async selectProject(pid: string) {
     this.pid.set(pid);
+    if (pid !== this.fromPid) {
+      this.relatedFrom = null;
+      this.fromNumber.set(null);
+    }
     // ラベルはプロジェクトごとに違うので、切り替えたら選び直してもらう
     this.labelIds.set([]);
     const all = await this.ps.listMembers(pid);
@@ -271,6 +284,27 @@ export class IssueNew implements OnInit {
     if (!this.members().some((m) => m.uid === this.assigneeId())) {
       this.assigneeId.set(this.myUid);
     }
+  }
+
+  /**
+   * 再発防止課題：必須の欄を全部埋めて、「登録する」を押すだけで済むようにする（どれも書き換えられる）。
+   * 担当者は、元の担当者が今もメンバー（閲覧者以外）なら、その人
+   */
+  private async fillPrevention(pid: string, iid: string) {
+    const src = await this.issues.get(pid, iid);
+    if (!src || this.pid() !== pid) return;
+    this.relatedFrom = { kind: 'prevention', iid: src.id, number: src.number };
+    this.fromNumber.set(src.number);
+    this.title = this.i18n.t('prevention.titlePrefix', { n: String(src.number), title: src.title }).slice(0, 200);
+    this.type.set('task');
+    this.importance.set(src.importance);
+    this.pickPreset('in7', 7);
+    if (this.members().some((m) => m.uid === src.assigneeId)) this.assigneeId.set(src.assigneeId);
+    this.doneCriteria = this.i18n.t('prevention.doneCriteria');
+    this.description = this.i18n.t('prevention.description', {
+      n: String(src.number), title: src.title, cause: src.cause ?? '', countermeasure: src.countermeasure ?? '',
+    });
+    this.showDetail.set(true);
   }
 
   selectType(t: IssueType) {
@@ -318,6 +352,7 @@ export class IssueNew implements OnInit {
         labelIds: this.labelIds(),
         occurredOn: this.occurredOn || null,
         impact: this.impact.trim(),
+        relatedFrom: this.relatedFrom,
       }, this.myUid, this.tz(), this.memoId ?? undefined);
       writeLastProject(pid);
       await this.router.navigate(['/p', pid]);

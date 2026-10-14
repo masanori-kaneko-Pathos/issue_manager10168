@@ -122,6 +122,13 @@ export type IssueStatus = 'open' | 'in_progress' | 'on_hold' | 'resolved' | 'clo
 export const ISSUE_TYPES: IssueType[] = ['bug', 'request', 'question', 'task', 'risk'];
 export const OPEN_STATUSES: IssueStatus[] = ['open', 'in_progress', 'on_hold', 'resolved'];
 
+/** 課題どうしのひも付け（今は再発防止だけ。提出2の関連課題でも、kind を増やして同じ形を使う） */
+export interface IssueLink {
+  kind: 'prevention';
+  iid: string;     // 元の課題
+  number: number;  // 元の課題の番号（表示用の写し）
+}
+
 export interface Issue {
   id: string;
   number: number;
@@ -155,6 +162,7 @@ export interface Issue {
   deletedReason?: string;
   deletedAt?: Timestamp;
   deletedBy?: string;
+  relatedFrom?: IssueLink;    // この課題が、どの課題から作られたか（再発防止など）
 }
 export const CAUSE_CATEGORIES = [
   'requirements', 'design', 'testing', 'operation', 'communication', 'external', 'other',

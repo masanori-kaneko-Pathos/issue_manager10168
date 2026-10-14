@@ -7,7 +7,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
-  CauseCategory, Effect, Issue, IssueType, Level, Member, NotificationType, OPEN_STATUSES, TimelineItem,
+  CauseCategory, Effect, Issue, IssueLink, IssueType, Level, Member, NotificationType, OPEN_STATUSES, TimelineItem,
 } from '../models';
 import { Transition, TransitionKey } from './workflow';
 
@@ -67,6 +67,7 @@ export interface NewIssue {
   labelIds: string[];
   occurredOn: string | null;
   impact: string;
+  relatedFrom?: IssueLink | null;
 }
 
 export interface StatusPayload {
@@ -152,6 +153,8 @@ export class IssueService {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         updatedBy: uid,
+        // ひも付けがあるときだけ書く
+        ...(input.relatedFrom ? { relatedFrom: input.relatedFrom } : {}),
       });
       tx.set(doc(collection(issueRef, 'events')), { type: 'created', by: uid, tz, at: serverTimestamp() });
       if (memoId) tx.delete(doc(db, 'users', uid, 'inbox', memoId));
@@ -429,6 +432,17 @@ export class IssueService {
       });
       notes.forEach((n) => tx.set(n.ref, n.data));
     });
+  }
+
+  /** この課題を元にして作られた課題（再発防止など）を見張る。削除フォルダのものは出さない */
+  watchRelatedTo(
+    pid: string, iid: string, onData: (issues: Issue[]) => void, onError: (e: FirestoreError) => void,
+  ): Unsubscribe {
+    return onSnapshot(
+      query(collection(db, 'projects', pid, 'issues'), where('relatedFrom.iid', '==', iid)),
+      (s) => onData(s.docs.map(toIssue).filter((i) => i.status !== 'deleted').sort((a, b) => a.number - b.number)),
+      onError,
+    );
   }
 
   /** 削除フォルダの課題を見張る（削除した日時の新しい順） */

@@ -493,6 +493,18 @@ export const en: Dict = {
     clear: 'Show all',
   },
 
+  prevention: {
+    title: 'Prevention issues',
+    help: 'A countermeasure fixes this issue itself. Prevention changes the process or system so the same kind of problem does not happen again (e.g. add a check item, change a procedure).',
+    create: 'Create a prevention issue',
+    recommend: 'The fix was not fully effective. Consider creating a prevention issue.',
+    from: 'Prevention for #{{n}}',
+    creating: 'Creating a prevention issue for #{{n}}. Adjust anything you need, then press "Create".',
+    titlePrefix: '[Prevention] #{{n}} {{title}}',
+    doneCriteria: 'The process was changed and the same kind of problem no longer occurs',
+    description: '[Original issue] #{{n}} {{title}}\n[Cause] {{cause}}\n[Countermeasure] {{countermeasure}}\n\n[Process or system to change]\n',
+  },
+
   stale: {
     label: 'Stale',
     title: 'Not updated for {{n}}+ days',

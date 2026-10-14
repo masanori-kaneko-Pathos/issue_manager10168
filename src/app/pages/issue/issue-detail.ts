@@ -35,7 +35,11 @@ const FIELD_LABEL_KEYS: Record<string, string> = { assigneeId: 'assignee', dueAt
         <p>{{ 'project.notFound' | t }}</p>
       } @else {
         @let i = issue()!;
-        <p class="num">#{{ i.number }} · {{ 'issueTypes.' + i.type | t }}</p>
+        <p class="num">#{{ i.number }} · {{ 'issueTypes.' + i.type | t }}
+          @if (i.relatedFrom; as r) {
+            · <a class="related" [routerLink]="['/p', pid, 'i', r.iid]">{{ 'prevention.from' | t: { n: '' + r.number } }}</a>
+          }
+        </p>
         <h1>{{ i.title }}</h1>
         <div class="badges">
           <span class="status" [attr.data-s]="i.status">{{ 'status.' + i.status | t }}</span>
@@ -103,6 +107,27 @@ const FIELD_LABEL_KEYS: Record<string, string> = { assigneeId: 'assignee', dueAt
             @if (i.learning) { <dt>{{ 'workflow.learning' | t }}</dt><dd class="pre">{{ i.learning }}</dd> }
           }
         </dl>
+
+        @if (i.status === 'resolved' || i.status === 'closed' || preventions().length) {
+          <section class="prevention">
+            <h2>{{ 'prevention.title' | t }} <app-help-tip [keys]="['prevention.help']" /></h2>
+            @for (p of preventions(); track p.id) {
+              <a class="prev-row" [routerLink]="['/p', pid, 'i', p.id]">
+                <span class="prev-title">#{{ p.number }} {{ p.title }}</span>
+                <span class="prev-st">{{ 'status.' + p.status | t }}</span>
+              </a>
+            }
+            @if (i.status === 'resolved' || i.status === 'closed') {
+              @if (i.effect === 'partial' || i.effect === 'no') {
+                <p class="recommend">{{ 'prevention.recommend' | t }}</p>
+              }
+              @if (canCreate()) {
+                <a class="prev-btn" [routerLink]="['/p', pid, 'new']" [queryParams]="{ from: i.id }">
+                  {{ 'prevention.create' | t }}</a>
+              }
+            }
+          </section>
+        }
 
         @if (i.status !== 'deleted') {
         <section class="tools">
@@ -379,6 +404,17 @@ const FIELD_LABEL_KEYS: Record<string, string> = { assigneeId: 'assignee', dueAt
     .deleted { margin: 4px 0 0; font-size: 13px; font-style: italic; color: var(--text-subtle); }
     .edit-box { width: 100%; box-sizing: border-box; margin-top: 6px; }
     .badges .stale { background: var(--warning-bg); color: var(--warning-text); }
+    .related { font-size: 13px; }
+    .prevention { margin: 8px 0 16px; display: flex; flex-direction: column; gap: 6px; }
+    .prevention h2 { margin: 8px 0 0; }
+    .prev-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; color: var(--text);
+      text-decoration: none; border-bottom: 1px solid var(--border); }
+    .prev-title { flex: 1; overflow-wrap: anywhere; }
+    .prev-st { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--surface-muted); }
+    .recommend { margin: 0; padding: 8px 12px; border-radius: 8px; font-size: 13px;
+      background: var(--warning-bg); color: var(--warning-text); }
+    .prev-btn { align-self: flex-start; display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px;
+      border: 1px solid var(--primary); border-radius: 8px; color: var(--primary); text-decoration: none; font-size: 14px; }
   `,
 })
 export class IssueDetail implements OnInit {
@@ -457,6 +493,10 @@ export class IssueDetail implements OnInit {
   editBody = '';
   /** アーカイブ中のプロジェクトでは、コメントの編集・削除のボタンを出さない */
   projectArchived = signal(false);
+  /** この課題を元に作られた再発防止課題 */
+  preventions = signal<Issue[]>([]);
+  /** 再発防止課題を作れるか：管理者とメンバー（アーカイブ中は不可） */
+  canCreate = computed(() => (this.role() === 'admin' || this.role() === 'member') && !this.projectArchived());
   /** 停滞とみなす日数（開いたときにプロジェクトの設定から読む） */
   staleDays = signal(DEFAULT_SETTINGS.staleDays);
   stale = computed(() => {
@@ -555,6 +595,7 @@ export class IssueDetail implements OnInit {
         },
       ),
       this.issueService.watchTimeline(this.pid, this.iid, (items) => this.timeline.set(items), (e) => console.error(e)),
+      this.issueService.watchRelatedTo(this.pid, this.iid, (list) => this.preventions.set(list), (e) => console.error(e)),
     );
   }
 

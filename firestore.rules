@@ -302,7 +302,13 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly([
                'number', 'title', 'type', 'status', 'importance', 'priorityOverride',
                'dueAt', 'startAt', 'doneCriteria', 'description', 'assigneeId',
-               'reporterId', 'labelIds', 'createdAt', 'updatedAt', 'updatedBy', 'occurredOn', 'impact'])
+               'reporterId', 'labelIds', 'createdAt', 'updatedAt', 'updatedBy', 'occurredOn', 'impact', 'relatedFrom'])
+          // ひも付け（今は再発防止だけ）。あるときだけ形を確かめる
+          && (!('relatedFrom' in request.resource.data)
+            || (request.resource.data.relatedFrom.keys().hasOnly(['kind', 'iid', 'number'])
+                && request.resource.data.relatedFrom.kind in ['prevention']
+                && request.resource.data.relatedFrom.iid is string
+                && request.resource.data.relatedFrom.number is int))
           && (request.resource.data.get('occurredOn', null) == null
             || request.resource.data.occurredOn.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))
           && request.resource.data.get('impact', '') is string
