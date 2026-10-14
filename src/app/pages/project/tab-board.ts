@@ -7,10 +7,10 @@ import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth/auth.service';
 import { Clock } from '../../core/time/clock';
 import { ConflictError, EMPTY_STATUS_PAYLOAD, IssueService, conflictWho } from '../../core/issue/issue.service';
-import { Issue, IssueStatus, Level, labelsOf } from '../../core/models';
+import { DEFAULT_SETTINGS, Issue, IssueStatus, Level, labelsOf } from '../../core/models';
 import { LabelChip } from '../../shared/label-chip';
 import { PriorityMark } from '../../shared/priority-mark';
-import { compareIssues, isManualPriority, priorityOf } from '../../core/issue/priority';
+import { compareIssues, isManualPriority, isStale, priorityOf } from '../../core/issue/priority';
 import { ProjectContext } from './project-context';
 import { endOfDayIn, remainingOf, shortDue } from '../../core/time/time';
 import { Transition, availableTransitions } from '../../core/issue/workflow';
@@ -107,6 +107,9 @@ const EMPTY_PAYLOAD = {
                         <span class="id">
                           @if (isActive(i)) { <app-priority-mark [level]="prio(i)" [manual]="manual(i)" /> }
                           <span class="num">#{{ i.number }}</span>
+                          @if (stale(i)) {
+                            <span class="stale" [title]="'stale.title' | t: { n: '' + staleDays() }">{{ 'stale.label' | t }}</span>
+                          }
                         </span>
                         @if (isMobile() && moves(i).length) {
                           <button type="button" class="more" [attr.aria-label]="'board.move' | t"
@@ -239,6 +242,7 @@ const EMPTY_PAYLOAD = {
       /* つかんでいる間は、1列ずつ止まる仕組みを外し、端に運んだときになめらかに横へ流れるようにする */
       .board.dragging { scroll-snap-type: none; }
     }
+    .stale { font-size: 11px; padding: 1px 6px; border-radius: 8px; background: var(--warning-bg); color: var(--warning-text); }
   `,
 })
 export class ProjectBoard implements OnInit {
@@ -465,6 +469,11 @@ export class ProjectBoard implements OnInit {
   }
   isOverdue(i: Issue) {
     return this.isActive(i) && i.dueAt.toMillis() < this.clock.now();
+  }
+  /** 停滞とみなす日数（プロジェクトの設定。なければ既定の7日） */
+  staleDays = computed(() => this.ctx.project()?.settings?.staleDays ?? DEFAULT_SETTINGS.staleDays);
+  stale(i: Issue) {
+    return isStale(i, this.staleDays(), this.clock.now());
   }
   remaining(i: Issue) {
     const r = remainingOf(i.dueAt.toMillis(), this.clock.now());

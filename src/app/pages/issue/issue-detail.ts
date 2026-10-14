@@ -9,14 +9,14 @@ import { Clock } from '../../core/time/clock';
 import { ProjectService } from '../../core/project/project.service';
 import { ConflictError, EMPTY_STATUS_PAYLOAD, IssueService, conflictWho } from '../../core/issue/issue.service';
 import {
-  CAUSE_CATEGORIES, CauseCategory, Issue, Label, Level, Member, Role, TimelineItem, labelsOf,
+  CAUSE_CATEGORIES, CauseCategory, DEFAULT_SETTINGS, Issue, Label, Level, Member, Role, TimelineItem, labelsOf,
 } from '../../core/models';
 import { StatusDialog } from '../../shared/status-dialog';
 import { LabelChip } from '../../shared/label-chip';
 import { IssueEdit } from './issue-edit-dialog';
 import { HelpTip } from '../../shared/help-tip';
 import { PriorityMark } from '../../shared/priority-mark';
-import { priorityOf } from '../../core/issue/priority';
+import { isStale, priorityOf } from '../../core/issue/priority';
 import { formatDateTime, remainingOf } from '../../core/time/time';
 import { Transition, availableTransitions } from '../../core/issue/workflow';
 import { I18nService, TPipe } from '../../i18n/i18n';
@@ -50,6 +50,9 @@ const FIELD_LABEL_KEYS: Record<string, string> = { assigneeId: 'assignee', dueAt
           }
           @if (i.status !== 'closed' && i.status !== 'rejected' && i.status !== 'deleted') {
             <span class="due" [class.overdue]="overdue()">{{ dueText() }}</span>
+          }
+          @if (stale()) {
+            <span class="stale" [title]="'stale.title' | t: { n: '' + staleDays() }">{{ 'stale.label' | t }}</span>
           }
         </div>
         @if (i.statusReason && (i.status === 'on_hold' || i.status === 'rejected')) {
@@ -375,6 +378,7 @@ const FIELD_LABEL_KEYS: Record<string, string> = { assigneeId: 'assignee', dueAt
     .icon:hover { background: var(--surface-muted); }
     .deleted { margin: 4px 0 0; font-size: 13px; font-style: italic; color: var(--text-subtle); }
     .edit-box { width: 100%; box-sizing: border-box; margin-top: 6px; }
+    .badges .stale { background: var(--warning-bg); color: var(--warning-text); }
   `,
 })
 export class IssueDetail implements OnInit {
@@ -453,6 +457,12 @@ export class IssueDetail implements OnInit {
   editBody = '';
   /** アーカイブ中のプロジェクトでは、コメントの編集・削除のボタンを出さない */
   projectArchived = signal(false);
+  /** 停滞とみなす日数（開いたときにプロジェクトの設定から読む） */
+  staleDays = signal(DEFAULT_SETTINGS.staleDays);
+  stale = computed(() => {
+    const i = this.issue();
+    return !!i && isStale(i, this.staleDays(), this.clock.now());
+  });
   /** 外されたときの知らせに使うプロジェクト名 */
   private projectName = '';
   /** 外れた人の名前（uid → 名前） */
@@ -559,6 +569,7 @@ export class IssueDetail implements OnInit {
       ]);
       this.projectLabels.set(project?.labels ?? []);
       this.projectArchived.set(project?.archived ?? false);
+      this.staleDays.set(project?.settings?.staleDays ?? DEFAULT_SETTINGS.staleDays);
       this.projectName = project?.name ?? '';
       this.formerMembers = project?.formerMembers ?? {};
     } catch (e) {

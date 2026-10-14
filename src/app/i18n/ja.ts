@@ -489,6 +489,12 @@ export const ja = {
     clear: 'すべて表示',
   },
 
+  stale: {
+    label: '停滞中',
+    title: '{{n}}日以上、更新がありません',
+    filter: '停滞中のみ',
+  },
+
   notify: {
     title: 'お知らせ',
     allRead: 'すべて既読にする',

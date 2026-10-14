@@ -493,6 +493,12 @@ export const en: Dict = {
     clear: 'Show all',
   },
 
+  stale: {
+    label: 'Stale',
+    title: 'Not updated for {{n}}+ days',
+    filter: 'Stale only',
+  },
+
   notify: {
     title: 'Notifications',
     allRead: 'Mark all as read',

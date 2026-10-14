@@ -7,10 +7,10 @@ import { ProjectContext } from './project-context';
 import { Clock } from '../../core/time/clock';
 import { AuthService } from '../../core/auth/auth.service';
 import { HelpTip } from '../../shared/help-tip';
-import { ISSUE_TYPES, Issue, IssueType, Level, OPEN_STATUSES, labelsOf } from '../../core/models';
+import { DEFAULT_SETTINGS, ISSUE_TYPES, Issue, IssueType, Level, OPEN_STATUSES, labelsOf } from '../../core/models';
 import { LabelChip } from '../../shared/label-chip';
 import { PriorityMark } from '../../shared/priority-mark';
-import { compareIssues, isManualPriority, priorityOf } from '../../core/issue/priority';
+import { compareIssues, isManualPriority, isStale, priorityOf } from '../../core/issue/priority';
 import { formatDateTime, relativeTime, remainingOf, shortDue } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 
@@ -150,6 +150,9 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
             @if (overdueOnly()) {
               <span class="cond on">{{ 'list.overdue' | t }}</span>
             }
+            @if (staleOnly()) {
+              <span class="cond on">{{ 'stale.filter' | t }}</span>
+            }
             
           </button>
 
@@ -189,6 +192,7 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
               <p class="label">{{ 'issue.due' | t }}</p>
               <div class="chips">
                 <button type="button" [class.on]="overdueOnly()" (click)="toggleOverdue()">{{ 'list.overdue' | t }}</button>
+                <button type="button" [class.on]="staleOnly()" (click)="toggleStale()">{{ 'stale.filter' | t }}</button>
               </div>
 
               <div class="footer">
@@ -228,6 +232,9 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
               <a class="name" [routerLink]="['/p', pid(), 'i', i.id]">{{ i.title }}</a>
           @for (l of rowLabels(i); track l.id) { <app-label-chip [label]="l" /> }
               @if (i.status !== 'open') { <span class="st">{{ 'status.' + i.status | t }}</span> }
+              @if (stale(i)) {
+                <span class="stale" [title]="'stale.title' | t: { n: '' + staleDays() }">{{ 'stale.label' | t }}</span>
+              }
               <span class="meta">{{ memberName(i.assigneeId) }}</span>
                @if (sort() === 'updated') {
                 <span class="meta" [title]="updatedFull(i)">{{ 'list.updated' | t: { t: updated(i) } }}</span>
@@ -325,6 +332,7 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
     .due.overdue { color: var(--danger); font-weight: bold; }
     .empty { color: var(--text-muted); padding: 12px 8px; }
     .denied-wrap { display: inline-flex; align-items: center; gap: 8px; }
+    .stale { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--warning-bg); color: var(--warning-text); }
   `,
 })
 export class TabList implements OnInit {
@@ -372,6 +380,9 @@ export class TabList implements OnInit {
   type = signal<IssueType | null>(null);
   priority = signal<Level | null>(null);
   overdueOnly = signal(false);
+  staleOnly = signal(false);
+  /** 停滞とみなす日数（プロジェクトの設定。なければ既定の7日） */
+  staleDays = computed(() => this.ctx.project()?.settings?.staleDays ?? DEFAULT_SETTINGS.staleDays);
   label = signal<string | null>(null);
   sort = signal<SortKey>('priority');
   dir = signal<Dir>('asc');
@@ -379,7 +390,8 @@ export class TabList implements OnInit {
   assignable = computed(() => this.members().filter((m) => m.role !== 'viewer'));
   tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
   activeCount = computed(() =>
-    [this.scope() === 'all', this.type(), this.priority(), this.label(), this.overdueOnly()].filter(Boolean).length);
+    [this.scope() === 'all', this.type(), this.priority(), this.label(), this.overdueOnly(), this.staleOnly()]
+      .filter(Boolean).length);
   hasCondition = computed(() => !!this.q().trim() || !!this.assignee() || this.activeCount() > 0);
 
   visible = computed(() => {
@@ -406,6 +418,7 @@ export class TabList implements OnInit {
     const label = this.label();
     if (label) list = list.filter((i) => (i.labelIds ?? []).includes(label));
     if (this.overdueOnly()) list = list.filter((i) => this.isActive(i) && i.dueAt.toMillis() < now);
+    if (this.staleOnly()) list = list.filter((i) => isStale(i, this.staleDays(), now));
 
     const cmp: Record<SortKey, (a: Issue, b: Issue) => number> = {
       priority: (a, b) => compareIssues(a, b, now),
@@ -477,6 +490,7 @@ export class TabList implements OnInit {
     this.type.set(p.get('type') as IssueType | null);
     this.priority.set(p.get('priority') as Level | null);
     this.overdueOnly.set(p.get('overdue') === '1');
+    this.staleOnly.set(p.get('stale') === '1');
     this.label.set(p.get('label'));
     const s = p.get('sort') as SortKey | null;
     if (s && this.sortKeys.includes(s)) {
@@ -521,6 +535,7 @@ export class TabList implements OnInit {
         type: this.type(),
         priority: this.priority(),
         overdue: this.overdueOnly() ? '1' : null,
+        stale: this.staleOnly() ? '1' : null,
         label: this.label(),
         sort: this.sort() === 'priority' ? null : this.sort(),
         dir: this.dir() === DEFAULT_DIR[this.sort()] ? null : this.dir(),
@@ -556,6 +571,7 @@ export class TabList implements OnInit {
   setSort(k: SortKey) { this.sort.set(k); this.dir.set(DEFAULT_DIR[k]); this.changed(); }
   flipDir() { this.dir.set(this.dir() === 'asc' ? 'desc' : 'asc'); this.changed(); }
   toggleOverdue() { this.overdueOnly.set(!this.overdueOnly()); this.changed(); }
+  toggleStale() { this.staleOnly.set(!this.staleOnly()); this.changed(); }
 
   /** 同じものをもう一度押すと解除 */
   toggle<T>(sig: WritableSignal<T | null>, value: T) {
@@ -574,6 +590,7 @@ export class TabList implements OnInit {
     this.priority.set(null);
     this.label.set(null);
     this.overdueOnly.set(false);
+    this.staleOnly.set(false);
     this.changed();
   }
 
@@ -582,6 +599,9 @@ export class TabList implements OnInit {
   }
   isOverdue(i: Issue) {
     return this.isActive(i) && i.dueAt.toMillis() < this.clock.now();
+  }
+  stale(i: Issue) {
+    return isStale(i, this.staleDays(), this.clock.now());
   }
   prio(i: Issue): Level {
     return priorityOf(i, this.clock.now());

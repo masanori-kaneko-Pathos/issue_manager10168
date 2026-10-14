@@ -38,3 +38,13 @@ export const PRIORITY_BARS: Record<Level, number> = { high: 3, mid: 2, low: 1 };
 export function isManualPriority(i: Pick<Issue, 'priorityOverride'>): boolean {
   return i.priorityOverride != null;
 }
+
+const DAY = 24 * HOUR;
+
+/**
+ * 停滞中か：未着手・対応中で、最後の更新から staleDays 日以上たったもの。
+ * 保留は、理由をつけて意図して止めているので除く。コメントは「更新」に数えない（updatedAt が変わらない）
+ */
+export function isStale(i: Pick<Issue, 'status' | 'updatedAt'>, staleDays: number, nowMs = Date.now()): boolean {
+  return (i.status === 'open' || i.status === 'in_progress') && nowMs - i.updatedAt.toMillis() >= staleDays * DAY;
+}
