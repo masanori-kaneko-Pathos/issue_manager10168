@@ -2,6 +2,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
+import { PushService } from '../../core/notification/push.service';
 import {
   COMMON_TIMEZONES, DEFAULT_DUE_REMINDERS, REMINDER_BUCKETS, ReminderBucket, formatDateTime, tzOffset,
 } from '../../core/time/time';
@@ -52,6 +53,25 @@ type Section = 'general' | 'password';
             {{ 'settings.reminder.' + b | t }}
           </label>
         }
+      </section>
+
+      <section>
+        <h2>{{ 'push.title' | t }} <app-help-tip [keys]="['push.help']" /></h2>
+        @switch (push.state()) {
+          @case ('on') {
+            <p class="help">{{ 'push.on' | t }}</p>
+            <button type="button" class="link" [disabled]="pushBusy()" (click)="togglePush(false)">
+              {{ 'push.disable' | t }}</button>
+          }
+          @case ('off') {
+            <p class="help">{{ 'push.off' | t }}</p>
+            <button type="button" class="primary" [disabled]="pushBusy()" (click)="togglePush(true)">
+              {{ 'push.enable' | t }}</button>
+          }
+          @case ('blocked') { <p class="help">{{ 'push.blocked' | t }}</p> }
+          @default { <p class="help">{{ 'push.unsupported' | t }}</p> }
+        }
+        @if (pushError()) { <p class="msg ng">{{ pushError() | t }}</p> }
       </section>
 
       <section>
@@ -151,6 +171,9 @@ export class Settings implements OnInit {
    currentPw = '';
    newPw = '';
    busy = signal(false);
+   protected push = inject(PushService);
+   pushBusy = signal(false);
+   pushError = signal('');
    msg = signal<{ section: Section; key: string; ok: boolean } | null>(null);
  
    nowInZone = computed(() => formatDateTime(new Date(), this.timeZone(), this.i18n.lang()));
@@ -164,6 +187,7 @@ export class Settings implements OnInit {
    });
 
   async ngOnInit() {
+    this.push.refresh();
     const p = this.authService.profile() ?? (await this.authService.fetchProfile());
     if (p) {
       this.saved.set({
@@ -218,6 +242,21 @@ export class Settings implements OnInit {
   /** タブを閉じる・再読み込みするときの確認 */
   onBeforeUnload(e: BeforeUnloadEvent) {
     if (this.dirty()) e.preventDefault();
+  }
+
+  /** プッシュ通知を、この端末で受け取る・受け取らない（保存ボタンを待たずに、すぐ反映） */
+  async togglePush(on: boolean) {
+    this.pushBusy.set(true);
+    this.pushError.set('');
+    try {
+      if (on) await this.push.enable();
+      else await this.push.disable();
+    } catch (e) {
+      console.error(e);
+      this.pushError.set('push.failed');
+    } finally {
+      this.pushBusy.set(false);
+    }
   }
 
   async changePassword() {

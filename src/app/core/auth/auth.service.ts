@@ -11,6 +11,7 @@ import {
 import { auth, db } from '../firebase';
 import { I18nService } from '../../i18n/i18n';
 import { ReminderBucket } from '../time/time';
+import { PushService } from '../notification/push.service';
 
 export interface UserProfile {
   displayName: string;
@@ -27,6 +28,7 @@ export class AuthService {
   readonly user = signal<User | null | undefined>(undefined);
   readonly profile = signal<UserProfile | null>(null);
   private i18n = inject(I18nService);
+  private push = inject(PushService);
   /** 新規登録で入力された表示名。ensureProfile が users を作るときに使う */
   private pendingName: string | null = null;
 
@@ -79,8 +81,10 @@ export class AuthService {
   async loginWithGoogle() {
     await signInWithPopup(auth, new GoogleAuthProvider());
   }
-  logout() {
-    return signOut(auth);
+  /** ログアウトの前に、この端末のプッシュの登録を消す（同じ端末で別の人がログインしたとき、前の人の通知が出ないように） */
+  async logout() {
+    await this.push.disable().catch(() => undefined);
+    await signOut(auth);
   }
 
   private async ensureProfile(u: User) {

@@ -69,6 +69,14 @@ service cloud.firestore {
           && request.resource.data.read is bool;
         allow create: if request.auth != null && request.auth.uid != uid && validNotification();
       }  
+      // プッシュ通知を受け取る端末（本人だけ。関数は Admin なので、これに関係なく読める）
+      match /devices/{fid} {
+        allow read, delete: if request.auth != null && request.auth.uid == uid;
+        allow create, update: if request.auth != null && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['fid', 'createdAt'])
+          && request.resource.data.fid == fid
+          && request.resource.data.createdAt is timestamp;
+      }
     }
     function signedIn() { return request.auth != null; }
     function projectPath(pid) { return /databases/$(database)/documents/projects/$(pid); }

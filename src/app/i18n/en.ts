@@ -300,6 +300,17 @@ export const en: Dict = {
       in3: '2–3 days before (due in 2–3 days)',
     },
   },
+  push: {
+    title: 'Push notifications (this device)',
+    help: 'Show notifications on this device even when the app is closed. Choose per device. While the app is open, you are notified by the bell in the header. If you register in a private window, it stops receiving once the window is closed.',
+    on: 'This device receives push notifications.',
+    off: 'This device does not receive push notifications.',
+    enable: 'Receive on this device',
+    disable: 'Stop receiving',
+    blocked: 'Notifications are blocked in your browser. Allow them from the icon at the left of the address bar.',
+    unsupported: 'Push notifications are not available on this device or browser. On iPhone and iPad, add the app to your Home Screen from Safari.',
+    failed: 'Could not register for push notifications. Please try again.',
+  },
   tip: { help: 'Show help', whyDisabled: 'Why is this disabled?' },
   tabs: { list: 'List', board: 'Board', calendar: 'Calendar', gantt: 'Gantt', members: 'Members', settings: 'Settings' },
   board: {
