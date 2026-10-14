@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { I18nService } from '../../i18n/i18n';
+import { ReminderBucket } from '../time/time';
 
 export interface UserProfile {
   displayName: string;
@@ -17,6 +18,7 @@ export interface UserProfile {
   timeZone: string;
   language: 'ja' | 'en';
   defaultView?: 'list' | 'board';
+  dueReminders?: ReminderBucket[];  // 期限前の通知で数える区分
 }
 
 @Injectable({ providedIn: 'root' })
@@ -102,7 +104,9 @@ export class AuthService {
   }
 
   /** プロフィールの更新。表示名は、所属する全プロジェクトのメンバー情報の写しも書き換える */
-  async updateProfile(changes: Partial<Pick<UserProfile, 'displayName' | 'timeZone' | 'language' | 'defaultView'>>) {
+  async updateProfile(
+    changes: Partial<Pick<UserProfile, 'displayName' | 'timeZone' | 'language' | 'defaultView' | 'dueReminders'>>,
+  ) {
     const u = auth.currentUser!;
     await updateDoc(doc(db, 'users', u.uid), changes);
     this.profile.update((p) => (p ? { ...p, ...changes } : p));

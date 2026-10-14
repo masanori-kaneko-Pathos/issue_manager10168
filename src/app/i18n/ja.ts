@@ -289,6 +289,13 @@ export const ja = {
     saveChanges: '変更を保存',
     leaveConfirm: '保存していない変更があります。破棄して移動しますか？',
     defaultView: 'プロジェクトを開いたときの表示',
+    dueReminders: '期限前の通知',
+    dueRemindersHelp: '毎朝のまとめの通知で、どの期限の課題を数えるかを選びます。期限切れの課題は、選ばなくても毎日お知らせします。ホームの「今日のまとめ」には、選ばなかったものも表示されます。',
+    reminder: {
+      today: '当日（期限が今日）',
+      tomorrow: '1日前（期限が明日）',
+      in3: '2〜3日前（期限が2〜3日後）',
+    },
   },
   tip: { help: '説明を見る', whyDisabled: '押せない理由を見る' },
   tabs: { list: 'リスト', board: 'かんばん', calendar: 'カレンダー', gantt: 'ガント', members: 'メンバー', settings: '設定' },

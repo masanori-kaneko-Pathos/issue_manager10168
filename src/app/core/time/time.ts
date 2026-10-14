@@ -127,3 +127,9 @@ export function dueBucket(dueMs: number, nowMs: number, timeZone: string): DueBu
   if (days <= 3) return 'in3';
   return null;
 }
+
+/** 朝のまとめで数える期限前の区分（期限切れは選べない＝毎日必ず数える） */
+export type ReminderBucket = Exclude<DueBucket, 'overdue'>;
+export const REMINDER_BUCKETS: ReminderBucket[] = ['today', 'tomorrow', 'in3'];
+/** 選んでいない人（項目がない人）は、3つともオン */
+export const DEFAULT_DUE_REMINDERS: ReminderBucket[] = ['today', 'tomorrow', 'in3'];

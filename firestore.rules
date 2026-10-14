@@ -10,8 +10,11 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time;
       allow update: if request.auth != null && request.auth.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['displayName', 'timeZone', 'language', 'defaultView'])
-        && (!('defaultView' in request.resource.data) || request.resource.data.defaultView in ['list', 'board']);
+             .hasOnly(['displayName', 'timeZone', 'language', 'defaultView', 'dueReminders'])
+        && (!('defaultView' in request.resource.data) || request.resource.data.defaultView in ['list', 'board'])
+        && (!('dueReminders' in request.resource.data)
+            || (request.resource.data.dueReminders is list
+                && request.resource.data.dueReminders.hasOnly(['today', 'tomorrow', 'in3'])));
       // 受信箱：本人だけが読み書きできる
       match /inbox/{mid} {
         function validMemo() {

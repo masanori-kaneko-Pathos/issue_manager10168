@@ -292,6 +292,13 @@ export const en: Dict = {
     saveChanges: 'Save changes',
     leaveConfirm: 'You have unsaved changes. Discard them and leave?',
     defaultView: 'Default view when opening a project',
+    dueReminders: 'Due date reminders',
+    dueRemindersHelp: 'Choose which due dates are counted in the morning summary. Overdue issues are always included every day. The Today section on Home shows all groups regardless.',
+    reminder: {
+      today: 'On the day (due today)',
+      tomorrow: '1 day before (due tomorrow)',
+      in3: '2–3 days before (due in 2–3 days)',
+    },
   },
   tip: { help: 'Show help', whyDisabled: 'Why is this disabled?' },
   tabs: { list: 'List', board: 'Board', calendar: 'Calendar', gantt: 'Gantt', members: 'Members', settings: 'Settings' },
