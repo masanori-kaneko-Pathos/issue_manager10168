@@ -20,12 +20,6 @@ export class ProjectService {
     private i18n = inject(I18nService);
     private authService = inject(AuthService);
 
-    /** 自分の表示名。設定で変えた名前（プロフィール）を正とし、まだ読めていなければ Auth の名前を使う */
-    private myName(user: User): string {
-        return this.authService.profile()?.displayName
-            || user.displayName || user.email?.split('@')[0] || '';
-    }
-
     /** プロジェクトと「自分が管理者」のメンバー文書を、1回でまとめて作る */
     async create(name: string, user: User): Promise<string> {
         const projectRef = doc(collection(db, 'projects'));
@@ -45,7 +39,7 @@ export class ProjectService {
         batch.set(doc(projectRef, 'members', user.uid), {
             uid: user.uid,
             role: 'admin',
-            displayName: this.myName(user),
+            displayName: this.authService.myName(user),
             photoURL: user.photoURL ?? null,
             joinedAt: serverTimestamp(),
         });
@@ -110,7 +104,7 @@ export class ProjectService {
             role,
             projectName: project.name,
             invitedBy: inviter.uid,
-            invitedByName: this.myName(inviter),
+            invitedByName: this.authService.myName(inviter),
             createdAt: serverTimestamp(),
         });
     }
@@ -149,7 +143,7 @@ export class ProjectService {
         batch.set(doc(db, 'projects', inv.projectId, 'members', user.uid), {
             uid: user.uid,
             role: inv.role,
-            displayName: this.myName(user),
+            displayName: this.authService.myName(user),
             photoURL: user.photoURL ?? null,
             joinedAt: serverTimestamp(),
         });

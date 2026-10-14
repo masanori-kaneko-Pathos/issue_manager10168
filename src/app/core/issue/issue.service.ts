@@ -1,4 +1,5 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
+import { NotificationService } from '../notification/notification.service';
 import {
   DocumentReference, FirestoreError, QueryDocumentSnapshot, Timestamp, Transaction, Unsubscribe, collection,
   doc, getDoc, getDocs, onSnapshot, orderBy, query, runTransaction, serverTimestamp, where,
@@ -83,6 +84,8 @@ export interface IssueEdits {
 
 @Injectable({ providedIn: 'root' })
 export class IssueService {
+  private notifications = inject(NotificationService);
+
   /** 課題番号の採番と、課題・履歴の作成を、1つのトランザクションで行う */
   /** memoId があれば、受信箱のメモも同じトランザクションで消す（課題になったメモを残さないため） */
   create(pid: string, input: NewIssue, uid: string, tz: string, memoId?: string): Promise<number> {
@@ -115,6 +118,11 @@ export class IssueService {
       });
       tx.set(doc(collection(issueRef, 'events')), { type: 'created', by: uid, tz, at: serverTimestamp() });
       if (memoId) tx.delete(doc(db, 'users', uid, 'inbox', memoId));
+      // 担当者が自分以外なら、担当者に知らせる（自分のときは notice が null を返す）
+      const n = this.notifications.notice(input.assigneeId, 'assigned', {
+        pid, projectName: project.data()!['name'], iid: issueRef.id, issueNumber: number, issueTitle: input.title,
+      });
+      if (n) tx.set(n.ref, n.data);
       return number;
     });
   }

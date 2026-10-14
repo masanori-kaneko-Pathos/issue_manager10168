@@ -450,4 +450,21 @@ export const en: Dict = {
     inTrash: 'This note is in the trash.',
     discarded: 'Moved to the trash.',
   },
+  notify: {
+    title: 'Notifications',
+    allRead: 'Mark all as read',
+    empty: 'No notifications.',
+    unread: 'Unread',
+    types: {
+      assigned: '{{name}} assigned you to #{{n}} "{{title}}"',
+      comment: '{{name}} commented on #{{n}} "{{title}}"',
+      dueChanged: '{{name}} changed the due date of #{{n}} "{{title}}"',
+      resolved: '{{name}} resolved #{{n}} "{{title}}". Please check it',
+      sentBack: '{{name}} sent #{{n}} "{{title}}" back to In progress',
+      closed: '{{name}} closed #{{n}} "{{title}}"',
+      rejected: '{{name}} rejected #{{n}} "{{title}}"',
+      restored: '{{name}} restored #{{n}} "{{title}}" from the trash',
+      joined: '{{name}} accepted the invitation and joined "{{project}}"',
+    },
+  },
 };

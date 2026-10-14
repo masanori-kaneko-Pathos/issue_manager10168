@@ -124,7 +124,11 @@ export class AuthService {
     await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email!, current));
     await updatePassword(u, next);
   }
-
+  /** 自分の表示名。設定で変えた名前（プロフィール）を正とし、まだ読めていなければ Auth の名前を使う */
+  myName(user: User | null = auth.currentUser): string {
+    return this.profile()?.displayName
+      || user?.displayName || user?.email?.split('@')[0] || '';
+  }
   /** メール/パスワードでログインしているか（Googleだけの人は false） */
   isPasswordUser(): boolean {
     return auth.currentUser?.providerData.some((p) => p.providerId === 'password') ?? false;

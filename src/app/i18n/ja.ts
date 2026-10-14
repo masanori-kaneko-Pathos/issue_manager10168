@@ -446,5 +446,22 @@ export const ja = {
     inTrash: 'このメモはゴミ箱にあります。',
     discarded: 'ゴミ箱に移しました。',
   },
+  notify: {
+    title: 'お知らせ',
+    allRead: 'すべて既読にする',
+    empty: 'お知らせはありません。',
+    unread: '未読',
+    types: {
+      assigned: '{{name}} さんが、#{{n}}「{{title}}」の担当者をあなたにしました',
+      comment: '{{name}} さんが、#{{n}}「{{title}}」にコメントしました',
+      dueChanged: '{{name}} さんが、#{{n}}「{{title}}」の期限を変えました',
+      resolved: '{{name}} さんが、#{{n}}「{{title}}」を解決済みにしました。確認をお願いします',
+      sentBack: '{{name}} さんが、#{{n}}「{{title}}」を対応中に戻しました',
+      closed: '{{name}} さんが、#{{n}}「{{title}}」をクローズしました',
+      rejected: '{{name}} さんが、#{{n}}「{{title}}」を却下しました',
+      restored: '{{name}} さんが、#{{n}}「{{title}}」を削除フォルダから復元しました',
+      joined: '{{name}} さんが、招待を受けて「{{project}}」に参加しました',
+    },
+  },
 };
 export type Dict = typeof ja;
