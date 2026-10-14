@@ -341,6 +341,29 @@ export class IssueService {
     });
   }
 
+  /** 原因・対策の記入（対応中・保留のとき）。経緯には残すが、通知はしない（軽い編集の扱い） */
+  async updateCause(
+    pid: string, issue: Issue,
+    v: { cause: string; countermeasure: string; causeCategory: CauseCategory | null },
+    uid: string, tz: string,
+  ) {
+    const ref = doc(db, 'projects', pid, 'issues', issue.id);
+    // 変わった欄だけを経緯に書く（何も変えていなければ保存しない）
+    const fields = [
+      (issue.cause ?? '') !== v.cause ? 'cause' : null,
+      (issue.countermeasure ?? '') !== v.countermeasure ? 'countermeasure' : null,
+      (issue.causeCategory ?? null) !== v.causeCategory ? 'causeCategory' : null,
+    ].filter((f): f is string => f !== null);
+    if (!fields.length) return;
+    await runTransaction(db, async (tx) => {
+      await assertUnchanged(tx, ref, issue);
+      tx.update(ref, { ...v, updatedAt: serverTimestamp(), updatedBy: uid });
+      tx.set(doc(collection(ref, 'events')), {
+        type: 'edit', fields, changes: {}, reason: '', by: uid, tz, at: serverTimestamp(),
+      });
+    });
+  }
+
   /** 優先度の手動変更。value が null なら「自動に戻す」 */
   async setPriority(
     pid: string, issue: Issue, value: Level | null, auto: Level, reason: string, uid: string, tz: string,

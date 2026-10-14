@@ -95,6 +95,9 @@ export const ja = {
     labelIds: 'ラベル',
     occurredOn: '発生日',
     impact: '影響範囲',
+    cause: '原因',
+    countermeasure: '対策',
+    causeCategory: '原因カテゴリ',
   },
   issueTypes: { bug: '不具合', request: '要望・改善', question: '質問・確認', task: '作業', risk: 'リスク・懸念' },
   importance: { high: '大', mid: '中', low: '小' },
@@ -446,6 +449,14 @@ export const ja = {
     inTrash: 'このメモはゴミ箱にあります。',
     discarded: 'ゴミ箱に移しました。',
   },
+
+  causeEdit: {
+    open: '原因・対策を書く',
+    title: '原因・対策',
+    help: 'わかったところから書いておけます（どれも任意）。解決済みにするときは、ここに書いた内容が最初から入ります。',
+    denied: '原因・対策を書けるのは、担当者と管理者です。',
+  },
+
   notify: {
     title: 'お知らせ',
     allRead: 'すべて既読にする',

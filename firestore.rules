@@ -159,6 +159,19 @@ service cloud.firestore {
         && (myRole(pid) == 'admin' || resource.data.assigneeId == request.auth.uid)
         && (d.priorityOverride == null || d.priorityOverride in ['high', 'mid', 'low']);
     }
+
+    // 原因・対策の記入：担当者と管理者。対応中・保留のときだけ（解決済みにする前の下書き。どれも任意）
+    function causeAllowed(pid) {
+      let d = request.resource.data;
+      return d.diff(resource.data).affectedKeys()
+               .hasOnly(['cause', 'countermeasure', 'causeCategory', 'updatedAt', 'updatedBy'])
+        && resource.data.status in ['in_progress', 'on_hold']
+        && (myRole(pid) == 'admin' || resource.data.assigneeId == request.auth.uid)
+        && d.get('cause', '') is string && d.get('cause', '').size() <= 2000
+        && d.get('countermeasure', '') is string && d.get('countermeasure', '').size() <= 2000
+        && (d.get('causeCategory', null) == null
+            || d.causeCategory in ['requirements', 'design', 'testing', 'operation', 'communication', 'external', 'other']);
+    }
   
       // 削除：管理者のみ。削除フォルダにないものだけ。元のステータスと理由を残す
     function deleteAllowed(pid) {
@@ -312,6 +325,7 @@ service cloud.firestore {
              && statusChangeAllowed(pid))
             || editAllowed(pid)
             || priorityAllowed(pid)
+            || causeAllowed(pid)
             || deleteAllowed(pid)
             || restoreAllowed(pid)
           );

@@ -98,6 +98,9 @@ export const en: Dict = {
     labelIds: 'Labels',
     occurredOn: 'Occurred on',
     impact: 'Impact',
+    cause: 'Cause',
+    countermeasure: 'Countermeasure',
+    causeCategory: 'Cause category',
   },
   issueTypes: { bug: 'Bug', request: 'Request', question: 'Question', task: 'Task', risk: 'Risk' },
   importance: { high: 'High', mid: 'Medium', low: 'Low' },
@@ -450,6 +453,14 @@ export const en: Dict = {
     inTrash: 'This note is in the trash.',
     discarded: 'Moved to the trash.',
   },
+
+  causeEdit: {
+    open: 'Write cause & fix',
+    title: 'Cause & countermeasure',
+    help: 'Write what you know so far (all optional). It will be filled in when you resolve the issue.',
+    denied: 'Only the assignee or an admin can write the cause and countermeasure.',
+  },
+
   notify: {
     title: 'Notifications',
     allRead: 'Mark all as read',

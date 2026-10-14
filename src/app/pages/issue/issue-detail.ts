@@ -8,7 +8,9 @@ import { AuthService } from '../../core/auth/auth.service';
 import { Clock } from '../../core/time/clock';
 import { ProjectService } from '../../core/project/project.service';
 import { ConflictError, EMPTY_STATUS_PAYLOAD, IssueService, conflictWho } from '../../core/issue/issue.service';
-import { Issue, Label, Level, Member, Role, TimelineItem, labelsOf } from '../../core/models';
+import {
+  CAUSE_CATEGORIES, CauseCategory, Issue, Label, Level, Member, Role, TimelineItem, labelsOf,
+} from '../../core/models';
 import { StatusDialog } from '../../shared/status-dialog';
 import { LabelChip } from '../../shared/label-chip';
 import { IssueEdit } from './issue-edit-dialog';
@@ -86,7 +88,11 @@ const FIELD_LABEL_KEYS: Record<string, string> = { assigneeId: 'assignee', dueAt
           }
           @if (i.cause) {
             <dt>{{ 'workflow.cause' | t }}</dt><dd class="pre">{{ i.cause }}</dd>
+          }
+          @if (i.countermeasure) {
             <dt>{{ 'workflow.countermeasure' | t }}</dt><dd class="pre">{{ i.countermeasure }}</dd>
+          }
+          @if (i.causeCategory) {
             <dt>{{ 'workflow.causeCategory' | t }}</dt><dd>{{ 'causeCategories.' + i.causeCategory | t }}</dd>
           }
           @if (i.effect) {
@@ -100,6 +106,9 @@ const FIELD_LABEL_KEYS: Record<string, string> = { assigneeId: 'assignee', dueAt
           <button type="button" [disabled]="!canEdit()" (click)="openEdit()">{{ 'edit.open' | t }}</button>
           <button type="button" [disabled]="!canSetPriority()" (click)="openPriority()">
             {{ 'priorityEdit.open' | t }}</button>
+          @if (showCauseButton()) {
+            <button type="button" [disabled]="!canEditCause()" (click)="openCause()">{{ 'causeEdit.open' | t }}</button>
+          }
           <button type="button" class="danger-btn" [disabled]="!canDelete()" (click)="openDelete()">
             {{ 'delete.open' | t }}</button>
           @if (toolDenied().length) { <app-help-tip kind="denied" [keys]="toolDenied()" /> }
@@ -138,6 +147,45 @@ const FIELD_LABEL_KEYS: Record<string, string> = { assigneeId: 'assignee', dueAt
               <button type="button" class="primary"
                 [disabled]="busy() || !prioChoice() || !prioReason.trim() || !!prioConflict()?.blocked"
                 (click)="confirmPriority()">{{ 'workflow.confirm' | t }}</button>
+            </div>
+          </section>
+        }
+
+        @if (causePanel()) {
+          <section class="panel">
+            <h2>{{ 'causeEdit.title' | t }}</h2>
+            <p class="help">{{ 'causeEdit.help' | t }}</p>
+            <label class="field">{{ 'workflow.cause' | t }}
+              <textarea [(ngModel)]="causeText" rows="3" maxlength="2000"></textarea>
+            </label>
+            <label class="field">{{ 'workflow.countermeasure' | t }}
+              <textarea [(ngModel)]="counterText" rows="3" maxlength="2000"></textarea>
+            </label>
+            <fieldset>
+              <legend>{{ 'workflow.causeCategory' | t }}</legend>
+              <div class="chips">
+                @for (c of causeCategories; track c) {
+                  <button type="button" [class.on]="causeCat() === c" [attr.aria-pressed]="causeCat() === c"
+                    (click)="causeCat.set(causeCat() === c ? null : c)">{{ 'causeCategories.' + c | t }}</button>
+                }
+              </div>
+            </fieldset>
+            @if (causeConflict(); as c) {
+              @let w = who(c.latest);
+              <div class="conflict" role="alert">
+                <p>{{ w.key | t: w.params }}</p>
+                @if (c.blocked) {
+                  <p>{{ 'conflict.statusChanged' | t: { status: i18n.t('status.' + c.latest.status) } }}</p>
+                } @else {
+                  <p>{{ 'conflict.retry' | t }}</p>
+                }
+              </div>
+            }
+            @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
+            <div class="row">
+              <button type="button" class="link" (click)="causePanel.set(false)">{{ 'workflow.cancel' | t }}</button>
+              <button type="button" class="primary" [disabled]="busy() || !!causeConflict()?.blocked"
+                (click)="confirmCause()">{{ 'edit.save' | t }}</button>
             </div>
           </section>
         }
@@ -361,6 +409,16 @@ export class IssueDetail implements OnInit {
   /** 削除のパネルを開いた時点の課題（衝突のあとは最新） */
   private delBase = signal<Issue | null>(null);
   delConflict = signal<Issue | null>(null);
+  // 原因・対策（対応中・保留のときの下書き）
+  readonly causeCategories = CAUSE_CATEGORIES;
+  causePanel = signal(false);
+  causeText = '';
+  counterText = '';
+  causeCat = signal<CauseCategory | null>(null);
+  /** パネルを開いた時点の課題（衝突のあとは最新） */
+  private causeBase = signal<Issue | null>(null);
+  /** 保存で衝突した（blocked＝対応中・保留ではなくなって、もう書けない） */
+  causeConflict = signal<{ latest: Issue; blocked: boolean } | null>(null);
 
   issue = signal<Issue | null>(null);
   role = signal<Role | null>(null);
@@ -417,6 +475,20 @@ export class IssueDetail implements OnInit {
     return r === 'admin' || (r === 'member' && i.assigneeId === this.myUid);
   });
 
+  /** 原因・対策のボタンを出すか（対応中・保留のときだけ） */
+  showCauseButton = computed(() => {
+    const s = this.issue()?.status;
+    return s === 'in_progress' || s === 'on_hold';
+  });
+  /** 原因・対策を書けるか：担当者と管理者（アーカイブ中は不可） */
+  canEditCause = computed(() => {
+    const i = this.issue();
+    const r = this.role();
+    if (!i || !r || !this.showCauseButton() || this.projectArchived()) return false;
+    return r === 'admin' || (r === 'member' && i.assigneeId === this.myUid);
+  });
+
+
   /** 削除は管理者だけ（アーカイブ中は不可） */
   canDelete = computed(() => this.role() === 'admin' && !this.projectArchived());
   /** 復元は、管理者と、提起した本人（メンバー） */
@@ -431,6 +503,7 @@ export class IssueDetail implements OnInit {
     ...(this.canEdit() ? [] : ['edit.denied']),
     ...(this.canSetPriority() ? [] : ['priorityEdit.denied']),
     ...(this.canDelete() ? [] : ['delete.denied']),
+    ...(this.showCauseButton() && !this.canEditCause() ? ['causeEdit.denied'] : []),
   ]);
   overdue = computed(() => this.issue()!.dueAt.toMillis() < this.clock.now());
   dueText = computed(() => {
@@ -675,6 +748,41 @@ export class IssueDetail implements OnInit {
         const blocked = e.latest.status === 'closed' || e.latest.status === 'rejected';
         if (!blocked) this.prioBase.set(e.latest);
         this.prioConflict.set({ latest: e.latest, blocked });
+      } else {
+        console.error(e);
+        this.error.set('common.saveError');
+      }
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  openCause() {
+    const i = this.issue()!;
+    this.causeBase.set(i);
+    this.causeText = i.cause ?? '';
+    this.counterText = i.countermeasure ?? '';
+    this.causeCat.set(i.causeCategory ?? null);
+    this.causeConflict.set(null);
+    this.error.set('');
+    this.causePanel.set(true);
+  }
+
+  async confirmCause() {
+    this.busy.set(true);
+    this.error.set('');
+    this.causeConflict.set(null);
+    try {
+      await this.issueService.updateCause(this.pid, this.causeBase()!, {
+        cause: this.causeText.trim(), countermeasure: this.counterText.trim(), causeCategory: this.causeCat(),
+      }, this.myUid, this.tz());
+      this.causePanel.set(false);
+    } catch (e) {
+      if (e instanceof ConflictError) {
+        // 対応中・保留のままなら、最新を土台にもう一度保存できる（入力はそのまま残す）
+        const blocked = e.latest.status !== 'in_progress' && e.latest.status !== 'on_hold';
+        if (!blocked) this.causeBase.set(e.latest);
+        this.causeConflict.set({ latest: e.latest, blocked });
       } else {
         console.error(e);
         this.error.set('common.saveError');
