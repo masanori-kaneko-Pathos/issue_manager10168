@@ -457,6 +457,20 @@ export const ja = {
     denied: '原因・対策を書けるのは、担当者と管理者です。',
   },
 
+  today: {
+    title: '今日のまとめ',
+    buckets: { overdue: '期限切れ', today: '今日まで', tomorrow: '明日まで', in3: '3日以内' },
+    oldMemos: '受信箱（7日以上）',
+    none: '急ぎの課題はありません。',
+    filtered: {
+      overdue: '期限を過ぎた課題だけを表示しています。',
+      today: '期限が今日の課題だけを表示しています。',
+      tomorrow: '期限が明日の課題だけを表示しています。',
+      in3: '期限が2〜3日後の課題だけを表示しています。',
+    },
+    clear: 'すべて表示',
+  },
+
   notify: {
     title: 'お知らせ',
     allRead: 'すべて既読にする',

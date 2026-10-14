@@ -107,3 +107,23 @@ export function shortDue(date: Date, timeZone: string, lang: 'ja' | 'en', nowMs 
   const hm = toLocalInput(date, timeZone).slice(11);
   return hm === '23:59' ? day : `${day} ${hm}`;
 }
+
+export type DueBucket = 'overdue' | 'today' | 'tomorrow' | 'in3';
+
+/** 'YYYY-MM-DD' どうしの日数の差（暦の日付として数える） */
+function daysBetween(fromKey: string, toKey: string): number {
+  return Math.round((Date.parse(toKey + 'T00:00:00Z') - Date.parse(fromKey + 'T00:00:00Z')) / DAY);
+}
+
+/**
+ * 期限の区分。日数は、見る人のタイムゾーンの暦で数える。3日より先は null。
+ * ※ functions/src/index.ts の dueBucket と同じ決まりにすること（片方を変えたら、もう片方も変える）
+ */
+export function dueBucket(dueMs: number, nowMs: number, timeZone: string): DueBucket | null {
+  if (dueMs < nowMs) return 'overdue';
+  const days = daysBetween(dateKey(new Date(nowMs), timeZone), dateKey(new Date(dueMs), timeZone));
+  if (days <= 0) return 'today';
+  if (days === 1) return 'tomorrow';
+  if (days <= 3) return 'in3';
+  return null;
+}

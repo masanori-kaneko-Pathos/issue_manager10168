@@ -14,7 +14,7 @@ import { InboxService } from '../../core/inbox/inbox.service';
 import { Clock } from '../../core/time/clock';
 import { PriorityMark } from '../../shared/priority-mark';
 import { compareIssues, isManualPriority, priorityOf } from '../../core/issue/priority';
-import { remainingOf, shortDue } from '../../core/time/time';
+import { DueBucket, dueBucket, remainingOf, shortDue } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 
 @Component({
@@ -81,7 +81,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
         }
       </section>
 
-            <section class="mine">
+      <section class="mine" id="today">
         <div class="mine-head">
           <h2>{{ 'mine.title' | t }}</h2>
           <label class="check">
@@ -89,6 +89,24 @@ import { I18nService, TPipe } from '../../i18n/i18n';
             {{ 'mine.showDone' | t }}
           </label>
         </div>
+        <div class="today" role="group" [attr.aria-label]="'today.title' | t">
+          <span class="today-title">{{ 'today.title' | t }}</span>
+          @for (b of buckets; track b) {
+            <button type="button" class="t-chip" [attr.data-b]="b" [class.on]="bucket() === b"
+              [attr.aria-pressed]="bucket() === b" [disabled]="!todayCounts()[b]" (click)="toggleBucket(b)">
+              @if (b === 'overdue') { <span class="bang" aria-hidden="true">!</span> }
+              {{ 'today.buckets.' + b | t }} <strong>{{ todayCounts()[b] }}</strong>
+            </button>
+          }
+          @if (oldMemos()) {
+            <a routerLink="/inbox" class="t-chip">{{ 'today.oldMemos' | t }} <strong>{{ oldMemos() }}</strong></a>
+          }
+          @if (!hasToday()) { <span class="small">{{ 'today.none' | t }}</span> }
+        </div>
+        @if (bucket()) {
+          <p class="small">{{ 'today.filtered.' + bucket() | t }}
+            <button type="button" class="link" (click)="bucket.set(null)">{{ 'today.clear' | t }}</button></p>
+        }
         <ul class="list">
           @for (i of visibleMine(); track i.id) {
             <li class="mine-item">
@@ -173,6 +191,18 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .mine-item app-priority-mark, .prio-none { width: 64px; flex: none; }
     .small { font-size: 12px; color: var(--text-muted); }
     .small.overdue { color: var(--danger); font-weight: bold; }
+    .mine { scroll-margin-top: 64px; }
+    .today { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 8px; }
+    .today-title { font-size: 12px; color: var(--text-muted); margin-right: 4px; }
+    .t-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px;
+      border: 1px solid var(--border-strong); border-radius: 18px; background: var(--surface); color: var(--text);
+      font-size: 13px; text-decoration: none; cursor: pointer; }
+    .t-chip strong { font-size: 14px; }
+    .t-chip.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+    .t-chip:disabled { color: var(--text-disabled); cursor: default; }
+    .t-chip[data-b='overdue']:not(:disabled):not(.on) .bang,
+    .t-chip[data-b='overdue']:not(:disabled):not(.on) strong { color: var(--danger-text); }
+    .bang { font-weight: bold; }
   `,
 })
 export class Projects implements OnInit {
@@ -198,6 +228,11 @@ export class Projects implements OnInit {
     this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((p) => {
       if (p.get('create')) focusById('new-project');
     });
+
+    // 朝のまとめの通知から来たら、今日のまとめの欄まで動かす
+    this.route.fragment.pipe(takeUntilDestroyed()).subscribe((f) => {
+      if (f === 'today') setTimeout(() => document.getElementById('today')?.scrollIntoView({ block: 'start' }));
+    });
     // ホームを離れたら、見張りをやめる
     inject(DestroyRef).onDestroy(() => {
       this.mineStops.forEach((stop) => stop());
@@ -209,11 +244,34 @@ export class Projects implements OnInit {
   invitations = signal<Invitation[]>([]);
   myIssues = computed(() => Object.values(this.mineByProject()).flat());
   showDone = signal(false);
+  /** 今日のまとめの区分で、自分の課題を絞る（null＝絞らない） */
+  bucket = signal<DueBucket | null>(null);
+  readonly buckets: DueBucket[] = ['overdue', 'today', 'tomorrow', 'in3'];
+  /** アーカイブ中のプロジェクト（今日のまとめには数えない） */
+  private archivedIds = computed(() => new Set(this.projects().filter((p) => p.archived).map((p) => p.id)));
+  /** 今日のまとめで数える課題か：未完了（未着手・対応中・保留）で、アーカイブ中でないプロジェクトのもの */
+  private counts = (i: Issue & { projectId: string }) => this.isActive(i) && !this.archivedIds().has(i.projectId);
+  /** 区分ごとの件数 */
+  todayCounts = computed(() => {
+    const now = this.clock.now();
+    const c: Record<DueBucket, number> = { overdue: 0, today: 0, tomorrow: 0, in3: 0 };
+    for (const i of this.myIssues()) {
+      if (!this.counts(i)) continue;
+      const b = dueBucket(i.dueAt.toMillis(), now, this.tz());
+      if (b) c[b]++;
+    }
+    return c;
+  });
+  /** 7日以上たった、未整理のメモの数 */
+  oldMemos = computed(() => this.inbox.active().filter((m) => this.inbox.isOld(m)).length);
+  hasToday = computed(() => Object.values(this.todayCounts()).some((n) => n > 0) || this.oldMemos() > 0);
   /** 初期は自分の手が必要なもの（未着手・対応中・保留）。切り替えで解決済み・クローズも表示 */
   visibleMine = computed(() => {
     const now = this.clock.now();
+    const bucket = this.bucket();
     return this.myIssues()
       .filter((i) => i.status !== 'deleted' && (this.showDone() || this.isActive(i)))
+      .filter((i) => !bucket || (this.counts(i) && dueBucket(i.dueAt.toMillis(), now, this.tz()) === bucket))
       .sort((a, b) => compareIssues(a, b, now));
   });
   needsVerify = signal(false);
@@ -345,6 +403,12 @@ export class Projects implements OnInit {
     this.needsVerify.set(!u.emailVerified);
     this.watchInvitations();
     await this.load();
+  }
+
+
+  /** 同じチップをもう一度押すと、絞り込みを外す */
+  toggleBucket(b: DueBucket) {
+    this.bucket.set(this.bucket() === b ? null : b);
   }
 
   projectName(pid: string) {

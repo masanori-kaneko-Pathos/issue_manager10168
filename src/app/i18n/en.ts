@@ -461,6 +461,20 @@ export const en: Dict = {
     denied: 'Only the assignee or an admin can write the cause and countermeasure.',
   },
 
+  today: {
+    title: 'Today',
+    buckets: { overdue: 'Overdue', today: 'Due today', tomorrow: 'Due tomorrow', in3: 'Within 3 days' },
+    oldMemos: 'Inbox (7+ days)',
+    none: 'Nothing urgent.',
+    filtered: {
+      overdue: 'Showing only overdue issues.',
+      today: 'Showing only issues due today.',
+      tomorrow: 'Showing only issues due tomorrow.',
+      in3: 'Showing only issues due in 2–3 days.',
+    },
+    clear: 'Show all',
+  },
+
   notify: {
     title: 'Notifications',
     allRead: 'Mark all as read',
