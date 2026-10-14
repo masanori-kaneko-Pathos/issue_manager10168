@@ -39,6 +39,13 @@ testem.log
 /typings
 __screenshots__/
 
+# Firebase CLI の控え
+/.firebase
+
+# AI の skill（アプリのコードではない）
+/.agents
+/skills-lock.json
+
 # System files
 .DS_Store
 Thumbs.db
