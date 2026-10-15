@@ -2,7 +2,7 @@ import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core'
 import { FirestoreError, Unsubscribe } from 'firebase/firestore';
 import { Router } from '@angular/router';
 import { auth } from '../../core/firebase';
-import { Issue, Label, Member, Project, Role } from '../../core/models';
+import { Issue, Label, Member, Project, ProjectSettings, Role } from '../../core/models';
 import { ProjectService } from '../../core/project/project.service';
 import { IssueService } from '../../core/issue/issue.service';
 import { I18nService } from '../../i18n/i18n';
@@ -18,6 +18,7 @@ export class ProjectContext {
   private leaving = false;
   private stopIssues: Unsubscribe | null = null;
   private stopMembers: Unsubscribe | null = null;
+  private stopProject: Unsubscribe | null = null;
 
   /** このプロジェクトの未クローズの課題（見張っているので、他の人の変更もすぐ入る） */
   openIssues = signal<Issue[]>([]);
@@ -56,7 +57,8 @@ export class ProjectContext {
       const role = await this.ps.myRole(pid, auth.currentUser!.uid);
       if (!role) throw new Error('not a member');
       this.role.set(role);
-      this.project.set(await this.ps.get(pid));
+      // プロジェクトも見張る（ほかの管理者が設定やラベルを変えても、すぐ届く）。最初の1回が届くまで待つ
+      await this.watchProject(pid);
       // 読み込みの途中で別のプロジェクトに移っていたら、見張りを始めない
       if (this.pid() !== pid) return;
       // メンバーは最初の1回が届くまで待つ（担当者の名前が「—」のまま画面が出ないように）
@@ -87,8 +89,27 @@ export class ProjectContext {
   private stopWatching() {
     this.stopIssues?.();
     this.stopMembers?.();
+    this.stopProject?.();
     this.stopIssues = null;
     this.stopMembers = null;
+    this.stopProject = null;
+  }
+
+  /** プロジェクトを見張る。最初の1回が届いたら、待っている load() に知らせる */
+  private watchProject(pid: string) {
+    return new Promise<void>((resolve, reject) => {
+      this.stopProject = this.ps.watchProject(
+        pid,
+        (project) => {
+          this.project.set(project);
+          resolve(); // 2回目以降に呼ばれても何も起きない
+        },
+        (e) => {
+          this.onWatchError(e);
+          reject(e);
+        },
+      );
+    });
   }
     /** メンバーを見張る。最初の1回が届いたら、待っている load() に知らせる */
     private watchMembers(pid: string) {
@@ -126,6 +147,8 @@ export class ProjectContext {
   
   /** 外されたら、ホームへ戻して知らせる（「戻る」で見られない画面に戻らないよう、履歴を置き換える） */
   private lostAccess() {
+    // 見張りが3本（プロジェクト・メンバー・課題）あるので、外されたときは知らせが3回来うる。2回目からは何もしない
+    if (this.removed()) return;
     this.stopWatching();
     this.issuesLoading.set(false);
     this.removed.set(true);
@@ -157,5 +180,11 @@ export class ProjectContext {
   /** 保存したラベルを、ほかのタブにもすぐ反映する（読み直さずに済む） */
   setLabels(labels: Label[]) {
     this.project.update((p) => (p ? { ...p, labels } : p));
+  }
+
+  
+  /** 保存した設定を、ほかのタブにもすぐ反映する（停滞の日数など） */
+  setSettings(settings: ProjectSettings) {
+    this.project.update((p) => (p ? { ...p, settings } : p));
   }
 }

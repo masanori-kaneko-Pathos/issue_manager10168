@@ -117,6 +117,14 @@ service cloud.firestore {
         && d.closedAt == request.time;
     }
 
+    // プロジェクトの設定：整数で、範囲の中（関数は notifyHour を === で比べるため、整数でないと届かなくなる）
+    function validSettings(s) {
+      return s.notifyHour is int && s.notifyHour >= 0 && s.notifyHour <= 23
+        && s.staleDays is int && s.staleDays >= 1 && s.staleDays <= 90
+        && s.effectCheckDays is int && s.effectCheckDays >= 1 && s.effectCheckDays <= 90
+        && s.highPriorityLimit is int && s.highPriorityLimit >= 1 && s.highPriorityLimit <= 100;
+    }
+
     function hasReason() {
       return request.resource.data.statusReason is string
         && request.resource.data.statusReason.size() > 0;
@@ -231,7 +239,10 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['name', 'archived', 'labels', 'settings', 'formerMembers'])
           && request.resource.data.labels is list
-          && request.resource.data.labels.size() <= 30)
+          && request.resource.data.labels.size() <= 30
+          // 設定を変えたときだけ、形と範囲を確かめる（ラベルだけの保存は、設定の中身に左右されない）
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['settings'])
+              || validSettings(request.resource.data.settings)))
       // 課題の登録時の採番（1つ増やすだけ）
         || (canWrite(pid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['issueSeq'])

@@ -10,7 +10,7 @@ import { NotificationService } from '../notification/notification.service';
 import { I18nService } from '../../i18n/i18n';
 import {
     DEFAULT_LABEL_IDS, DEFAULT_SETTINGS, Invitation, IssueStatus, Label, Member, OPEN_STATUSES, Project,
-    ProjectWithRole, Role, labelColor,
+    ProjectSettings, ProjectWithRole, Role, labelColor,
 } from '../models';
 
 /** メンバーの変更の種類。null は担当の引き継ぎだけ */
@@ -69,6 +69,7 @@ export class ProjectService {
         return s.exists() ? { ...(s.data() as Omit<Project, 'id'>), id: s.id } : null;
     }
 
+
     async myRole(pid: string, uid: string): Promise<Role | null> {
         const s = await getDoc(doc(db, 'projects', pid, 'members', uid));
         return s.exists() ? (s.data()['role'] as Role) : null;
@@ -88,6 +89,20 @@ export class ProjectService {
             collection(db, 'projects', pid, 'members'),
             (s) => onData(s.docs.map((d) => d.data({ serverTimestamps: 'estimate' }) as Member)
                 .sort((a, b) => a.displayName.localeCompare(b.displayName))),
+            onError,
+        );
+    }
+
+
+    /** プロジェクトの文書を見張る（設定・ラベル・名前・アーカイブの変更が、すぐ全員に届く） */
+    watchProject(
+        pid: string, onData: (project: Project | null) => void, onError: (e: FirestoreError) => void,
+    ): Unsubscribe {
+        return onSnapshot(
+            doc(db, 'projects', pid),
+            (s) => onData(s.exists()
+                ? { ...(s.data({ serverTimestamps: 'estimate' }) as Omit<Project, 'id'>), id: s.id }
+                : null),
             onError,
         );
     }
@@ -165,6 +180,11 @@ export class ProjectService {
     /** ラベルの一覧をまるごと保存する（管理者のみ。ルールで確認） */
     updateLabels(pid: string, labels: Label[]) {
         return updateDoc(doc(db, 'projects', pid), { labels });
+    }
+
+    /** 通知時刻・日数・件数の設定を保存する（管理者のみ。形と範囲はルールで確認） */
+    updateSettings(pid: string, settings: ProjectSettings) {
+        return updateDoc(doc(db, 'projects', pid), { settings });
     }
 
     /*途中で止まって「担当者がプロジェクトにいない課題」が残らないようにするため*/

@@ -9,7 +9,8 @@ import { Clock } from '../../core/time/clock';
 import { ProjectService } from '../../core/project/project.service';
 import { ConflictError, EMPTY_STATUS_PAYLOAD, IssueService, conflictWho } from '../../core/issue/issue.service';
 import {
-  CAUSE_CATEGORIES, CauseCategory, DEFAULT_SETTINGS, Issue, Label, Level, Member, Role, TimelineItem, labelsOf,
+  CAUSE_CATEGORIES, CauseCategory, DEFAULT_SETTINGS, Issue, Label, Level, Member, Project, Role, TimelineItem,
+  labelsOf,
 } from '../../core/models';
 import { StatusDialog } from '../../shared/status-dialog';
 import { LabelChip } from '../../shared/label-chip';
@@ -604,21 +605,39 @@ export class IssueDetail implements OnInit {
     try {
       // メンバーでなければ、ここでルールに止められて例外になる
       this.role.set(await this.ps.myRole(this.pid, this.myUid));
-      const [project] = await Promise.all([
-        this.ps.get(this.pid),
-        this.watchMembers(), // 最初の1回が届くまで待つ
-      ]);
-      this.projectLabels.set(project?.labels ?? []);
-      this.projectArchived.set(project?.archived ?? false);
-      this.staleDays.set(project?.settings?.staleDays ?? DEFAULT_SETTINGS.staleDays);
-      this.projectName = project?.name ?? '';
-      this.formerMembers = project?.formerMembers ?? {};
+      // どちらも、最初の1回が届くまで待つ
+      await Promise.all([this.watchProject(), this.watchMembers()]);
     } catch (e) {
       console.error(e);
       this.issue.set(null);
     } finally {
       this.metaLoading.set(false);
     }
+  }
+
+  /** プロジェクトを見張る。設定やラベルを変えたら、開いたままでも反映する。最初の1回が届いたら知らせる */
+  private watchProject() {
+    return new Promise<void>((resolve, reject) => {
+      this.stops.push(this.ps.watchProject(
+        this.pid,
+        (project) => {
+          this.applyProject(project);
+          resolve(); // 2回目以降に呼ばれても何も起きない
+        },
+        (e) => {
+          this.onWatchError(e);
+          reject(e);
+        },
+      ));
+    });
+  }
+
+  private applyProject(project: Project | null) {
+    this.projectLabels.set(project?.labels ?? []);
+    this.projectArchived.set(project?.archived ?? false);
+    this.staleDays.set(project?.settings?.staleDays ?? DEFAULT_SETTINGS.staleDays);
+    this.projectName = project?.name ?? '';
+    this.formerMembers = project?.formerMembers ?? {};
   }
 
   /** メンバーを見張る。最初の1回が届いたら、待っている load() に知らせる */
@@ -657,6 +676,8 @@ export class IssueDetail implements OnInit {
 
   /** 外されたら、ホームへ戻して知らせる（「戻る」で見られない画面に戻らないよう、履歴を置き換える） */
   private lostAccess() {
+    // 見張りが複数あるので、外されたときは知らせが何回か来うる。止めたあと（stops が空）なら何もしない
+    if (!this.stops.length) return;
     this.stops.forEach((stop) => stop());
     this.stops = [];
     this.router.navigate(['/'], { replaceUrl: true, state: { removedFrom: this.projectName } });
