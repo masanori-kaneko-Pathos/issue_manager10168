@@ -493,6 +493,23 @@ export const en: Dict = {
     clear: 'Show all',
   },
 
+  csv: {
+    export: 'Export to CSV',
+    scopeList: 'As shown in the list ({{n}})',
+    scopeListHelp: 'Exports with the current filters, search, and order. To change the range, filter the list first.',
+    scopeListOff: 'Available after filtering on the List tab.',
+    scopeAll: 'All issues ({{n}})',
+    scopeAllHelp: 'Includes closed and rejected issues (not the trash). Exported in number order.',
+    submit: 'Export',
+    cols: {
+      number: 'Number', title: 'Title', type: 'Type', status: 'Status', priority: 'Priority',
+      importance: 'Importance', due: 'Due', assignee: 'Assignee', reporter: 'Reporter', labels: 'Labels',
+      occurredOn: 'Occurred on', impact: 'Impact', doneCriteria: 'Definition of done', description: 'Description',
+      cause: 'Cause', countermeasure: 'Countermeasure', causeCategory: 'Cause category', effect: 'Effect check',
+      learning: 'Lessons learned', createdAt: 'Created', updatedAt: 'Updated', resolvedAt: 'Resolved', closedAt: 'Closed',
+    },
+  },
+
   prevention: {
     title: 'Prevention issues',
     help: 'A countermeasure fixes this issue itself. Prevention changes the process or system so the same kind of problem does not happen again (e.g. add a check item, change a procedure).',

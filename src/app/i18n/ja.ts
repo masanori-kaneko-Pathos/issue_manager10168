@@ -489,6 +489,23 @@ export const ja = {
     clear: 'すべて表示',
   },
 
+  csv: {
+    export: 'CSVで書き出す',
+    scopeList: 'リストの表示どおり（{{n}}件）',
+    scopeListHelp: '絞り込み・検索・並び順のまま書き出します。範囲を変えるときは、先にリストで絞り込んでください。',
+    scopeListOff: 'リストのタブで絞り込むと選べます。',
+    scopeAll: 'すべての課題（{{n}}件）',
+    scopeAllHelp: 'クローズ・却下も含みます（削除フォルダは除く）。番号順に書き出します。',
+    submit: '書き出す',
+    cols: {
+      number: '番号', title: 'タイトル', type: '種別', status: 'ステータス', priority: '優先度',
+      importance: '重要度', due: '期限', assignee: '担当者', reporter: '提起者', labels: 'ラベル',
+      occurredOn: '発生日', impact: '影響範囲', doneCriteria: '完了条件', description: '内容',
+      cause: '原因', countermeasure: '対策', causeCategory: '原因カテゴリ', effect: '効果確認', learning: '学び',
+      createdAt: '登録日時', updatedAt: '更新日時', resolvedAt: '解決日時', closedAt: 'クローズ日時',
+    },
+  },
+
   prevention: {
     title: '再発防止課題',
     help: '対策は、この課題そのものを直すことです。再発防止は、同じ種類の問題が二度と起きないよう、仕組みや手順を変えることです（例：確認項目を足す、手順を変える）。',

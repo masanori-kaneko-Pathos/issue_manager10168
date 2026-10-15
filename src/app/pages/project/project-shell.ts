@@ -6,10 +6,11 @@ import { TPipe } from '../../i18n/i18n';
 import { auth } from '../../core/firebase';
 import { HelpTip } from '../../shared/help-tip';
 import { HandoverDialog } from './handover-dialog';
+import { CsvExportDialog } from './csv-export-dialog';
 
 @Component({
   selector: 'app-project-shell',
-  imports: [RouterLink, RouterLinkActive, RouterOutlet, TPipe, HelpTip, HandoverDialog],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, TPipe, HelpTip, HandoverDialog, CsvExportDialog],
   providers: [ProjectContext],
   host: { '(document:keydown.escape)': 'menuOpen.set(false)' },
   template: `
@@ -31,6 +32,8 @@ import { HandoverDialog } from './handover-dialog';
               <div class="menu" role="menu">
                 <a role="menuitem" [routerLink]="['/p', ctx.pid(), 'trash']" (click)="menuOpen.set(false)">
                   {{ 'trash.title' | t }}</a>
+                <button type="button" role="menuitem" (click)="menuOpen.set(false); exportOpen.set(true)">
+                  {{ 'csv.export' | t }}</button>
                 <div class="item-row">
                   <button type="button" role="menuitem" class="danger" [disabled]="ctx.role() === 'admin'"
                     (click)="menuOpen.set(false); leaveOpen.set(true)">{{ 'members.leave' | t }}</button>
@@ -50,6 +53,9 @@ import { HandoverDialog } from './handover-dialog';
         <router-outlet />
         @if (leaveOpen() && me(); as m) {
           <app-handover-dialog mode="leave" [target]="m" (done)="leaveOpen.set(false)" (cancel)="leaveOpen.set(false)" />
+        }
+        @if (exportOpen()) {
+          <app-csv-export-dialog (done)="exportOpen.set(false)" (cancel)="exportOpen.set(false)" />
         }
       }
     </main>
@@ -89,6 +95,7 @@ export class ProjectHome {
   /** プロジェクト名の横の「⋮」メニュー（削除フォルダ。今後、アーカイブ・CSV出力などもここに置く） */
   menuOpen = signal(false);
   leaveOpen = signal(false);
+  exportOpen = signal(false);
   /** 自分のメンバー文書（抜けるときの引き継ぎに使う） */
   me = computed(() => this.ctx.members().find((m) => m.uid === auth.currentUser!.uid) ?? null);
 

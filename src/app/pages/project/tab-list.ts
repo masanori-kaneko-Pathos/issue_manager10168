@@ -1,4 +1,4 @@
-import { Component, OnInit, WritableSignal, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, WritableSignal, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { IssueService } from '../../core/issue/issue.service';
@@ -13,6 +13,7 @@ import { PriorityMark } from '../../shared/priority-mark';
 import { compareIssues, isManualPriority, isStale, priorityOf } from '../../core/issue/priority';
 import { formatDateTime, relativeTime, remainingOf, shortDue } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
+import { csvFileName, downloadText, issuesToCsv } from '../../core/issue/csv';
 
 type SortKey = 'priority' | 'due' | 'number' | 'updated';
 type Dir = 'asc' | 'desc';
@@ -333,7 +334,7 @@ function segments(text: string, range: [number, number] | null, from = 0, to = t
     .empty { color: var(--text-muted); padding: 12px 8px; }
     .denied-wrap { display: inline-flex; align-items: center; gap: 8px; }
     .stale { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--warning-bg); color: var(--warning-text); }
-  `,
+    `,
 })
 export class TabList implements OnInit {
   private ctx = inject(ProjectContext);
@@ -477,6 +478,11 @@ export class TabList implements OnInit {
     return out;
   });
 
+  constructor() {
+    // 今見えている一覧を、「⋮」の書き出しのために置き場へ出す。リストのタブを離れたら空にする
+    effect(() => this.ctx.listView.set(this.visible()));
+    inject(DestroyRef).onDestroy(() => this.ctx.listView.set(null));
+  }
 
   async ngOnInit() {
     // 削除の知らせは1回だけ。読んだら履歴から消し、再読み込みで出し直さない
@@ -592,6 +598,19 @@ export class TabList implements OnInit {
     this.overdueOnly.set(false);
     this.staleOnly.set(false);
     this.changed();
+  }
+
+  /** 今見えている一覧（絞り込み・検索・並び順のまま）を、CSV にして保存させる */
+  exportCsv() {
+    const now = this.clock.now();
+    const csv = issuesToCsv(this.visible(), {
+      t: (k) => this.i18n.t(k),
+      nameOf: (uid) => this.memberName(uid),
+      labels: this.labels(),
+      tz: this.tz(),
+      nowMs: now,
+    });
+    downloadText(csvFileName(this.ctx.project()?.name, now, this.tz()), csv);
   }
 
   isActive(i: Issue) {

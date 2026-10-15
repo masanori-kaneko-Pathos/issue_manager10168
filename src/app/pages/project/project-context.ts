@@ -21,6 +21,8 @@ export class ProjectContext {
 
   /** このプロジェクトの未クローズの課題（見張っているので、他の人の変更もすぐ入る） */
   openIssues = signal<Issue[]>([]);
+  /** リストのタブが今見せている一覧（絞り込み・検索・並び順のまま）。リスト以外のタブにいるときは null */
+  listView = signal<Issue[] | null>(null);
   issuesLoading = signal(true);
 
   constructor() {
