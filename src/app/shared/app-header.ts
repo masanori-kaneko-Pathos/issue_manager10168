@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../core/auth/auth.service';
 import { auth } from '../core/firebase';
@@ -10,15 +10,20 @@ import { Clock } from '../core/time/clock';
 import { relativeTime } from '../core/time/time';
 import { I18nService, TPipe } from '../i18n/i18n';
 import { HelpTip } from './help-tip';
+import { SearchService } from '../core/search/search.service'
+import { SearchBox } from './search-box';
 
 @Component({
   selector: 'app-header',
-  imports: [RouterLink, TPipe, HelpTip],
-  host: { '(document:keydown.escape)': 'open.set(false); addOpen.set(false); bellOpen.set(false)' },
+  imports: [RouterLink, TPipe, HelpTip, SearchBox],
+  host: {
+    '(document:keydown.escape)': 'open.set(false); addOpen.set(false); bellOpen.set(false)',
+    '(document:keydown)': 'onKey($event)',
+  },
   template: `
     <header class="app-header">
       <a routerLink="/" class="brand">{{ 'app.title' | t }}</a>
-      <span class="spacer"></span>
+      <app-search-box />
       <a routerLink="/inbox/new" class="pen" [attr.aria-label]="'inbox.pen' | t" [title]="'inbox.pen' | t">
         <span class="pen-icon" aria-hidden="true">✎</span>
         @if (inbox.count()) { <span class="badge">{{ inbox.count() }}</span> }
@@ -181,6 +186,7 @@ export class AppHeader {
   private clock = inject(Clock);
   private i18n = inject(I18nService);
   bellOpen = signal(false);
+  private searchBox = viewChild(SearchBox);
 
   addOpen = signal(false);
   /** メニューを開いたときにいたプロジェクトと、そこでの自分のロール */
@@ -247,6 +253,18 @@ export class AppHeader {
     const pid = this.ctx().pid;
     this.addOpen.set(false);
     if (pid) this.router.navigate(['/p', pid, 'members'], { fragment: 'invite' });
+  }
+
+  /** 「/」で検索欄へ。文字を打っている途中や、ほかのキーと一緒に押したときは何もしない */
+  onKey(e: KeyboardEvent) {
+    if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target as HTMLElement | null;
+    if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return;
+    e.preventDefault(); // 「/」が入力欄に入らないように
+    this.open.set(false);
+    this.addOpen.set(false);
+    this.bellOpen.set(false);
+    this.searchBox()?.focusFromKey();
   }
 
   toggleBell() {
