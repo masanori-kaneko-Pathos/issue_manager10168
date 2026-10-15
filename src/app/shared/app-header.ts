@@ -12,10 +12,11 @@ import { I18nService, TPipe } from '../i18n/i18n';
 import { HelpTip } from './help-tip';
 import { SearchService } from '../core/search/search.service'
 import { SearchBox } from './search-box';
+import { ProjectNewDialog } from './project-new-dialog';
 
 @Component({
   selector: 'app-header',
-  imports: [RouterLink, TPipe, HelpTip, SearchBox],
+  imports: [RouterLink, TPipe, HelpTip, SearchBox, ProjectNewDialog],
   host: {
     '(document:keydown.escape)': 'open.set(false); addOpen.set(false); bellOpen.set(false)',
     '(document:keydown)': 'onKey($event)',
@@ -106,6 +107,7 @@ import { SearchBox } from './search-box';
       </div>
     </header>
     @if (inbox.flash(); as key) { <div class="toast" role="status">{{ key | t }}</div> }
+    @if (projectNewOpen()) { <app-project-new-dialog (close)="projectNewOpen.set(false)" /> }
   `,
   styles: `
     .app-header { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 8px;
@@ -187,6 +189,7 @@ export class AppHeader {
   private i18n = inject(I18nService);
   bellOpen = signal(false);
   private searchBox = viewChild(SearchBox);
+  projectNewOpen = signal(false);
 
   addOpen = signal(false);
   /** メニューを開いたときにいたプロジェクトと、そこでの自分のロール */
@@ -245,8 +248,7 @@ export class AppHeader {
 
   newProject() {
     this.addOpen.set(false);
-    // 毎回違う値にして、一覧にいるときに押しても入力欄に移るようにする
-    this.router.navigate(['/'], { queryParams: { create: Date.now() } });
+    this.projectNewOpen.set(true);
   }
 
   invite() {

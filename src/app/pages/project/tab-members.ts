@@ -3,7 +3,8 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { auth } from '../../core/firebase';
-import { focusById } from '../../core/dom';
+import { Invitee } from '../../shared/invite-picker';
+import { InviteDialog } from './invite-dialog';
 import { Invitation, Member, Role } from '../../core/models';
 import { AuthService } from '../../core/auth/auth.service';
 import { HelpTip } from '../../shared/help-tip';
@@ -14,11 +15,16 @@ import { I18nService, TPipe } from '../../i18n/i18n';
 
 @Component({
   selector: 'app-tab-members',
-  imports: [FormsModule, TPipe, HelpTip, HandoverDialog],
+  imports: [TPipe, HelpTip, HandoverDialog, InviteDialog],
   host: { '(document:keydown.escape)': 'menuFor.set(null)' },
   template: `
     <section>
-      <h2>{{ 'project.members' | t }}</h2>
+      <div class="head">
+        <h2>{{ 'project.members' | t }}</h2>
+        @if (ctx.role() === 'admin') {
+          <button type="button" class="primary small" (click)="openInvite()">{{ 'invite.open' | t }}</button>
+        }
+      </div>
       <ul class="list">
         @for (m of ctx.members(); track m.uid) {
           @let n = assignedCount()[m.uid] ?? 0;
@@ -67,23 +73,12 @@ import { I18nService, TPipe } from '../../i18n/i18n';
         (done)="dialog.set(null)" (cancel)="dialog.set(null)" />
     }
 
+    @if (inviteOpen(); as d) {
+      <app-invite-dialog [initial]="d.list" [retry]="d.retry" (sent)="reloadInvitations()"
+        (done)="inviteOpen.set(null)" (cancel)="inviteOpen.set(null)" />
+    }
     @if (ctx.role() === 'admin') {
       <section>
-        <h2>{{ 'project.invite' | t }}</h2>
-        <form class="invite" (ngSubmit)="invite()">
-          <input id="invite-email" type="email" name="email" [(ngModel)]="inviteEmail" required autocomplete="off"
-            [placeholder]="'project.inviteEmail' | t" />
-          <div class="roles">
-            @for (r of roles; track r) {
-              <button type="button" [class.on]="inviteRole() === r" [attr.aria-pressed]="inviteRole() === r"
-                (click)="inviteRole.set(r)">{{ 'roles.' + r | t }}</button>
-            }
-          </div>
-          <button type="submit" class="primary" [disabled]="busy() || !inviteEmail.trim()">
-            {{ 'project.inviteSubmit' | t }}</button>
-        </form>
-        @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
-
         @if (invitations().length) {
           <h3>{{ 'project.pending' | t }}</h3>
           <ul class="list">
@@ -132,6 +127,8 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .count { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
     .link:disabled { color: var(--text-disabled); }
     .danger { color: var(--danger-text); }
+    .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .primary.small { min-height: 40px; padding: 0 16px; font-size: 14px; }
   `,
 })
 export class ProjectMembers {
@@ -139,8 +136,6 @@ export class ProjectMembers {
   private ps = inject(ProjectService);
   private route = inject(ActivatedRoute);
 
-  /** 招待欄の役割（よく選ぶものを先に） */
-  readonly roles: Role[] = ['member', 'viewer', 'admin'];
   /** 役割のメニュー（権限の強い順） */
   readonly roleOrder: Role[] = ['admin', 'member', 'viewer'];
   /** 役割のメニューを開いているメンバー */
@@ -148,12 +143,11 @@ export class ProjectMembers {
   private i18n = inject(I18nService);
   invitations = signal<Invitation[]>([]);
   busy = signal(false);
-  error = signal('');
-  inviteEmail = '';
-  inviteRole = signal<Role>('member');
   private authService = inject(AuthService);
   readonly myUid = auth.currentUser!.uid;
   roleError = signal('');
+  /** 開いている招待のモーダル（retry＝作成のときに送れなかった人を、もう一度送る） */
+  inviteOpen = signal<{ list: Invitee[]; retry: boolean } | null>(null);
   /** 開いている引き継ぎのモーダル */
   dialog = signal<{ mode: HandoverMode; member: Member; role: Role | null } | null>(null);
   private tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
@@ -197,10 +191,28 @@ export class ProjectMembers {
   }
 
   constructor() {
-    // ヘッダーの「メンバーを招待」から来たら、招待欄に移る
+    // 作成のときに送れなかった人がいれば、その人たちを入れて招待を開く。1回だけ（読んだら履歴から消す）
+    const { inviteFailed, ...rest } = (history.state ?? {}) as Record<string, unknown>;
+    if (inviteFailed !== undefined) {
+      history.replaceState(rest, '');
+      this.inviteOpen.set({ list: inviteFailed as Invitee[], retry: true });
+    }
+    // ヘッダーの「メンバーを招待」から来たら、招待を開く
     this.route.fragment.pipe(takeUntilDestroyed()).subscribe((f) => {
-      if (f === 'invite') focusById('invite-email');
+      if (f === 'invite' && !this.inviteOpen()) this.openInvite();
     });
+  }
+
+  openInvite() {
+    this.inviteOpen.set({ list: [], retry: false });
+  }
+
+  async reloadInvitations() {
+    try {
+      this.invitations.set(await this.ps.listInvitations(this.ctx.pid()));
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   /** 管理者になった時点で、招待中の一覧を読む（開いている間に役割が上がっても読めるように） */
@@ -214,23 +226,6 @@ export class ProjectMembers {
       }
     });
   });
-
-  async invite() {
-    const email = this.inviteEmail.trim().toLowerCase();
-    if (!email) return;
-    this.busy.set(true);
-    this.error.set('');
-    try {
-      await this.ps.invite(this.ctx.project()!, email, this.inviteRole(), auth.currentUser!);
-      this.inviteEmail = '';
-      this.invitations.set(await this.ps.listInvitations(this.ctx.pid()));
-    } catch (e) {
-      console.error(e);
-      this.error.set('project.inviteError');
-    } finally {
-      this.busy.set(false);
-    }
-  }
 
   async cancel(i: Invitation) {
     await this.ps.cancelInvitation(this.ctx.pid(), i.email);

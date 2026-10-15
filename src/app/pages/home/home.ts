@@ -1,9 +1,9 @@
 import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { Unsubscribe } from 'firebase/firestore';
-import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { focusById } from '../../core/dom';
+import { ProjectNewDialog } from '../../shared/project-new-dialog';
+import { SearchService } from '../../core/search/search.service';
 import { sendEmailVerification } from 'firebase/auth';
 import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth/auth.service';
@@ -19,7 +19,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
 
 @Component({
   selector: 'app-home',
-  imports: [FormsModule, RouterLink, TPipe, PriorityMark],
+  imports: [RouterLink, TPipe, PriorityMark, ProjectNewDialog],
   template: `
    
 
@@ -132,12 +132,6 @@ import { I18nService, TPipe } from '../../i18n/i18n';
       </section>
 
       <h2>{{ 'projects.title' | t }}</h2>
-
-      <form class="create" (ngSubmit)="create()">
-        <input id="new-project" name="name" [(ngModel)]="newName" maxlength="100" required
-          [placeholder]="'projects.namePlaceholder' | t" />
-        <button type="submit" [disabled]="busy() || !newName.trim()">{{ 'projects.create' | t }}</button>
-      </form>
       @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
 
       @if (loading()) {
@@ -151,18 +145,22 @@ import { I18nService, TPipe } from '../../i18n/i18n';
               @if (p.archived) { <span class="role">{{ 'projects.archived' | t }}</span> }
             </li>
           } @empty {
-            <li class="empty">{{ 'projects.empty' | t }}</li>
+            <li class="empty first">
+              <span>{{ 'projects.empty' | t }}</span>
+              <button type="button" class="primary" (click)="newOpen.set(true)">{{ 'projectNew.title' | t }}</button>
+            </li>
           }
         </ul>
       }
     </main>
+    @if (newOpen()) { <app-project-new-dialog (close)="newOpen.set(false)" /> }
   `,
   styles: `
     .bar { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--border); }
     .bar h1 { font-size: 18px; margin: 0; flex: 1; }
     main { max-width: 640px; margin: 0 auto; padding: 16px; }
-    .create { display: flex; gap: 8px; }
-    .create input { flex: 1; min-width: 0; }
+    .first { flex-direction: column; align-items: flex-start !important; gap: 8px; padding: 12px !important; }
+    .primary { padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none; border-radius: 8px; }
     input, button { min-height: 48px; font-size: 16px; }
     input { padding: 0 12px; }
     .link { background: none; border: none; color: var(--primary); }
@@ -224,10 +222,6 @@ export class Projects implements OnInit {
   private stopInvitations: Unsubscribe | null = null;
 
   constructor() {
-    // ヘッダーの「プロジェクトを作成」から来たら、作成欄に移る
-    this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((p) => {
-      if (p.get('create')) focusById('new-project');
-    });
 
     // 朝のまとめの通知から来たら、今日のまとめの欄まで動かす
     this.route.fragment.pipe(takeUntilDestroyed()).subscribe((f) => {
@@ -285,7 +279,9 @@ export class Projects implements OnInit {
   loading = signal(true);
   busy = signal(false);
   error = signal('');
-  newName = '';
+  /** プロジェクトが1つもないときの「プロジェクトを作成」 */
+  newOpen = signal(false);
+  private search = inject(SearchService);
 
   ngOnInit() {
     // 外されたときの知らせは1回だけ。読んだら履歴から消し、再読み込みで出し直さない
@@ -357,27 +353,11 @@ export class Projects implements OnInit {
     });
   }
 
-  async create() {
-    const name = this.newName.trim();
-    if (!name) return;
-    this.busy.set(true);
-    this.error.set('');
-    try {
-      await this.projectService.create(name, auth.currentUser!);
-      this.newName = '';
-      await this.load();
-    } catch (e) {
-      console.error(e);
-      this.error.set('common.saveError');
-    } finally {
-      this.busy.set(false);
-    }
-  }
-
   async accept(inv: Invitation) {
     this.busy.set(true);
     try {
       await this.projectService.acceptInvitation(inv, auth.currentUser!);
+      this.search.invalidate(); // 参加したプロジェクトも、検索に出るように
       await this.load();
     } catch (e) {
       console.error(e);

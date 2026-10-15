@@ -97,4 +97,10 @@ export class SearchService {
   nameOf(pid: string) {
     return this.data().find((d) => d.project.id === pid)?.project.name ?? '';
   }
+
+  
+  /** 所属するプロジェクトが変わったとき（作成・参加）に呼ぶ。次に検索を開いたとき読み直す */
+  invalidate() {
+    this.loadedAt = 0;
+  }
 }
