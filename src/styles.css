@@ -40,3 +40,5 @@
     --label-purple: #6a1b9a; --label-purple-bg: #f3e5f5;
     --label-gray: #555;      --label-gray-bg: #eeeeee;
   }
+
+  html { scrollbar-gutter: stable; }
