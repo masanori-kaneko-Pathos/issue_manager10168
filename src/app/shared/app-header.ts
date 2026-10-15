@@ -107,7 +107,11 @@ import { ProjectNewDialog } from './project-new-dialog';
       </div>
     </header>
     @if (inbox.flash(); as key) { <div class="toast" role="status">{{ key | t }}</div> }
-    @if (projectNewOpen()) { <app-project-new-dialog (close)="projectNewOpen.set(false)" /> }
+    @if (projectNewOpen()) {
+      @defer (on immediate) {
+        <app-project-new-dialog (close)="projectNewOpen.set(false)" />
+      }
+    }
   `,
   styles: `
     .app-header { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 8px;
