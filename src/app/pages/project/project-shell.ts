@@ -102,8 +102,8 @@ export class ProjectHome {
   /** タブの並び。設定は管理者だけに出す */
   tabs = computed(() =>
     this.ctx.role() === 'admin'
-      ? ['list', 'board', 'calendar', 'members', 'settings']
-      : ['list', 'board', 'calendar', 'members']);
+      ? ['list', 'board', 'calendar', 'dashboard', 'members', 'settings']
+      : ['list', 'board', 'calendar', 'dashboard', 'members']);
 
   constructor() {
     // 別のプロジェクトに移ったときも読み直す

@@ -142,6 +142,8 @@ export class IssueService {
         importance: input.importance,
         priorityOverride: null,
         dueAt: Timestamp.fromDate(input.dueAt),
+        // 登録したときの期限。期限遵守率は、あとで期限を延ばしても、この期限で判定する（仕様メモ【13】）
+        firstDueAt: Timestamp.fromDate(input.dueAt),
         startAt: serverTimestamp(),
         doneCriteria: input.doneCriteria,
         description: input.description,

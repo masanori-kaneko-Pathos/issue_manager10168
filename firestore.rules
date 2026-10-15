@@ -313,7 +313,11 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly([
                'number', 'title', 'type', 'status', 'importance', 'priorityOverride',
                'dueAt', 'startAt', 'doneCriteria', 'description', 'assigneeId',
-               'reporterId', 'labelIds', 'createdAt', 'updatedAt', 'updatedBy', 'occurredOn', 'impact', 'relatedFrom'])
+               'reporterId', 'labelIds', 'createdAt', 'updatedAt', 'updatedBy', 'occurredOn', 'impact', 'relatedFrom',
+               'firstDueAt'])
+          // 初回の期限は、登録した期限と同じでなければならない（あとから変える道は、編集のルールにない）
+          && (!('firstDueAt' in request.resource.data)
+            || request.resource.data.firstDueAt == request.resource.data.dueAt)
           // ひも付け（今は再発防止だけ）。あるときだけ形を確かめる
           && (!('relatedFrom' in request.resource.data)
             || (request.resource.data.relatedFrom.keys().hasOnly(['kind', 'iid', 'number'])

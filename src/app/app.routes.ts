@@ -25,6 +25,8 @@ export const routes: Routes = [
             loadComponent: () => import('./pages/project/tab-board').then((m) => m.ProjectBoard) },
         { path: 'calendar',
           loadComponent: () => import('./pages/project/tab-calendar').then((m) => m.ProjectCalendar) },
+        { path: 'dashboard',
+          loadComponent: () => import('./pages/project/tab-dashboard').then((m) => m.TabDashboard) },
         { path: 'members',
           loadComponent: () => import('./pages/project/tab-members').then((m) => m.ProjectMembers) },
         { path: 'settings', canDeactivate: [unsavedGuard],

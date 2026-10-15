@@ -138,6 +138,7 @@ export interface Issue {
   importance: Level;
   priorityOverride: Level | null; // 人が優先度を変えたときだけ入る
   dueAt: Timestamp;
+  firstDueAt?: Timestamp;     // 登録したときの期限（期限遵守率に使う。古い課題にはない）
   startAt: Timestamp;
   doneCriteria: string;
   description: string;

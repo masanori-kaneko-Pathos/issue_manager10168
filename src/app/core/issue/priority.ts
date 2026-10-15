@@ -23,6 +23,11 @@ export function priorityOf(i: PriorityInput, nowMs = Date.now()): Level {
   return i.priorityOverride ?? TABLE[i.importance][urgencyOf(i.dueAt.toMillis(), nowMs)];
 }
 
+/** 重要度と緊急度から、自動の優先度を引く（ダッシュボードの3×3のマスの色に使う） */
+export function priorityFrom(importance: Level, urgency: Level): Level {
+  return TABLE[importance][urgency];
+}
+
 const RANK: Record<Level, number> = { high: 0, mid: 1, low: 2 };
 
 /** やる順番：優先度が高い順、同じなら期限が近い順 */
