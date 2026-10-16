@@ -1,6 +1,5 @@
-import { Component, computed, inject, output, signal } from '@angular/core';
+import { Component, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
 import { ProjectService } from '../../core/project/project.service';
 import { SearchService } from '../../core/search/search.service';
 import { ProjectContext } from './project-context';
@@ -16,7 +15,11 @@ import { TPipe } from '../../i18n/i18n';
     <section class="dialog" role="dialog" aria-modal="true" [attr.aria-label]="'deleteProject.title' | t">
       <h2>{{ 'deleteProject.title' | t }}</h2>
       <p class="warn">{{ 'deleteProject.warn' | t }}</p>
-      @if (others()) { <p class="help">{{ 'deleteProject.members' | t: { n: '' + others() } }}</p> }
+      @if (others() === null) {
+        <p class="help">{{ 'deleteProject.membersUnknown' | t }}</p>
+      } @else if (others()) {
+        <p class="help">{{ 'deleteProject.members' | t: { n: '' + others() } }}</p>
+      }
       <label class="field">{{ 'deleteProject.typeName' | t: { name: name() } }}
         <input [(ngModel)]="typed" autocomplete="off" />
       </label>
@@ -48,19 +51,22 @@ import { TPipe } from '../../i18n/i18n';
   `,
 })
 export class DeleteProjectDialog {
+  pid = input.required<string>();
+  name = input.required<string>();
+  /** 自分以外のメンバーの人数（知らせが届く人）。わからなければ null */
+  others = input<number | null>(null);
+  /** 消し終わった（移動や知らせは、呼んだ側が決める） */
+  done = output<string>();
   cancel = output<void>();
 
-  private ctx = inject(ProjectContext);
+  /** プロジェクトの中から開いたときだけある（見張りに「自分で消している」と伝えるため） */
+  private ctx = inject(ProjectContext, { optional: true });
   private ps = inject(ProjectService);
   private search = inject(SearchService);
-  private router = inject(Router);
 
   typed = '';
   busy = signal(false);
   error = signal('');
-  name = computed(() => this.ctx.project()?.name ?? '');
-  /** 自分以外のメンバーの人数（知らせが届く人） */
-  others = computed(() => Math.max(0, this.ctx.members().length - 1));
 
   async confirm() {
     const name = this.name();
@@ -68,14 +74,14 @@ export class DeleteProjectDialog {
     this.busy.set(true);
     this.error.set('');
     // 消している最中に、見張りが「外された」と勘違いしてホームへ動かないよう、先に印を付ける
-    this.ctx.markDeleting(true);
+    this.ctx?.markDeleting(true);
     try {
-      await this.ps.deleteProject(this.ctx.pid(), name);
+      await this.ps.deleteProject(this.pid(), name);
       this.search.invalidate();
-      this.router.navigate(['/'], { replaceUrl: true, state: { deletedProject: name, byMe: true } });
+      this.done.emit(name);
     } catch (e) {
       console.error(e);
-      this.ctx.markDeleting(false);
+      this.ctx?.markDeleting(false);
       this.error.set('common.saveError');
       this.busy.set(false);
     }

@@ -783,6 +783,7 @@ export const ja = {
     confirm: '完全に削除する',
     done: '「{{name}}」を削除しました。',
     gone: '「{{name}}」は削除されました。',
+    membersUnknown: 'ほかのメンバーは、このプロジェクトを見られなくなります。削除したことは、お知らせで届きます。',
   },
   stale: {
     label: '停滞中',

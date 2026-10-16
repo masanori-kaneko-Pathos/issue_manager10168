@@ -16,10 +16,11 @@ import { PriorityMark } from '../../shared/priority-mark';
 import { compareIssues, isManualPriority, priorityOf } from '../../core/issue/priority';
 import { DueBucket, dueBucket, remainingOf, shortDue } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
+import { DeleteProjectDialog } from '../project/delete-project-dialog';
 
 @Component({
   selector: 'app-home',
-  imports: [RouterLink, TPipe, PriorityMark, ProjectNewDialog],
+  imports: [RouterLink, TPipe, PriorityMark, ProjectNewDialog, DeleteProjectDialog],
   template: `
    
 
@@ -168,6 +169,23 @@ import { I18nService, TPipe } from '../../i18n/i18n';
                   <a class="name" [routerLink]="['/p', p.id]">{{ p.name }}</a>
                   <span class="role">{{ 'archive.kinds.' + (p.archiveKind ?? 'completed') | t }}</span>
                   <span class="role">{{ 'roles.' + p.role | t }}</span>
+                  @if (p.role === 'admin') {
+                    <div class="row-more">
+                      <button type="button" class="row-more-btn" [attr.aria-expanded]="rowMenu() === p.id"
+                        [attr.aria-label]="'project.menu' | t" [title]="'project.menu' | t"
+                        (click)="toggleRowMenu(p.id, $event)">⋮</button>
+                      @if (rowMenu() === p.id) {
+                        <div class="backdrop" (click)="rowMenu.set(null)"></div>
+                        <div class="menu" role="menu" [class.up]="rowMenuUp()">
+                          <button type="button" role="menuitem" [disabled]="busy()" (click)="unarchive(p)">
+                            {{ 'archive.unarchive' | t }}</button>
+                          <div class="sep" role="separator"></div>
+                          <button type="button" role="menuitem" class="danger"
+                            (click)="rowMenu.set(null); deleteTarget.set(p)">{{ 'deleteProject.open' | t }}</button>
+                        </div>
+                      }
+                    </div>
+                  }
                 </li>
               }
             </ul>
@@ -176,6 +194,10 @@ import { I18nService, TPipe } from '../../i18n/i18n';
       }
     </main>
     @if (newOpen()) { <app-project-new-dialog (close)="newOpen.set(false)" /> }
+        @if (deleteTarget(); as p) {
+      <app-delete-project-dialog [pid]="p.id" [name]="p.name" (done)="onDeleted($event)"
+        (cancel)="deleteTarget.set(null)" />
+    }
   `,
   styles: `
     .bar { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--border); }
@@ -224,6 +246,21 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .t-chip[data-b='overdue']:not(:disabled):not(.on) strong { color: var(--danger-text); }
     .bang { font-weight: bold; }
     .fold-btn { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 14px; cursor: pointer; }
+    .row-more { position: relative; }
+    .row-more-btn { width: 36px; height: 36px; min-height: 36px; border: none; border-radius: 50%; background: none;
+      color: var(--text-muted); font-size: 18px; cursor: pointer; }
+    .row-more-btn:hover { background: var(--surface-alt); }
+    .backdrop { position: fixed; inset: 0; z-index: 51; }
+    .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 52; min-width: 220px;
+      background: var(--surface); border-radius: 10px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+      padding: 6px 0; display: flex; flex-direction: column; }
+    .menu button { text-align: left; padding: 0 16px; min-height: 44px; background: none; border: none;
+      color: var(--text); font-size: 14px; cursor: pointer; }
+    .menu button:hover:not(:disabled) { background: var(--surface-alt); }
+    .menu .sep { height: 1px; margin: 6px 0; background: var(--border); }
+    .menu button.danger { color: var(--danger-text); font-weight: bold; }
+    .menu button.danger:hover { background: var(--danger-bg); }
+    .menu.up { top: auto; bottom: calc(100% + 4px); }
   `,
 })
 export class Projects implements OnInit {
@@ -262,6 +299,45 @@ export class Projects implements OnInit {
   activeProjects = computed(() => this.projects().filter((p) => !p.archived));
   archivedProjects = computed(() => this.projects().filter((p) => p.archived));
   showArchived = signal(false);
+  /** アーカイブ済みの行の ⋮（開いているプロジェクトの id） */
+  rowMenu = signal<string | null>(null);
+  /** メニューを上に開くか（ボタンが画面の下のほうにあって、下に開くと切れるとき） */
+  rowMenuUp = signal(false);
+
+  toggleRowMenu(pid: string, e: MouseEvent) {
+    if (this.rowMenu() === pid) {
+      this.rowMenu.set(null);
+      return;
+    }
+    // ボタンの下に、メニュー（約140px）が収まる空きがあるか
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    this.rowMenuUp.set(window.innerHeight - r.bottom < 160);
+    this.rowMenu.set(pid);
+  }
+  /** 削除のモーダルを開いているプロジェクト */
+  deleteTarget = signal<ProjectWithRole | null>(null);
+
+  /** アーカイブの解除（ホームから）。済んだら一覧を読み直す */
+  async unarchive(p: ProjectWithRole) {
+    this.rowMenu.set(null);
+    this.busy.set(true);
+    try {
+      await this.projectService.unarchive(p.id, auth.currentUser!.uid, p.role);
+      await this.load();
+    } catch (e) {
+      console.error(e);
+      this.error.set('common.saveError');
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /** 削除し終わった（ホームにいるので移動はせず、知らせを出して一覧を読み直す） */
+  async onDeleted(name: string) {
+    this.deleteTarget.set(null);
+    this.deletedProject.set({ name, byMe: true });
+    await this.load();
+  }
   invitations = signal<Invitation[]>([]);
   myIssues = computed(() => Object.values(this.mineByProject()).flat());
   showDone = signal(false);

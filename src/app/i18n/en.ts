@@ -784,6 +784,7 @@ export const en: Dict = {
     confirm: 'Delete permanently',
     done: 'Deleted "{{name}}".',
     gone: '"{{name}}" was deleted.',
+    membersUnknown: 'Other members will lose access to this project and will be notified.',
   },
   stale: {
     label: 'Stale',
