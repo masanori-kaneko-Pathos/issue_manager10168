@@ -23,6 +23,8 @@ const RANGES: Record<NumKey, [number, number]> = {
   template: `
     @if (ctx.role() !== 'admin') {
       <p>{{ 'projectSettings.adminOnly' | t }}</p>
+    } @else if (ctx.archived()) {
+      <p>{{ 'archive.settingsLocked' | t }}</p>
     } @else {
       <section>
         <h2>{{ 'projectSettings.labels' | t }} <app-help-tip [keys]="['projectSettings.labelsHelp']" /></h2>

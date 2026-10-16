@@ -308,6 +308,8 @@ export class AppHeader {
       await this.router.navigate(['/'], { fragment: 'today' });
     } else if (n.iid) {
       await this.router.navigate(['/p', n.pid, 'i', n.iid]);
+    } else if (n.type === 'projectDeleted') {
+      await this.router.navigate(['/']);
     } else if (n.type === 'handover') {
       // 引き継いだ課題が見えるよう、自分の担当で絞ったリストへ
       await this.router.navigate(['/p', n.pid, 'list'], { queryParams: { assignee: auth.currentUser!.uid } });

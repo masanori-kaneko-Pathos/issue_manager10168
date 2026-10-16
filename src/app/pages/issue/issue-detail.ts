@@ -218,14 +218,14 @@ export class IssueDetail implements OnInit {
   canEdit = computed(() => {
     const i = this.issue();
     const r = this.role();
-    if (!i || !r || i.status === 'closed' || i.status === 'merged') return false;
+    if (!i || !r || i.status === 'closed' || i.status === 'merged' || this.projectArchived()) return false;
     if (r === 'admin') return true;
     return r === 'member' && (i.reporterId === this.myUid || i.assigneeId === this.myUid);
   });
   canSetPriority = computed(() => {
     const i = this.issue();
     const r = this.role();
-    if (!i || !r || !this.isActive(i)) return false;
+    if (!i || !r || !this.isActive(i) || this.projectArchived()) return false;
     return r === 'admin' || (r === 'member' && i.assigneeId === this.myUid);
   });
 
@@ -331,7 +331,7 @@ export class IssueDetail implements OnInit {
   transitions = computed(() => {
     const i = this.issue();
     const r = this.role();
-    return i && r ? availableTransitions(i, r, this.myUid) : [];
+    return i && r && !this.projectArchived() ? availableTransitions(i, r, this.myUid) : [];
   });
   /** 押せないボタンがあるときの理由（重複なし） */
   deniedReasons = computed(() => [
@@ -391,6 +391,10 @@ export class IssueDetail implements OnInit {
       this.stops.push(this.ps.watchProject(
         this.pid,
         (project) => {
+          if (project?.deleting) {
+            this.lostAccess(true);
+            return;
+          }
           this.applyProject(project);
           resolve(); // 2回目以降に呼ばれても何も起きない
         },
@@ -445,12 +449,15 @@ export class IssueDetail implements OnInit {
   }
 
   /** 外されたら、ホームへ戻して知らせる（「戻る」で見られない画面に戻らないよう、履歴を置き換える） */
-  private lostAccess() {
+  private lostAccess(gone = false) {
     // 見張りが複数あるので、外されたときは知らせが何回か来うる。止めたあと（stops が空）なら何もしない
     if (!this.stops.length) return;
     this.stops.forEach((stop) => stop());
     this.stops = [];
-    this.router.navigate(['/'], { replaceUrl: true, state: { removedFrom: this.projectName() } });
+    this.router.navigate(['/'], {
+      replaceUrl: true,
+      state: gone ? { deletedProject: this.projectName() } : { removedFrom: this.projectName() },
+    });
   }
 
   click(t: Transition) {

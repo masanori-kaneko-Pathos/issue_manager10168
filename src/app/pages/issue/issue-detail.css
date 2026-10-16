@@ -71,9 +71,6 @@ textarea { font-size: 16px; padding: 8px 12px; font-weight: normal; }
   min-height: 44px; padding: 0 14px; border: 1px solid var(--border-strong); background: var(--surface);
   border-radius: 22px; font-size: 14px; }
 .chips button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
-.criteria { background: var(--surface-alt); padding: 12px; border-radius: 8px; }
-.check { display: flex; align-items: center; gap: 8px; margin-top: 8px; min-height: 44px; }
-.check input { width: 22px; height: 22px; }
 .row { display: flex; justify-content: flex-end; gap: 8px; }
 .link { background: none; border: none; color: var(--primary); min-height: 44px; }
 .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
@@ -146,7 +143,6 @@ a.add-link { display: inline-flex; align-items: center; text-decoration: none; }
   font-family: inherit; cursor: pointer; }
 .type-btn:hover { color: var(--text); text-decoration: underline; }
 .seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; }
-.seg:focus { outline: 2px solid var(--primary); outline-offset: 2px; }
 .seg button { min-width: 44px; min-height: 32px; border: none; background: var(--surface); font-size: 13px; cursor: pointer; }
 .seg button + button { border-left: 1px solid var(--border-strong); }
 .seg button.on { background: var(--primary); color: var(--on-primary); }
@@ -183,6 +179,8 @@ a.add-link { display: inline-flex; align-items: center; text-decoration: none; }
 .imp button.on .dot { background: var(--primary); border-color: var(--primary); }
 .imp button.on .t { color: var(--text); font-weight: bold; }
 .imp button:hover:not(:disabled) .dot { border-color: var(--primary); }
+.ro-note { margin: 8px 0; padding: 8px 12px; border-radius: 8px; font-size: 13px;
+  background: var(--surface-alt); border: 1px solid var(--border-strong); }
 @media (min-width: 861px) {
   .side .inline-edit input, .side .inline-edit textarea, .side select { font-size: 14px; padding: 6px 8px; }
 }

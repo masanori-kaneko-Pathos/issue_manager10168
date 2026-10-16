@@ -397,7 +397,7 @@ export class ProjectBoard implements OnInit {
   /** その人がこの課題でできる移動（却下はかんばんでは扱わない） */
   moves(i: Issue) {
     const role = this.ctx.role();
-    if (!role) return [];
+    if (!role || this.ctx.archived()) return [];
     return availableTransitions(i, role, this.myUid).filter((a) => a.allowed && a.t.key !== 'reject');
   }
 

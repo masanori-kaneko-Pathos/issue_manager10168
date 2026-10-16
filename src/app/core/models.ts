@@ -19,6 +19,9 @@ export function labelColor(l: Label): LabelColor {
   return l.color ?? DEFAULT_LABEL_COLORS[l.id] ?? 'gray';
 }
 
+/** アーカイブの種類（completed＝完了、cancelled＝打ち切り） */
+export type ArchiveKind = 'completed' | 'cancelled';
+
 export interface ProjectSettings {
   notifyHour: number;        // 通知時刻（受け取る人の現地時間）
   staleDays: number;         // 停滞とみなす日数
@@ -37,6 +40,11 @@ export interface Project {
   settings: ProjectSettings;
   issueSeq: number;          // 課題番号の連番
   formerMembers?: Record<string, string>; // 外した・抜けた人の表示名（uid → 名前）
+  archiveKind?: ArchiveKind;    // アーカイブ中だけ
+  archiveReason?: string;
+  archivedAt?: Timestamp;
+  archivedBy?: string;
+  deleting?: boolean;           // 削除の最中（関数が最初に立てる。開いている画面はこれを見てホームへ戻る）
 }
 
 export interface ProjectWithRole extends Project { role: Role; }
@@ -72,7 +80,7 @@ export interface InboxMemo {
 
 /** 管理ログ（今は書くだけ。見る画面は後日） */
 export interface AdminLog {
-  type: 'role' | 'remove' | 'leave' | 'handover' | 'import';
+  type: 'role' | 'remove' | 'leave' | 'handover' | 'import' | 'archive' | 'unarchive';
   by: string;           // 操作した人
   target: string;       // 対象の人
   from: Role;           // 操作する前の役割
@@ -84,7 +92,7 @@ export interface AdminLog {
 /** 通知の種類 */
 export type NotificationType =
   'assigned' | 'comment' | 'dueChanged' | 'resolved' | 'sentBack' | 'closed' | 'rejected' | 'restored' | 'joined'
-  | 'handover' | 'daily' | 'effectCheck' | 'unblocked' | 'merged';
+  | 'handover' | 'daily' | 'effectCheck' | 'unblocked' | 'merged' | 'projectDeleted';
 
 /**
  * 画面内の通知（users/{uid}/notifications）。本人だけが読める。

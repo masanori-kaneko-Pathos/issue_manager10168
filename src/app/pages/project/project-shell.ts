@@ -2,15 +2,20 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ProjectContext } from './project-context';
-import { TPipe } from '../../i18n/i18n';
+import { TPipe, I18nService } from '../../i18n/i18n';
 import { auth } from '../../core/firebase';
 import { HelpTip } from '../../shared/help-tip';
 import { HandoverDialog } from './handover-dialog';
 import { CsvExportDialog } from './csv-export-dialog';
+import { ArchiveDialog } from './archive-dialog';
+import { ProjectService } from '../../core/project/project.service';
+import { ArchiveKind } from '../../core/models';
+import { DeleteProjectDialog } from './delete-project-dialog';
 
 @Component({
   selector: 'app-project-shell',
-  imports: [RouterLink, RouterLinkActive, RouterOutlet, TPipe, HelpTip, HandoverDialog, CsvExportDialog],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, TPipe, HelpTip, HandoverDialog,
+     CsvExportDialog, ArchiveDialog, DeleteProjectDialog],
   providers: [ProjectContext],
   host: { '(document:keydown.escape)': 'menuOpen.set(false)' },
   template: `
@@ -32,12 +37,16 @@ import { CsvExportDialog } from './csv-export-dialog';
               <div class="menu" role="menu">
                 <a role="menuitem" [routerLink]="['/p', ctx.pid(), 'trash']" (click)="menuOpen.set(false)">
                   {{ 'trash.title' | t }}</a>
-            @if (ctx.role() !== 'viewer') {
+                @if (ctx.role() !== 'viewer' && !ctx.project()!.archived) {
                   <a role="menuitem" [routerLink]="['/p', ctx.pid(), 'import']" (click)="menuOpen.set(false)">
                     {{ 'importPage.open' | t }}</a>
                 }
                 <button type="button" role="menuitem" (click)="menuOpen.set(false); exportOpen.set(true)">
                   {{ 'csv.export' | t }}</button>
+                @if (ctx.role() === 'admin' && !ctx.project()!.archived) {
+                  <button type="button" role="menuitem" (click)="menuOpen.set(false); archiveOpen.set(true)">
+                    {{ 'archive.open' | t }}</button>
+                }
                 <div class="item-row">
                   <button type="button" role="menuitem" class="danger" [disabled]="ctx.role() === 'admin'"
                     (click)="menuOpen.set(false); leaveOpen.set(true)">{{ 'members.leave' | t }}</button>
@@ -49,6 +58,20 @@ import { CsvExportDialog } from './csv-export-dialog';
             }
           </div>
         </div>
+        @if (ctx.project()!.archived) {
+          <div class="archived" role="status">
+            <p><strong>{{ 'archive.banner' | t: { kind: i18n.t('archive.kinds.' + (ctx.project()!.archiveKind ?? 'completed')) } }}</strong></p>
+            @if (ctx.project()!.archiveReason; as r) { <p class="pre">{{ 'archive.bannerReason' | t: { reason: r } }}</p> }
+            @if (ctx.role() === 'admin') {
+              <button type="button" class="unarchive" [disabled]="busy()" (click)="unarchive()">{{ 'archive.unarchive' | t }}</button>
+            }
+            @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
+          </div>
+        }
+        @if (ctx.role() === 'admin' && ctx.project()!.archived) {
+          <button type="button" role="menuitem" class="danger" (click)="menuOpen.set(false); deleteOpen.set(true)">
+            {{ 'deleteProject.open' | t }}</button>
+                }
         <nav class="tabs">
           @for (t of tabs(); track t) {
             <a [routerLink]="t" routerLinkActive="on" queryParamsHandling="preserve">{{ 'tabs.' + t | t }}</a>
@@ -60,6 +83,12 @@ import { CsvExportDialog } from './csv-export-dialog';
         }
         @if (exportOpen()) {
           <app-csv-export-dialog (done)="exportOpen.set(false)" (cancel)="exportOpen.set(false)" />
+        }
+        @if (archiveOpen()) {
+          <app-archive-dialog (done)="archiveOpen.set(false)" (cancel)="archiveOpen.set(false)" />
+        }
+        @if (deleteOpen()) {
+          <app-delete-project-dialog (cancel)="deleteOpen.set(false)" />
         }
       }
     </main>
@@ -91,6 +120,13 @@ import { CsvExportDialog } from './csv-export-dialog';
     .tabs a { padding: 10px 16px; min-height: 44px; box-sizing: border-box; text-decoration: none;
       color: var(--text-muted); border-bottom: 3px solid transparent; white-space: nowrap; }
     .tabs a.on { color: var(--primary); border-bottom-color: var(--primary); font-weight: bold; }
+    .archived { display: flex; flex-direction: column; gap: 6px; margin: 0 0 12px; padding: 12px;
+      border-radius: 8px; background: var(--surface-alt); border: 1px solid var(--border-strong); }
+    .archived p { margin: 0; }
+    .pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+    .unarchive { align-self: flex-start; min-height: 40px; padding: 0 16px; border: 1px solid var(--primary);
+      border-radius: 8px; background: var(--surface); color: var(--primary); cursor: pointer; }
+    .error { color: var(--danger-text); }
   `,
 })
 export class ProjectHome {
@@ -100,6 +136,26 @@ export class ProjectHome {
   menuOpen = signal(false);
   leaveOpen = signal(false);
   exportOpen = signal(false);
+  archiveOpen = signal(false);
+  deleteOpen = signal(false);
+  busy = signal(false);
+  error = signal('');
+  protected i18n = inject(I18nService);
+  private ps = inject(ProjectService);
+
+  /** アーカイブを解除する（元に戻せる操作なので、確認はしない） */
+  async unarchive() {
+    this.busy.set(true);
+    this.error.set('');
+    try {
+      await this.ps.unarchive(this.ctx.pid(), auth.currentUser!.uid, this.ctx.role()!);
+    } catch (e) {
+      console.error(e);
+      this.error.set('common.saveError');
+    } finally {
+      this.busy.set(false);
+    }
+  }
   /** 自分のメンバー文書（抜けるときの引き継ぎに使う） */
   me = computed(() => this.ctx.members().find((m) => m.uid === auth.currentUser!.uid) ?? null);
 

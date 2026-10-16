@@ -28,6 +28,8 @@ type Step = 'pick' | 'map' | 'review' | 'done';
 
       @if (ctx.role() === 'viewer') {
         <p>{{ 'importPage.viewerCannot' | t }}</p>
+      } @else if (ctx.archived()) {
+        <p>{{ 'archive.readonly' | t }}</p>
       } @else {
         <ol class="steps">
           @for (s of steps; track s; let i = $index) {

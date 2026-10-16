@@ -38,6 +38,12 @@ import { I18nService, TPipe } from '../../i18n/i18n';
           <button type="button" class="link" (click)="leftFrom.set(null)">{{ 'projects.dismiss' | t }}</button>
         </div>
       }
+      @if (deletedProject(); as d) {
+        <div class="notice" role="status">
+          <p>{{ (d.byMe ? 'deleteProject.done' : 'deleteProject.gone') | t: { name: d.name } }}</p>
+          <button type="button" class="link" (click)="deletedProject.set(null)">{{ 'projects.dismiss' | t }}</button>
+        </div>
+      }
       @if (needsVerify()) {
         <div class="notice">
           <p>{{ 'verify.message' | t }}</p>
@@ -138,11 +144,10 @@ import { I18nService, TPipe } from '../../i18n/i18n';
         <p>{{ 'common.loading' | t }}</p>
       } @else {
         <ul class="list">
-          @for (p of projects(); track p.id) {
-            <li [class.archived]="p.archived">
+          @for (p of activeProjects(); track p.id) {
+            <li>
               <a class="name" [routerLink]="['/p', p.id]">{{ p.name }}</a>
               <span class="role">{{ 'roles.' + p.role | t }}</span>
-              @if (p.archived) { <span class="role">{{ 'projects.archived' | t }}</span> }
             </li>
           } @empty {
             <li class="empty first">
@@ -151,6 +156,23 @@ import { I18nService, TPipe } from '../../i18n/i18n';
             </li>
           }
         </ul>
+        @if (archivedProjects().length) {
+          <button type="button" class="link fold-btn" [attr.aria-expanded]="showArchived()"
+            (click)="showArchived.set(!showArchived())">
+            {{ 'archive.section' | t: { n: '' + archivedProjects().length } }}
+            <span aria-hidden="true">{{ showArchived() ? '▴' : '▾' }}</span></button>
+          @if (showArchived()) {
+            <ul class="list">
+              @for (p of archivedProjects(); track p.id) {
+                <li class="archived">
+                  <a class="name" [routerLink]="['/p', p.id]">{{ p.name }}</a>
+                  <span class="role">{{ 'archive.kinds.' + (p.archiveKind ?? 'completed') | t }}</span>
+                  <span class="role">{{ 'roles.' + p.role | t }}</span>
+                </li>
+              }
+            </ul>
+          }
+        }
       }
     </main>
     @if (newOpen()) { <app-project-new-dialog (close)="newOpen.set(false)" /> }
@@ -201,6 +223,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .t-chip[data-b='overdue']:not(:disabled):not(.on) .bang,
     .t-chip[data-b='overdue']:not(:disabled):not(.on) strong { color: var(--danger-text); }
     .bang { font-weight: bold; }
+    .fold-btn { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 14px; cursor: pointer; }
   `,
 })
 export class Projects implements OnInit {
@@ -235,6 +258,10 @@ export class Projects implements OnInit {
   }
 
   projects = signal<ProjectWithRole[]>([]);
+  /** 進行中のプロジェクトと、アーカイブ済みのプロジェクト（アーカイブ済みは下にたたむ） */
+  activeProjects = computed(() => this.projects().filter((p) => !p.archived));
+  archivedProjects = computed(() => this.projects().filter((p) => p.archived));
+  showArchived = signal(false);
   invitations = signal<Invitation[]>([]);
   myIssues = computed(() => Object.values(this.mineByProject()).flat());
   showDone = signal(false);
@@ -264,6 +291,8 @@ export class Projects implements OnInit {
     const now = this.clock.now();
     const bucket = this.bucket();
     return this.myIssues()
+      // アーカイブ中のプロジェクトの課題は出さない（通知と集計から外す約束。プロジェクトを開けば見られる）
+      .filter((i) => !this.archivedIds().has(i.projectId))
       .filter((i) => i.status !== 'deleted' && (this.showDone() || this.isActive(i)))
       .filter((i) => !bucket || (this.counts(i) && dueBucket(i.dueAt.toMillis(), now, this.tz()) === bucket))
       .sort((a, b) => compareIssues(a, b, now));
@@ -276,6 +305,11 @@ export class Projects implements OnInit {
   /** 自分から抜けて戻ってきたときの知らせ（プロジェクト名） */
   leftFrom = signal<string | null>(
     ((history.state as Record<string, unknown> | null)?.['leftFrom'] as string | undefined) ?? null);
+  /** プロジェクトが削除されて戻ってきたときの知らせ（byMe＝自分で消した） */
+  deletedProject = signal<{ name: string; byMe: boolean } | null>((() => {
+    const s = (history.state ?? {}) as Record<string, unknown>;
+    return typeof s['deletedProject'] === 'string' ? { name: s['deletedProject'] as string, byMe: !!s['byMe'] } : null;
+  })());
   loading = signal(true);
   busy = signal(false);
   error = signal('');
@@ -285,8 +319,10 @@ export class Projects implements OnInit {
 
   ngOnInit() {
     // 外されたときの知らせは1回だけ。読んだら履歴から消し、再読み込みで出し直さない
-    const { removedFrom, leftFrom, ...rest } = (history.state ?? {}) as Record<string, unknown>;
-    if (removedFrom !== undefined || leftFrom !== undefined) history.replaceState(rest, '');
+    const { removedFrom, leftFrom, deletedProject, byMe, ...rest } = (history.state ?? {}) as Record<string, unknown>;
+    if (removedFrom !== undefined || leftFrom !== undefined || deletedProject !== undefined) {
+      history.replaceState(rest, '');
+    }
     const u = auth.currentUser!;
     this.needsVerify.set(!!u.email && !u.emailVerified);
     this.watchInvitations();

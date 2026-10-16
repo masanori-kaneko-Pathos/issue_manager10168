@@ -4,6 +4,7 @@ import { getMessaging } from 'firebase-admin/messaging';
 import { logger } from 'firebase-functions';
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { HttpsError, onCall } from 'firebase-functions/v2/https';
 
 initializeApp();
 /** 課題管理アプリのデータベース。名前を指定しないと (default) を読んでしまう */
@@ -244,6 +245,7 @@ const PUSH_TEXT: Record<'ja' | 'en', Record<string, string>> = {
     effectCheck: '#{{n}}「{{title}}」の効果を確かめる時期です。確かめて、クローズしてください',
     unblocked: '#{{n}}「{{title}}」が待っていた課題が、解決済みになりました。進められるか確かめてください',
     merged: '{{name}} さんが、#{{n}}「{{title}}」を別の課題に統合しました',
+    projectDeleted: '{{name}} さんが、プロジェクト「{{project}}」を削除しました',
   },
   en: {
     assigned: '{{name}} assigned you to #{{n}} "{{title}}"',
@@ -260,6 +262,7 @@ const PUSH_TEXT: Record<'ja' | 'en', Record<string, string>> = {
     effectCheck: 'Time to check whether #{{n}} "{{title}}" worked. Check the effect and close it',
     unblocked: 'The issue that #{{n}} "{{title}}" was waiting for is resolved. Check whether you can move forward',
     merged: '{{name}} merged #{{n}} "{{title}}" into another issue',
+    projectDeleted: '{{name}} deleted the project "{{project}}"',
   },
 };
 const DAILY_PARTS: Record<'ja' | 'en', Record<string, string>> = {
@@ -292,6 +295,7 @@ function pushBody(n: DocumentData, lang: 'ja' | 'en'): string {
 /** 押したときに開く画面（アプリのヘッダーの openNotice と同じ行き先） */
 function pushUrl(uid: string, n: DocumentData): string {
   if (n.type === 'daily') return '/#today';
+  if (n.type === 'projectDeleted') return '/';
   if (n.iid) return `/p/${n.pid}/i/${n.iid}`;
   if (n.type === 'handover') return `/p/${n.pid}/list?assignee=${uid}`;
   return `/p/${n.pid}`;
@@ -396,3 +400,57 @@ export const imOnIssueResolved = onDocumentUpdated(
     logger.info('unblocked notices', { pid, iid, written });
   },
 );
+
+// ---- プロジェクトの削除 ----
+
+/**
+ * プロジェクトを完全に削除する（画面から呼ぶ）。管理者だけ・アーカイブ済みだけ・名前の打ち込みが一致したときだけ。
+ * Admin はルールを通らないので、条件はすべてここで確かめる。画面からは消さない（ルールは delete: false のまま）
+ */
+export const imDeleteProject = onCall({ region: 'asia-northeast1' }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'sign-in required');
+  const pid = String(req.data?.pid ?? '');
+  const typed = String(req.data?.name ?? '');
+  if (!pid) throw new HttpsError('invalid-argument', 'pid required');
+
+  const projectRef = db.doc(`projects/${pid}`);
+  const [project, me] = await Promise.all([projectRef.get(), projectRef.collection('members').doc(uid).get()]);
+  if (!project.exists) throw new HttpsError('not-found', 'project not found');
+  if (me.get('role') !== 'admin') throw new HttpsError('permission-denied', 'admin only');
+  if (project.get('archived') !== true) throw new HttpsError('failed-precondition', 'archive first');
+  const name = (project.get('name') as string) ?? '';
+  if (typed !== name) throw new HttpsError('failed-precondition', 'name mismatch');
+  const byName = (me.get('displayName') as string) ?? '';
+
+  // ① 「削除の最中」の旗を立てる。開いている画面は、これを見てホームへ戻る（「外されました」と区別するため）
+  await projectRef.update({ deleting: true });
+
+  // ② ほかのプロジェクトに残る、関連課題の対の1枚を消す（相手の画面に「閲覧できない課題」を残さない）
+  const issueRefs = await projectRef.collection('issues').listDocuments();
+  const linkSnaps = await Promise.all(issueRefs.map((r) => r.collection('links').get()));
+  const partners = linkSnaps.flatMap((s, i) => s.docs
+    .filter((l) => l.get('pid') !== pid)
+    .map((l) => {
+      const pairDir = l.get('dir') === 'out' ? 'in' : 'out';
+      return db.doc(`projects/${l.get('pid')}/issues/${l.get('iid')}/links/` +
+        `${l.get('kind')}_${pairDir}_${pid}_${issueRefs[i].id}`);
+    }));
+  await Promise.allSettled(partners.map((r) => r.delete()));
+
+  // ③ ほかのメンバーに知らせる（届いた通知は、今ある imOnNotification がプッシュにする）
+  const members = await projectRef.collection('members').get();
+  const expireAt = Timestamp.fromMillis(Date.now() + NOTIFY_KEEP_DAYS * DAY);
+  await Promise.allSettled(members.docs.filter((m) => m.id !== uid).map((m) =>
+    db.collection(`users/${m.id}/notifications`).add({
+      type: 'projectDeleted', pid, projectName: name, iid: null, issueNumber: null, issueTitle: '',
+      by: uid, byName, detail: '', at: FieldValue.serverTimestamp(), read: false, expireAt,
+    })));
+
+  // ④ プロジェクトと、その下の全部（課題・経緯・コメント・関連課題・メンバー・招待・管理ログ）を消す
+  await db.recursiveDelete(projectRef);
+
+  // 管理ログも消えるので、だれが・いつ・何を消したかは、関数のログに残す
+  logger.info('project deleted', { pid, name, by: uid, byName, members: members.size, issues: issueRefs.length });
+  return { ok: true };
+});

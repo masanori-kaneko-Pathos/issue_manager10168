@@ -16,6 +16,8 @@ export class ProjectContext {
   private i18n = inject(I18nService);
   /** 自分から抜けている最中（見張りが「外された」と勘違いしないための印） */
   private leaving = false;
+  /** 自分でプロジェクトを削除している最中（移動は削除のダイアログがする） */
+  private deleting = false;
   private stopIssues: Unsubscribe | null = null;
   private stopMembers: Unsubscribe | null = null;
   private stopProject: Unsubscribe | null = null;
@@ -38,6 +40,9 @@ export class ProjectContext {
   notFound = signal(false);
   /** メンバーから外された（読み込み途中の load() が、課題の見張りを始めないための目印） */
   removed = signal(false);
+
+  /** アーカイブ中か（閲覧専用。各タブはここを見て、押せる所を出さない） */
+  archived = computed(() => !!this.project()?.archived);
 
   canCreate = computed(() =>
     (this.role() === 'admin' || this.role() === 'member') && !this.project()?.archived);
@@ -101,6 +106,11 @@ export class ProjectContext {
       this.stopProject = this.ps.watchProject(
         pid,
         (project) => {
+          // ほかの管理者がプロジェクトを削除し始めた（または、もう無い）
+          if (project?.deleting || (!project && this.project())) {
+            this.lostAccess(true);
+            return;
+          }
           this.project.set(project);
           resolve(); // 2回目以降に呼ばれても何も起きない
         },
@@ -146,22 +156,27 @@ export class ProjectContext {
     }
   
   /** 外されたら、ホームへ戻して知らせる（「戻る」で見られない画面に戻らないよう、履歴を置き換える） */
-  private lostAccess() {
+  private lostAccess(gone = false) {
     // 見張りが3本（プロジェクト・メンバー・課題）あるので、外されたときは知らせが3回来うる。2回目からは何もしない
     if (this.removed()) return;
     this.stopWatching();
     this.issuesLoading.set(false);
     this.removed.set(true);
+    if (this.deleting) return; // 自分で削除している：移動は削除のダイアログがする
     const name = this.project()?.name ?? '';
     this.router.navigate(['/'], {
       replaceUrl: true,
-      // 自分から抜けたのか、外されたのかで、ホームの知らせを変える
-      state: this.leaving ? { leftFrom: name } : { removedFrom: name },
+      // 削除された・自分から抜けた・外された、で、ホームの知らせを変える
+      state: gone ? { deletedProject: name } : this.leaving ? { leftFrom: name } : { removedFrom: name },
     });
   }
 
   markLeaving(v: boolean) {
     this.leaving = v;
+  }
+
+  markDeleting(v: boolean) {
+    this.deleting = v;
   }
 
   /** 名前を引く。外れた人は formerMembers から「（退出）」つきで出す */

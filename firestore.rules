@@ -129,6 +129,18 @@ service cloud.firestore {
         && s.highPriorityLimit is int && s.highPriorityLimit >= 1 && s.highPriorityLimit <= 100;
     }
 
+    // アーカイブ・解除：アーカイブするときは種類と理由が必須。解除するときは、アーカイブの情報を消す
+    function archiveOk() {
+      let d = request.resource.data;
+      return (resource.data.archived == false && d.archived == true
+          && d.archiveKind in ['completed', 'cancelled']
+          && d.archiveReason is string && d.archiveReason.size() > 0 && d.archiveReason.size() <= 1000
+          && d.archivedAt == request.time
+          && d.archivedBy == request.auth.uid)
+        || (resource.data.archived == true && d.archived == false
+          && !d.keys().hasAny(['archiveKind', 'archiveReason', 'archivedAt', 'archivedBy']));
+    }
+
     // 課題の作成で、ふだんの登録と取り込みに共通する形
     function issueShapeOk(pid) {
       let d = request.resource.data;
@@ -345,12 +357,19 @@ service cloud.firestore {
         && getAfter(memberPath(pid)).data.role == 'admin';
       allow update: if (isAdmin(pid)
           && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['name', 'archived', 'labels', 'settings', 'formerMembers'])
+            .hasOnly(['name', 'archived', 'labels', 'settings', 'formerMembers',
+                      'archiveKind', 'archiveReason', 'archivedAt', 'archivedBy'])
           && request.resource.data.labels is list
           && request.resource.data.labels.size() <= 30
           // 設定を変えたときだけ、形と範囲を確かめる（ラベルだけの保存は、設定の中身に左右されない）
           && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['settings'])
-              || validSettings(request.resource.data.settings)))
+              || validSettings(request.resource.data.settings))
+          // アーカイブ中は、解除しかできない（名前・設定・ラベルは、解除してから）
+          && (resource.data.archived == false
+              || request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['archived', 'archiveKind', 'archiveReason', 'archivedAt', 'archivedBy']))
+          // アーカイブ・解除するときは、その決まりを確かめる
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['archived']) || archiveOk()))
       // 課題の登録時の採番（1つ増やすだけ）
         || (canWrite(pid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['issueSeq'])
@@ -516,6 +535,7 @@ service cloud.firestore {
                    pairId(request.resource.data.kind, 'in'))))
             // 相手側の写し：このプロジェクトのメンバーで、対の out が同じ保存でできること
             || (request.resource.data.dir == 'in' && isMember(pid)
+              && get(projectPath(pid)).data.archived == false
               && existsAfter(linkPath(request.resource.data.pid, request.resource.data.iid,
                    pairId(request.resource.data.kind, 'out'))))
           );

@@ -21,7 +21,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     <section>
       <div class="head">
         <h2>{{ 'project.members' | t }}</h2>
-        @if (ctx.role() === 'admin') {
+        @if (ctx.role() === 'admin' && !ctx.archived()) {
           <button type="button" class="primary small" (click)="openInvite()">{{ 'invite.open' | t }}</button>
         }
       </div>

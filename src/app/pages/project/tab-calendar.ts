@@ -301,7 +301,7 @@ export class ProjectCalendar implements OnInit {
     // ---- ドラッグで期限を変える ----
   /** つかめるのは、管理者・提起者・担当者で、クローズ前の課題だけ（ルールの editAllowed と同じ） */
   canMove(i: Issue) {
-    if (i.status === 'closed') return false;
+    if (i.status === 'closed' || this.ctx.archived()) return false;
     const role = this.ctx.role();
     if (role === 'admin') return true;
     return role === 'member' && (i.reporterId === this.myUid || i.assigneeId === this.myUid);

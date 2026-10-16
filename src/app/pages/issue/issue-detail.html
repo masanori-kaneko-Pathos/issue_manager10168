@@ -22,14 +22,14 @@
               <a role="menuitem" [routerLink]="['/p', pid, 'new']" [queryParams]="{ recur: i.id }"
                 (click)="menuOpen.set(false)">{{ 'detailMenu.recur' | t }}</a>
             }
-            @if (showMerge()) {
+            @if (showMerge() && !projectArchived()) {
               <div class="item-row">
                 <button type="button" role="menuitem" [disabled]="!canMerge()"
                   (click)="menuOpen.set(false); openMerge()">{{ 'merge.open' | t }}</button>
                 @if (!canMerge()) { <app-help-tip kind="denied" align="right" [keys]="['merge.denied']" /> }
               </div>
             }
-            @if (i.status !== 'deleted') {
+            @if (i.status !== 'deleted' && !projectArchived()) {
               <div class="item-row">
                 <button type="button" role="menuitem" class="danger-item" [disabled]="!canDelete()"
                   (click)="menuOpen.set(false); openDelete()">{{ 'delete.open' | t }}</button>
@@ -112,6 +112,7 @@
             <span class="pill status" [attr.data-s]="i.status">{{ 'status.' + i.status | t }}</span>
           }
         </div>
+        @if (projectArchived()) { <p class="ro-note" role="status">{{ 'archive.readonly' | t }}</p> }        
         <!-- 優先度：変えられる人は押して選ぶ。選ぶと理由の欄が出る -->
         @if (isActive(i)) {
           <div class="dd">
@@ -251,7 +252,9 @@
         <aside class="side" [attr.aria-label]="'detailMenu.props' | t">
           <div class="side-head">
             <span>{{ 'detailMenu.props' | t }}</span>
-            @if (!canEdit()) { <app-help-tip kind="denied" align="right" [keys]="['edit.denied']" /> }
+            @if (!canEdit()) {
+              <app-help-tip kind="denied" align="right" [keys]="[projectArchived() ? 'archive.readonly' : 'edit.denied']" />
+            }
           </div>
           @if (!editField() && fieldConflict()) { <p class="field-conflict" role="alert">{{ conflictText() }}</p> }
           @if (fieldError()) { <p class="error" role="alert">{{ fieldError() | t }}</p> }
@@ -499,7 +502,7 @@
               (done)="linkOpen.set(false)" (cancel)="linkOpen.set(false)" />
           }
 
-          @if (i.status !== 'deleted') {
+          @if (i.status !== 'deleted' && !projectArchived()) {
             <section class="tools">
               @if (showCauseButton()) {
                 <button type="button" [disabled]="!canEditCause()" (click)="openCause()">{{ 'causeEdit.open' | t }}</button>
@@ -686,7 +689,7 @@
                 }
               }
             </ul>
-            @if (i.status !== 'deleted') {
+            @if (i.status !== 'deleted' && !projectArchived()) {
               <div class="comment-box">
                 <textarea [(ngModel)]="comment" rows="3" [placeholder]="'detail.commentPlaceholder' | t"></textarea>
                 <button type="button" class="primary" [disabled]="busy() || !comment.trim()" (click)="sendComment()">

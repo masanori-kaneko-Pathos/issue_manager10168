@@ -2,15 +2,15 @@ import { Injectable, inject } from '@angular/core';
 import { User } from 'firebase/auth';
 import {
     FirestoreError, Unsubscribe, collection, collectionGroup, doc, getDoc, getDocs, onSnapshot, query, where,
-    serverTimestamp, writeBatch, setDoc, deleteDoc, updateDoc, runTransaction,
+    serverTimestamp, writeBatch, setDoc, deleteDoc, updateDoc, runTransaction, deleteField,
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, firebaseApp } from '../firebase';
 import { AuthService } from '../auth/auth.service';
 import { NotificationService } from '../notification/notification.service';
 import { I18nService } from '../../i18n/i18n';
 import {
     DEFAULT_LABEL_IDS, DEFAULT_SETTINGS, Invitation, IssueStatus, Label, Member, OPEN_STATUSES, Project,
-    ProjectSettings, ProjectWithRole, Role, labelColor,
+    ProjectSettings, ProjectWithRole, Role, labelColor, ArchiveKind
 } from '../models';
 
 /** メンバーの変更の種類。null は担当の引き継ぎだけ */
@@ -185,6 +185,39 @@ export class ProjectService {
     /** 通知時刻・日数・件数の設定を保存する（管理者のみ。形と範囲はルールで確認） */
     updateSettings(pid: string, settings: ProjectSettings) {
         return updateDoc(doc(db, 'projects', pid), { settings });
+    }
+
+    /** アーカイブ（管理者のみ）：全員が閲覧専用になり、通知も止まる。管理ログにも残す（追加の取り決め） */
+    async archive(pid: string, kind: ArchiveKind, reason: string, by: string, role: Role) {
+        const batch = writeBatch(db);
+        batch.update(doc(db, 'projects', pid), {
+            archived: true, archiveKind: kind, archiveReason: reason, archivedAt: serverTimestamp(), archivedBy: by,
+        });
+        batch.set(doc(collection(db, 'projects', pid, 'adminLogs')), {
+            type: 'archive', by, target: by, from: role, to: null, moved: 0, at: serverTimestamp(),
+        });
+        await batch.commit();
+    }
+
+    /** アーカイブの解除（管理者のみ）：アーカイブの情報を消して、元どおりにする */
+    async unarchive(pid: string, by: string, role: Role) {
+        const batch = writeBatch(db);
+        batch.update(doc(db, 'projects', pid), {
+            archived: false, archiveKind: deleteField(), archiveReason: deleteField(),
+            archivedAt: deleteField(), archivedBy: deleteField(),
+        });
+        batch.set(doc(collection(db, 'projects', pid, 'adminLogs')), {
+            type: 'unarchive', by, target: by, from: role, to: null, moved: 0, at: serverTimestamp(),
+        });
+        await batch.commit();
+    }
+
+    /** プロジェクトを完全に削除する（関数に頼む。条件は関数の中で確かめる） */
+    async deleteProject(pid: string, name: string) {
+        // 関数の窓口は、使うときだけ読み込む（最初の画面を軽く保つため）
+        const { getFunctions, httpsCallable } = await import('firebase/functions');
+        const call = httpsCallable(getFunctions(firebaseApp, 'asia-northeast1'), 'imDeleteProject');
+        await call({ pid, name });
     }
 
     /*途中で止まって「担当者がプロジェクトにいない課題」が残らないようにするため*/
