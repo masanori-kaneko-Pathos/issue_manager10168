@@ -7,7 +7,9 @@ import { ProjectContext } from './project-context';
 import { Clock } from '../../core/time/clock';
 import { AuthService } from '../../core/auth/auth.service';
 import { HelpTip } from '../../shared/help-tip';
-import { DEFAULT_SETTINGS, ISSUE_TYPES, Issue, IssueType, Level, OPEN_STATUSES, labelsOf } from '../../core/models';
+import { 
+  DEFAULT_SETTINGS, ISSUE_TYPES, Issue, IssueType, Level, OPEN_STATUSES, labelsOf, hasWorkaround,
+ } from '../../core/models';
 import { LabelChip } from '../../shared/label-chip';
 import { PriorityMark } from '../../shared/priority-mark';
 import { compareIssues, isManualPriority, isStale, priorityOf } from '../../core/issue/priority';
@@ -182,6 +184,7 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
               @if (stale(i)) {
                 <span class="stale" [title]="'stale.title' | t: { n: '' + staleDays() }">{{ 'stale.label' | t }}</span>
               }
+              @if (wa(i)) { <span class="wa">{{ 'workaround.label' | t }}</span> }
               <span class="meta">{{ memberName(i.assigneeId) }}</span>
                @if (sort() === 'updated') {
                 <span class="meta" [title]="updatedFull(i)">{{ 'list.updated' | t: { t: updated(i) } }}</span>
@@ -266,6 +269,7 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
     .empty { color: var(--text-muted); padding: 12px 8px; }
     .denied-wrap { display: inline-flex; align-items: center; gap: 8px; }
     .stale { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--warning-bg); color: var(--warning-text); }
+    .wa { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--hold-bg); }    
     `,
 })
 export class TabList implements OnInit {
@@ -483,6 +487,9 @@ export class TabList implements OnInit {
   }
   stale(i: Issue) {
     return isStale(i, this.staleDays(), this.clock.now());
+  }
+  wa(i: Issue) {
+    return hasWorkaround(i);
   }
   prio(i: Issue): Level {
     return priorityOf(i, this.clock.now());

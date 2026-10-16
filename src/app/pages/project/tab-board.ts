@@ -7,7 +7,7 @@ import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth/auth.service';
 import { Clock } from '../../core/time/clock';
 import { ConflictError, EMPTY_STATUS_PAYLOAD, IssueService, conflictWho } from '../../core/issue/issue.service';
-import { DEFAULT_SETTINGS, Issue, IssueStatus, Level, labelsOf } from '../../core/models';
+import { DEFAULT_SETTINGS, Issue, IssueStatus, Level, labelsOf, hasWorkaround } from '../../core/models';
 import { LabelChip } from '../../shared/label-chip';
 import { PriorityMark } from '../../shared/priority-mark';
 import { compareIssues, isManualPriority, isStale, priorityOf } from '../../core/issue/priority';
@@ -91,6 +91,10 @@ const EMPTY_PAYLOAD = {
               (click)="c === 'on_hold' && !isMobile() && holdOpen.set(!holdOpen())">
               <span class="col-name">{{ 'board.cols.' + c | t }}</span>
               <span class="count">{{ byCol()[c].length }}</span>
+              @if (c === 'open' && ctx.canCreate()) {
+                <a class="head-add" [routerLink]="['/p', ctx.pid(), 'new']"
+                  [attr.aria-label]="'project.newIssue' | t" [title]="'project.newIssue' | t">＋</a>
+              }
               @if (c === 'done' && !collapsed) { <span class="note">{{ 'board.doneNote' | t }}</span> }
             </header>
 
@@ -110,6 +114,7 @@ const EMPTY_PAYLOAD = {
                           @if (stale(i)) {
                             <span class="stale" [title]="'stale.title' | t: { n: '' + staleDays() }">{{ 'stale.label' | t }}</span>
                           }
+                          @if (wa(i)) { <span class="wa">{{ 'workaround.label' | t }}</span> }
                         </span>
                         @if (isMobile() && moves(i).length) {
                           <button type="button" class="more" [attr.aria-label]="'board.move' | t"
@@ -153,9 +158,6 @@ const EMPTY_PAYLOAD = {
                   <p class="empty">{{ 'board.empty' | t }}</p>
                 }
               </div>
-              @if (c === 'open' && ctx.canCreate()) {
-                <a class="add" [routerLink]="['/p', ctx.pid(), 'new']">{{ 'project.newIssue' | t }}</a>
-              }
             }
           </section>
         }
@@ -219,8 +221,10 @@ const EMPTY_PAYLOAD = {
     .moves button { min-height: 40px; padding: 0 12px; border: 1px solid var(--primary); color: var(--primary);
       background: var(--surface); border-radius: 8px; font-size: 13px; }
     .empty { font-size: 12px; color: var(--text-subtle); text-align: center; margin: 8px 0; }
-    .add { display: block; margin: 0 8px 8px; padding: 10px; text-align: center; border-radius: 8px;
-      border: 1px dashed var(--border-strong); color: var(--primary); text-decoration: none; font-size: 13px; }
+    .head-add { margin-left: auto; width: 32px; height: 32px; border-radius: 8px; display: inline-flex;
+      align-items: center; justify-content: center; color: var(--primary); text-decoration: none;
+      font-size: 18px; font-weight: bold; }
+    .head-add:hover { background: var(--surface); }
 
     /* ドラッグ中の見た目 */
     .cdk-drag-preview { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); }
@@ -243,7 +247,8 @@ const EMPTY_PAYLOAD = {
       .board.dragging { scroll-snap-type: none; }
     }
     .stale { font-size: 11px; padding: 1px 6px; border-radius: 8px; background: var(--warning-bg); color: var(--warning-text); }
-  `,
+    .wa { font-size: 11px; padding: 1px 6px; border-radius: 8px; background: var(--hold-bg); }
+    `,
 })
 export class ProjectBoard implements OnInit {
   protected ctx = inject(ProjectContext);
@@ -474,6 +479,9 @@ export class ProjectBoard implements OnInit {
   staleDays = computed(() => this.ctx.project()?.settings?.staleDays ?? DEFAULT_SETTINGS.staleDays);
   stale(i: Issue) {
     return isStale(i, this.staleDays(), this.clock.now());
+  }
+  wa(i: Issue) {
+    return hasWorkaround(i);
   }
   remaining(i: Issue) {
     const r = remainingOf(i.dueAt.toMillis(), this.clock.now());

@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { auth } from '../core/firebase';
 import { AuthService } from '../core/auth/auth.service';
 import { ConflictError, IssueService, conflictWho } from '../core/issue/issue.service';
-import { CAUSE_CATEGORIES, CauseCategory, Effect, Issue, Member } from '../core/models';
+import { CAUSE_CATEGORIES, CauseCategory, Effect, Issue, Member, hasWorkaround } from '../core/models';
 import { Transition } from '../core/issue/workflow';
 import { I18nService, TPipe } from '../i18n/i18n';
 
@@ -38,6 +38,16 @@ import { I18nService, TPipe } from '../i18n/i18n';
             }
           </div>
         </fieldset>
+        @if (needsWaCheck()) {
+          <div class="criteria">
+            <p class="help">{{ 'workaround.endedHelp' | t }}</p>
+            <p class="pre">{{ current().workaround }}</p>
+            <label class="check">
+              <input type="checkbox" [checked]="waEnded()" (change)="waEnded.set(!waEnded())" />
+              {{ 'workaround.endedCheck' | t }}
+            </label>
+          </div>
+        }
       }
       @if (transition().needs === 'close') {
         <fieldset>
@@ -142,6 +152,9 @@ export class StatusDialog implements OnInit {
   causeCategory = signal<CauseCategory | null>(null);
   effect = signal<Effect | null>(null);
   doneMet = signal(false);
+  /** 回避策を外したと確かめたか（解決済みにするとき、回避策が入っている課題だけ） */
+  waEnded = signal(false);
+  needsWaCheck = computed(() => this.transition().needs === 'resolve' && hasWorkaround(this.current()));
   busy = signal(false);
   error = signal('');
   /** 保存しようとしたら、ほかの人が先に更新していた（blocked なら、この操作はもうできない） */
@@ -163,7 +176,8 @@ export class StatusDialog implements OnInit {
   canConfirm(): boolean {
     switch (this.transition().needs) {
       case 'reason': return !!this.reason.trim();
-      case 'resolve': return !!(this.cause.trim() && this.countermeasure.trim() && this.causeCategory() && this.doneMet());
+      case 'resolve': return !!(this.cause.trim() && this.countermeasure.trim() && this.causeCategory() && this.doneMet()
+        && (!this.needsWaCheck() || this.waEnded()));
       case 'close': return !!(this.effect() && this.doneMet());
       default: return true;
     }
@@ -182,6 +196,7 @@ export class StatusDialog implements OnInit {
         effect: this.effect(),
         learning: this.learning.trim(),
         doneCriteriaMet: this.doneMet(),
+        workaroundEnded: this.needsWaCheck() && this.waEnded(),
       }, auth.currentUser!.uid, this.tz());
       this.done.emit();
     } catch (e) {

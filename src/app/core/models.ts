@@ -181,6 +181,8 @@ export interface Issue {
   doneCriteriaMet?: boolean;
   effect?: Effect;
   learning?: string;
+  workaround?: string;          // 回避策（暫定対応）
+  workaroundEnded?: boolean;    // 解決済みにするときに「回避策は外した」と確かめた
   resolvedAt?: Timestamp;
   closedAt?: Timestamp;
   deletedFrom?: IssueStatus;  // 削除する前のステータス（復元で戻す）
@@ -234,4 +236,10 @@ export interface TimelineItem {
 export function labelsOf(ids: string[] | undefined, all: Label[]): Label[] {
   const set = new Set(ids ?? []);
   return all.filter((l) => set.has(l.id));
+}
+
+/** 「回避策適用中」の印を出すか：未完了で、回避策が書いてあり、まだ外していない */
+export function hasWorkaround(i: Issue): boolean {
+  return !!i.workaround?.trim() && !i.workaroundEnded
+    && (i.status === 'open' || i.status === 'in_progress' || i.status === 'on_hold');
 }

@@ -1,4 +1,5 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { bigrams, coverage } from '../../core/search/match';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { auth } from '../../core/firebase';
@@ -6,7 +7,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { ProjectService } from '../../core/project/project.service';
 import { IssueService } from '../../core/issue/issue.service';
 import { InboxService } from '../../core/inbox/inbox.service';
-import { ISSUE_TYPES, IssueLink, IssueType, Level, Member, ProjectWithRole } from '../../core/models';
+import { ISSUE_TYPES, IssueLink, IssueType, Level, Member, ProjectWithRole, Issue } from '../../core/models';
 import { dateKey, endOfDayIn, formatDateTime, parseLocalInput, toLocalInput, zonedTime } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { HelpTip } from '../../shared/help-tip';
@@ -59,8 +60,22 @@ function writeLastProject(pid: string) {
         }
         <div class="field">
           <span><label for="f-title">{{ 'issue.title' | t }}</label> <app-help-tip [keys]="['help.title']" /></span>
-          <input id="f-title" name="title" [(ngModel)]="title" maxlength="200" required autofocus
-            [placeholder]="'issueNew.titlePlaceholder' | t" />
+          <input id="f-title" name="title" [(ngModel)]="title" (ngModelChange)="onTitle($event)" maxlength="200"
+            required autofocus [placeholder]="'issueNew.titlePlaceholder' | t" />
+          @if (similar().length) {
+            <div class="similar" role="status">
+              <p>{{ 'issueNew.similar' | t }}</p>
+              <ul>
+                @for (s of similar(); track s.id) {
+                  <li>
+                    <a [routerLink]="['/p', pid(), 'i', s.id]" target="_blank" rel="noopener">#{{ s.number }} {{ s.title }}</a>
+                    <span class="st">{{ 'status.' + s.status | t }}</span>
+                  </li>
+                }
+              </ul>
+              <p class="similar-help">{{ 'issueNew.similarHelp' | t }}</p>
+            </div>
+          }
         </div>
 
         <fieldset>
@@ -159,6 +174,14 @@ function writeLastProject(pid: string) {
     .notice { background: var(--warning-bg); padding: 12px; border-radius: 8px; margin: 0; font-weight: normal; }
     .warn { margin: 4px 0; padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: normal;
       background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
+    .similar { margin-top: 4px; padding: 10px 12px; border-radius: 8px; font-weight: normal;
+      background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
+    .similar p { margin: 0 0 6px; font-size: 13px; }
+    .similar ul { list-style: none; margin: 0 0 6px; padding: 0; }
+    .similar li { display: flex; gap: 8px; align-items: center; padding: 4px 0; font-size: 14px; }
+    .similar a { flex: 1; color: var(--text); overflow-wrap: anywhere; }
+    .similar .st { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: var(--surface); white-space: nowrap; }
+    .similar-help { margin: 0 !important; font-size: 12px !important; color: var(--text-muted); }
   `,
 })
 export class IssueNew implements OnInit {
@@ -190,7 +213,7 @@ export class IssueNew implements OnInit {
   fromNumber = signal<number | null>(null);
   backLink = computed(() => (this.memoId ? ['/inbox']
     : (this.fromIid || this.recurIid) && this.fromPid ? ['/p', this.fromPid, 'i', (this.fromIid || this.recurIid)!]
-    : this.fromPid ? ['/p', this.fromPid] : ['/']));
+      : this.fromPid ? ['/p', this.fromPid] : ['/']));
   readonly myUid = auth.currentUser!.uid;
   readonly types = ISSUE_TYPES;
   readonly levels: Level[] = ['high', 'mid', 'low'];
@@ -221,6 +244,47 @@ export class IssueNew implements OnInit {
   impact = '';
   /** 発生日に選べる最後の日（自分のタイムゾーンでの今日） */
   today = computed(() => dateKey(new Date(), this.tz()));
+
+  // ---- 重複登録の警告 ----
+  /** 選んだプロジェクトの課題と、その題名の2文字の組（プロジェクトを選んだときに1回読む） */
+  private pool = signal<{ issue: Issue; grams: Set<string> }[]>([]);
+  /** 打ち終わった題名（打っている途中で毎回計算しないよう、少し待ってから入れる） */
+  private titleQ = signal('');
+  private titleTimer: ReturnType<typeof setTimeout> | undefined;
+  /** 似た課題（3件まで）。削除・統合済みと、ひも付けの元の課題は出さない */
+  similar = computed(() => {
+    const typed = bigrams(this.titleQ());
+    if (typed.size < 3) return [];
+    const skip = new Set([this.relatedFrom?.iid, this.recurrenceOf?.iid]);
+    return this.pool()
+      .filter((p) => p.issue.status !== 'deleted' && p.issue.status !== 'merged' && !skip.has(p.issue.id))
+      .map((p) => ({ issue: p.issue, score: coverage(typed, p.grams) }))
+      .filter((x) => x.score >= 0.5)
+      .sort((a, b) => b.score - a.score || b.issue.updatedAt.toMillis() - a.issue.updatedAt.toMillis())
+      .slice(0, 3)
+      .map((x) => x.issue);
+  });
+
+  constructor() {
+    inject(DestroyRef).onDestroy(() => clearTimeout(this.titleTimer));
+  }
+
+  onTitle(value: string) {
+    clearTimeout(this.titleTimer);
+    this.titleTimer = setTimeout(() => this.titleQ.set(value), 300);
+  }
+
+  /** プロジェクトの課題を1回読む（読めなくても登録には響かないので、警告を出さないだけ） */
+  private async loadPool(pid: string) {
+    this.pool.set([]);
+    try {
+      const list = await this.issues.listAll(pid);
+      if (this.pid() !== pid) return; // 読んでいる間に別のプロジェクトに切り替えた
+      this.pool.set(list.map((issue) => ({ issue, grams: bigrams(issue.title) })));
+    } catch (e) {
+      console.error(e);
+    }
+  }
 
   tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
   dueLabel = computed(() => {
@@ -265,6 +329,8 @@ export class IssueNew implements OnInit {
       // 再発防止課題として作るときは、必須の欄を全部埋めておく
       if (this.fromIid && this.fromPid) await this.fillPrevention(this.fromPid, this.fromIid);
       if (this.recurIid && this.fromPid) await this.fillRecurrence(this.fromPid, this.recurIid);
+      // 受信箱のメモや再発などで題名が入ったときも、似た課題を出す
+      this.titleQ.set(this.title);
     } catch (e) {
       console.error(e);
     } finally {
@@ -290,6 +356,7 @@ export class IssueNew implements OnInit {
     if (!this.members().some((m) => m.uid === this.assigneeId())) {
       this.assigneeId.set(this.myUid);
     }
+    this.loadPool(pid);
   }
 
   /**

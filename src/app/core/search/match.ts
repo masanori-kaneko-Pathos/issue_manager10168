@@ -89,3 +89,19 @@ export function hitOf(i: Issue, ts: string[]): Hit {
   }
   return { title: segments(i.title, null) }; // 番号で当たったもの
 }
+
+/** 2文字ずつの組（空白と記号は詰めてから）。日本語は単語の区切りがないので、文字の並びで比べる */
+export function bigrams(s: string): Set<string> {
+  const t = normalize(s).replace(/[\s\p{P}\p{S}]/gu, '');
+  const set = new Set<string>();
+  for (let i = 0; i < t.length - 1; i++) set.add(t.slice(i, i + 2));
+  return set;
+}
+
+/** 打った題名（typed）の2文字の組のうち、相手（other）にもあるものの割合（0〜1） */
+export function coverage(typed: Set<string>, other: Set<string>): number {
+  if (!typed.size) return 0;
+  let common = 0;
+  for (const g of typed) if (other.has(g)) common++;
+  return common / typed.size;
+}

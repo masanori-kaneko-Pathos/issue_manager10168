@@ -82,6 +82,8 @@ export interface StatusPayload {
   effect: Effect | null;
   learning: string;
   doneCriteriaMet: boolean;
+  /** 解決済みにするとき、回避策を外したと確かめたか */
+  workaroundEnded?: boolean;
 }
 
 /** 入力が要らないステータス変更（対応を始める・再開）に使う、空の入力 */
@@ -308,6 +310,7 @@ export class IssueService {
         doneCriteriaMet: p.doneCriteriaMet,
         resolvedAt: serverTimestamp(),
       });
+      if (p.workaroundEnded) update['workaroundEnded'] = true;
     }
     if (t.needs === 'close') {
       Object.assign(update, {
@@ -330,6 +333,13 @@ export class IssueService {
       tx.set(doc(collection(ref, 'events')), {
         type: 'status', from: issue.status, to: t.to, reason: p.reason, by: uid, tz, at: serverTimestamp(),
       });
+      // 解決と一緒に回避策をやめたときは、その中身も経緯に残す（詳細の欄からは消えるため）
+      if (p.workaroundEnded) {
+        tx.set(doc(collection(ref, 'events')), {
+          type: 'edit', fields: ['workaroundEnded'], changes: {}, reason: '',
+          by: uid, tz, at: serverTimestamp(),
+        });
+      }
       notes.forEach((n) => tx.set(n.ref, n.data));
     });
   }
@@ -466,6 +476,33 @@ export class IssueService {
       });
     });
   }
+
+  /** 回避策の記入（未完了のとき）。書き直したら「外した」の印は戻す。経緯には残すが、通知はしない */
+  async updateWorkaround(pid: string, issue: Issue, text: string, uid: string, tz: string) {
+    if ((issue.workaround ?? '') === text && !issue.workaroundEnded) return;
+    const ref = doc(db, 'projects', pid, 'issues', issue.id);
+    await runTransaction(db, async (tx) => {
+      await assertUnchanged(tx, ref, issue);
+      tx.update(ref, { workaround: text, workaroundEnded: false, updatedAt: serverTimestamp(), updatedBy: uid });
+      // 書いた回避策の中身も経緯に残す（書き直しの流れを、あとでたどれるように）
+      tx.set(doc(collection(ref, 'events')), {
+        type: 'edit', fields: ['workaround'], changes: {}, reason: text, by: uid, tz, at: serverTimestamp(),
+      });
+    });
+  }
+
+  /** 回避策をやめる：「適用中」の札を外し、やめた回避策の中身は経緯に残す（詳細の欄からは消えるため） */
+  async endWorkaround(pid: string, issue: Issue, uid: string, tz: string) {
+    const ref = doc(db, 'projects', pid, 'issues', issue.id);
+    await runTransaction(db, async (tx) => {
+      await assertUnchanged(tx, ref, issue);
+      tx.update(ref, { workaroundEnded: true, updatedAt: serverTimestamp(), updatedBy: uid });
+      tx.set(doc(collection(ref, 'events')), {
+        type: 'edit', fields: ['workaroundEnded'], changes: {}, reason: '',
+        by: uid, tz, at: serverTimestamp(),
+      });
+    });
+  }  
 
   /** 優先度の手動変更。value が null なら「自動に戻す」 */
   async setPriority(

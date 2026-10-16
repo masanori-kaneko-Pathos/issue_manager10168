@@ -7,19 +7,23 @@ import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth/auth.service';
 import { Clock } from '../../core/time/clock';
 import { ProjectService } from '../../core/project/project.service';
-import { ConflictError, EMPTY_STATUS_PAYLOAD, IssueService, conflictWho } from '../../core/issue/issue.service';
+import {
+  ConflictError, EMPTY_STATUS_PAYLOAD, IssueEdits, IssueService, conflictWho,
+} from '../../core/issue/issue.service';
+import { enterKey, focusById } from '../../core/dom';
+import { LabelPicker } from '../../shared/label-picker';
 import {
   CAUSE_CATEGORIES, CauseCategory, DEFAULT_SETTINGS, Issue, IssueRelation, Label, Level, Member, Project, Role,
-  TimelineItem, labelsOf, OPEN_STATUSES,
+  TimelineItem, labelsOf, OPEN_STATUSES, hasWorkaround, ISSUE_TYPES
 } from '../../core/models';
 import { LinkDialog } from './link-dialog';
 import { StatusDialog } from '../../shared/status-dialog';
 import { LabelChip } from '../../shared/label-chip';
-import { IssueEdit } from './issue-edit-dialog';
 import { HelpTip } from '../../shared/help-tip';
 import { PriorityMark } from '../../shared/priority-mark';
 import { isStale, priorityOf } from '../../core/issue/priority';
-import { formatDateTime, remainingOf } from '../../core/time/time';
+import { dateKey, endOfDayIn, formatDateTime, parseLocalInput, remainingOf, toLocalInput } from '../../core/time/time';
+import { MemberSelect } from '../../shared/member-select';
 import { Transition, availableTransitions } from '../../core/issue/workflow';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { MergeDialog } from './merge-dialog';
@@ -34,498 +38,28 @@ function linkGroupOf(kind: string, dir: string) {
   return kind === 'relates' ? 'relates' : `${kind}_${dir}`;
 }
 
+/** その場編集で、1つの欄が2つの課題で同じかを比べる（衝突のとき「同じ欄がぶつかったか」を見るため） */
+function sameField(k: keyof IssueEdits, a: Issue, b: Issue): boolean {
+  switch (k) {
+    case 'dueAt': return a.dueAt.isEqual(b.dueAt);
+    case 'labelIds': return [...(a.labelIds ?? [])].sort().join() === [...(b.labelIds ?? [])].sort().join();
+    case 'occurredOn': return (a.occurredOn ?? null) === (b.occurredOn ?? null);
+    case 'impact': return (a.impact ?? '') === (b.impact ?? '');
+    default: return a[k as keyof Issue] === b[k as keyof Issue];
+  }
+}
+
 @Component({
   selector: 'app-issue-detail',
-  imports: [FormsModule, RouterLink, TPipe, IssueEdit, HelpTip, LabelChip, StatusDialog, PriorityMark, LinkDialog,
-    MergeDialog],
-  template: `
-    <header class="bar">
-      <button type="button" class="link" (click)="back()">{{ 'common.back' | t }}</button>
-      @if (projectName()) {
-        <nav class="crumbs">
-          <a class="crumb-project" [routerLink]="['/p', pid]">{{ projectName() }}</a>
-          @if (issue(); as i) {
-            <span aria-hidden="true">›</span><span class="crumb-num">#{{ i.number }}</span>
-          }
-        </nav>
-      }
-    </header>
-    <main>
-      @if (loading()) {
-        <p>{{ 'common.loading' | t }}</p>
-      } @else if (!issue()) {
-        <p>{{ 'project.notFound' | t }}</p>
-      } @else {
-        @let i = issue()!;
-        <p class="num">#{{ i.number }} · {{ 'issueTypes.' + i.type | t }}
-          @if (i.relatedFrom; as r) {
-            · <a class="related" [routerLink]="['/p', pid, 'i', r.iid]">{{ 'prevention.from' | t: { n: '' + r.number } }}</a>
-          }
-        </p>
-        <h1>{{ i.title }}</h1>
-        <div class="badges">
-          <span class="status" [attr.data-s]="i.status">{{ 'status.' + i.status | t }}</span>
-          @if (isActive(i)) {
-            <span class="prio" [attr.data-p]="priority()">
-              {{ 'issue.priority' | t }}：{{ 'priority.' + priority() | t }}
-              @if (i.priorityOverride) {
-                {{ 'priorityEdit.manual' | t: { auto: i18n.t('priority.' + autoPriority()) } }}
-              }
-            </span>
-            <app-help-tip [keys]="['help.priority']" />
-          }
-          @if (i.status !== 'closed' && i.status !== 'rejected' && i.status !== 'deleted') {
-            <span class="due" [class.overdue]="overdue()">{{ dueText() }}</span>
-          }
-          @if (stale()) {
-            <span class="stale" [title]="'stale.title' | t: { n: '' + staleDays() }">{{ 'stale.label' | t }}</span>
-          }
-        </div>
-        @if (i.statusReason && (i.status === 'on_hold' || i.status === 'rejected')) {
-          <p class="reason">{{ i.statusReason }}</p>
-        }
-        @if (i.status === 'on_hold' && waitingFor().length) {
-          <div class="reason waiting">
-            <span>{{ 'links.groups.waitsFor_out' | t }}：</span>
-            @for (r of waitingFor(); track r.id) {
-              @let li = linkedIssue(r);
-              @if (li) {
-                <a [routerLink]="['/p', r.pid, 'i', r.iid]">#{{ li.number }} {{ li.title }}（{{ 'status.' + li.status | t }}）</a>
-              } @else if (li === null) {
-                <span>{{ 'links.unreadable' | t }}</span>
-              }
-            }
-          </div>
-        }
-        @if (i.status === 'deleted') {
-          <div class="trash" role="status">
-            <p><strong>{{ 'delete.inTrash' | t }}</strong></p>
-            <p>{{ 'delete.by' | t: { name: memberName(i.deletedBy ?? ''), when: i.deletedAt ? fmt(i.deletedAt) : '' } }}</p>
-            @if (i.deletedReason) { <p class="pre">{{ i.deletedReason }}</p> }
-            @if (canRestore()) {
-              <button type="button" class="primary" [disabled]="busy()" (click)="restore()">{{ 'delete.restore' | t }}</button>
-            }
-            @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
-          </div>
-        }
-
-        @if (i.status === 'merged' && i.mergedInto; as m) {
-          <div class="merged" role="status">
-            <p><strong>{{ 'merge.banner' | t }}
-              <a [routerLink]="['/p', pid, 'i', m.iid]">#{{ m.number }}</a></strong></p>
-            @if (i.statusReason) { <p class="pre">{{ i.statusReason }}</p> }
-          </div>
-        }
-
-        <dl class="fields">
-          <dt>{{ 'issue.assignee' | t }}</dt><dd>{{ memberName(i.assigneeId) }}</dd>
-          <dt>{{ 'detail.reporter' | t }}</dt><dd>{{ memberName(i.reporterId) }}</dd>
-          <dt>{{ 'issue.importance' | t }}</dt><dd>{{ 'importance.' + i.importance | t }}</dd>
-           @if (issueLabels().length) {
-            <dt>{{ 'issue.labelIds' | t }}</dt>
-            <dd class="label-row">@for (l of issueLabels(); track l.id) { <app-label-chip [label]="l" /> }</dd>
-          }
-          <dt>{{ 'issue.due' | t }}</dt><dd>{{ dueLabel() }}</dd>
-          <dt>{{ 'issue.doneCriteria' | t }}</dt><dd class="pre">{{ i.doneCriteria }}</dd>
-          @if (i.description.trim()) {
-            <dt>{{ 'issue.description' | t }}</dt><dd class="pre">{{ i.description }}</dd>
-          }
-          @if (i.occurredOn) {
-            <dt>{{ 'issue.occurredOn' | t }}</dt><dd>{{ dayLabel(i.occurredOn) }}</dd>
-          }
-          @if (i.impact) {
-            <dt>{{ 'issue.impact' | t }}</dt><dd class="pre">{{ i.impact }}</dd>
-          }
-          @if (i.cause) {
-            <dt>{{ 'workflow.cause' | t }}</dt><dd class="pre">{{ i.cause }}</dd>
-          }
-          @if (i.countermeasure) {
-            <dt>{{ 'workflow.countermeasure' | t }}</dt><dd class="pre">{{ i.countermeasure }}</dd>
-          }
-          @if (i.causeCategory) {
-            <dt>{{ 'workflow.causeCategory' | t }}</dt><dd>{{ 'causeCategories.' + i.causeCategory | t }}</dd>
-          }
-          @if (i.effect) {
-            <dt>{{ 'workflow.effect' | t }}</dt><dd>{{ 'workflow.effectOpts.' + i.effect | t }}</dd>
-            @if (i.learning) { <dt>{{ 'workflow.learning' | t }}</dt><dd class="pre">{{ i.learning }}</dd> }
-          }
-        </dl>
-
-        @if (i.status === 'resolved' || i.status === 'closed' || preventions().length) {
-          <section class="prevention">
-            <h2>{{ 'prevention.title' | t }} <app-help-tip [keys]="['prevention.help']" /></h2>
-            @for (p of preventions(); track p.id) {
-              <a class="prev-row" [routerLink]="['/p', pid, 'i', p.id]">
-                <span class="prev-title">#{{ p.number }} {{ p.title }}</span>
-                <span class="prev-st">{{ 'status.' + p.status | t }}</span>
-              </a>
-            }
-
-            @if (i.status === 'resolved' || i.status === 'closed') {
-              @if (i.effect === 'partial' || i.effect === 'no') {
-                <p class="recommend">{{ 'prevention.recommend' | t }}</p>
-              }
-              @if (canCreate()) {
-                <a class="prev-btn" [routerLink]="['/p', pid, 'new']" [queryParams]="{ from: i.id }">
-                  {{ 'prevention.create' | t }}</a>
-              }
-            }
-          </section>
-        }
-
-        @if (relations().length || canLink()) {
-          <section class="links">
-            <h2>{{ 'links.title' | t }} <app-help-tip [keys]="['links.help']" /></h2>
-            @for (g of linkGroups(); track g.key) {
-              <p class="link-group">{{ 'links.groups.' + g.key | t }}</p>
-              @for (r of g.rels; track r.id) {
-                @let li = linkedIssue(r);
-                <div class="prev-row">
-                  @if (li) {
-                    <a class="prev-title" [routerLink]="['/p', r.pid, 'i', r.iid]">
-                      @if (r.pid !== pid && projectNames()[r.pid]) {
-                        <span class="link-proj">{{ projectNames()[r.pid] }}</span>
-                      }
-                      #{{ li.number }} {{ li.title }}</a>
-                    <span class="prev-st">{{ 'status.' + li.status | t }}</span>
-                  } @else if (li === null) {
-                    <span class="prev-title muted">{{ 'links.unreadable' | t }}</span>
-                  } @else {
-                    <span class="prev-title muted">{{ 'common.loading' | t }}</span>
-                  }
-                  @if (canUnlink(r)) {
-                    <button type="button" class="icon" [attr.aria-label]="'links.remove' | t" [title]="'links.remove' | t"
-                      [disabled]="busy()" (click)="unlink(r)">✕</button>
-                  }
-                </div>
-              }
-            }
-            @if (linkError()) { <p class="error" role="alert">{{ linkError() | t }}</p> }
-            @if (canLink()) {
-              <button type="button" class="add-link" (click)="linkOpen.set(true)">{{ 'links.add' | t }}</button>
-            }
-            @if (canLink() && (i.status === 'resolved' || i.status === 'closed')) {
-              <a class="add-link" [routerLink]="['/p', pid, 'new']" [queryParams]="{ recur: i.id }">
-                {{ 'links.recurCreate' | t }}</a>
-            }
-          </section>
-        }
-        @if (linkOpen()) {
-          <app-link-dialog [pid]="pid" [iid]="iid" [number]="i.number" [relations]="relations()"
-            (done)="linkOpen.set(false)" (cancel)="linkOpen.set(false)" />
-        }
-
-        @if (i.status !== 'deleted') {
-        <section class="tools">
-          <button type="button" [disabled]="!canEdit()" (click)="openEdit()">{{ 'edit.open' | t }}</button>
-          <button type="button" [disabled]="!canSetPriority()" (click)="openPriority()">
-            {{ 'priorityEdit.open' | t }}</button>
-          @if (showCauseButton()) {
-            <button type="button" [disabled]="!canEditCause()" (click)="openCause()">{{ 'causeEdit.open' | t }}</button>
-          }
-          @if (showMerge()) {
-            <button type="button" [disabled]="!canMerge()" (click)="openMerge()">{{ 'merge.open' | t }}</button>
-          }
-          <button type="button" class="danger-btn" [disabled]="!canDelete()" (click)="openDelete()">
-            {{ 'delete.open' | t }}</button>
-          @if (toolDenied().length) { <app-help-tip kind="denied" [keys]="toolDenied()" /> }
-        </section>
-
-        @if (prioPanel()) {
-          <section class="panel">
-            <h2>{{ 'priorityEdit.open' | t }}</h2>
-            <div class="chips">
-              @for (l of levels; track l) {
-                <button type="button" [class.on]="prioChoice() === l" (click)="prioChoice.set(l)">
-                  <app-priority-mark [level]="l" decorative />{{ 'priority.' + l | t }}</button>
-              }
-              @if (i.priorityOverride) {
-                <button type="button" [class.on]="prioChoice() === 'auto'" (click)="prioChoice.set('auto')">
-                  {{ 'priorityEdit.auto' | t }}</button>
-              }
-            </div>
-            <label class="field">{{ 'priorityEdit.reason' | t }}
-              <textarea [(ngModel)]="prioReason" rows="2" [placeholder]="'priorityEdit.reasonHint' | t"></textarea>
-            </label>
-            @if (prioConflict(); as c) {
-              @let w = who(c.latest);
-              <div class="conflict" role="alert">
-                <p>{{ w.key | t: w.params }}</p>
-                @if (c.blocked) {
-                  <p>{{ 'conflict.statusChanged' | t: { status: i18n.t('status.' + c.latest.status) } }}</p>
-                } @else {
-                  <p>{{ 'conflict.retry' | t }}</p>
-                }
-              </div>
-            }
-            @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
-            <div class="row">
-              <button type="button" class="link" (click)="prioPanel.set(false)">{{ 'workflow.cancel' | t }}</button>
-              <button type="button" class="primary"
-                [disabled]="busy() || !prioChoice() || !prioReason.trim() || !!prioConflict()?.blocked"
-                (click)="confirmPriority()">{{ 'workflow.confirm' | t }}</button>
-            </div>
-          </section>
-        }
-
-        @if (causePanel()) {
-          <section class="panel">
-            <h2>{{ 'causeEdit.title' | t }}</h2>
-            <p class="help">{{ 'causeEdit.help' | t }}</p>
-            <label class="field">{{ 'workflow.cause' | t }}
-              <textarea [(ngModel)]="causeText" rows="3" maxlength="2000"></textarea>
-            </label>
-            <label class="field">{{ 'workflow.countermeasure' | t }}
-              <textarea [(ngModel)]="counterText" rows="3" maxlength="2000"></textarea>
-            </label>
-            <fieldset>
-              <legend>{{ 'workflow.causeCategory' | t }}</legend>
-              <div class="chips">
-                @for (c of causeCategories; track c) {
-                  <button type="button" [class.on]="causeCat() === c" [attr.aria-pressed]="causeCat() === c"
-                    (click)="causeCat.set(causeCat() === c ? null : c)">{{ 'causeCategories.' + c | t }}</button>
-                }
-              </div>
-            </fieldset>
-            @if (causeConflict(); as c) {
-              @let w = who(c.latest);
-              <div class="conflict" role="alert">
-                <p>{{ w.key | t: w.params }}</p>
-                @if (c.blocked) {
-                  <p>{{ 'conflict.statusChanged' | t: { status: i18n.t('status.' + c.latest.status) } }}</p>
-                } @else {
-                  <p>{{ 'conflict.retry' | t }}</p>
-                }
-              </div>
-            }
-            @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
-            <div class="row">
-              <button type="button" class="link" (click)="causePanel.set(false)">{{ 'workflow.cancel' | t }}</button>
-              <button type="button" class="primary" [disabled]="busy() || !!causeConflict()?.blocked"
-                (click)="confirmCause()">{{ 'edit.save' | t }}</button>
-            </div>
-          </section>
-        }
-
-        @if (delPanel()) {
-          <section class="panel">
-            <h2>{{ 'delete.title' | t }}</h2>
-            <p class="help">{{ 'delete.note' | t }}</p>
-            <label class="field">{{ 'delete.reason' | t }}
-              <textarea [(ngModel)]="delReason" rows="2" [placeholder]="'delete.reasonHint' | t"></textarea>
-            </label>
-            @if (delConflict(); as c) {
-              @let w = who(c);
-              <div class="conflict" role="alert">
-                <p>{{ w.key | t: w.params }}</p>
-                <p>{{ 'conflict.retry' | t }}</p>
-              </div>
-            }
-            @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
-            <div class="row">
-              <button type="button" class="link" (click)="delPanel.set(false)">{{ 'workflow.cancel' | t }}</button>
-              <button type="button" class="primary danger" [disabled]="busy() || !delReason.trim()"
-                (click)="confirmDelete()">{{ 'delete.confirm' | t }}</button>
-            </div>
-          </section>
-        }
-
-        @if (editing()) {
-          <app-issue-edit-dialog [issue]="base()!" [members]="members()" [pid]="pid" [labels]="projectLabels()"
-            (saved)="onEdited()" (cancel)="editing.set(false)" />
-        }
-
-        @if (mergeOpen()) {
-          <app-merge-dialog [pid]="pid" [issue]="base()!" (done)="mergeOpen.set(false)" (cancel)="mergeOpen.set(false)" />
-        }
-
-        <section class="actions">
-          @for (a of transitions(); track a.t.key) {
-            <button type="button" [disabled]="!a.allowed || busy()" [class.on]="active()?.key === a.t.key"
-              (click)="click(a.t)">{{ 'workflow.' + a.t.key | t }}</button>
-          }
-          @if (deniedReasons().length) { <app-help-tip kind="denied" [keys]="deniedReasons()" /> }
-          @if (showRejectHelp()) { <app-help-tip [keys]="['help.reject']" /> }
-        </section>
-        @if (actionConflict(); as c) {
-          @let w = who(c);
-          <p class="error" role="alert">{{ w.key | t: w.params }} {{ 'conflict.again' | t }}</p>
-        }
-
-          @if (active(); as t) {
-          <app-status-dialog [issue]="base()!" [transition]="t" [pid]="pid" [members]="members()"
-            (done)="onStatusDone()" (cancel)="active.set(null)" />
-        }
-        } <!-- ここまで、削除フォルダにない課題だけ -->
-
-        <section>
-          <h2>{{ 'detail.timeline' | t }}</h2>
-          <ul class="timeline">
-            @for (item of timeline(); track item.id) {
-              <li [class.comment]="item.kind === 'comment'">
-                                <div class="meta">
-                  {{ item.kind === 'comment' ? memberName(item.by) : eventText(item) }} · {{ when(item) }}
-                  @if (item.editedAt && !item.deleted) {
-                    <span class="edited" [title]="fmt(item.editedAt)">（{{ 'comment.edited' | t }}）</span>
-                  }
-                  @if (item.kind === 'comment' && !item.deleted && editingId() !== item.id && !projectArchived()
-                    && i.status !== 'deleted') {
-                    <span class="c-actions">
-                      @if (item.by === myUid) {
-                        <button type="button" class="icon" [attr.aria-label]="'comment.edit' | t" [title]="'comment.edit' | t"
-                          (click)="startEdit(item)">✎</button>
-                      }
-                      @if (item.by === myUid || role() === 'admin') {
-                        <button type="button" class="icon" [attr.aria-label]="'comment.delete' | t" [title]="'comment.delete' | t"
-                          [disabled]="busy()" (click)="askDelete(item)">🗑</button>
-                      }
-                    </span>
-                  }
-                </div>
-                @if (item.deleted) {
-                  <p class="deleted">{{ 'comment.deletedBy' | t: { name: memberName(item.deletedBy!) } }}</p>
-                } @else if (editingId() === item.id) {
-                  <textarea class="edit-box" [(ngModel)]="editBody" rows="3"></textarea>
-                  <div class="row">
-                    <button type="button" class="link" (click)="editingId.set(null)">{{ 'workflow.cancel' | t }}</button>
-                    <button type="button" class="primary" [disabled]="busy() || !editBody.trim()" (click)="saveEdit(item)">
-                      {{ 'comment.save' | t }}</button>
-                  </div>
-                } @else if (item.body) {
-                  <p class="pre">{{ item.body }}</p>
-                }
-                @if (item.changes?.dueAt; as c) {
-                  <p class="change">{{ 'issue.due' | t }}：{{ fmt(c.from) }} → {{ fmt(c.to) }}</p>
-                }
-                @if (item.changes?.assigneeId; as c) {
-                  <p class="change">{{ 'issue.assignee' | t }}：{{ memberName(c.from) }} → {{ memberName(c.to) }}</p>
-                }
-                @if (item.changes?.doneCriteria; as c) {
-                  <p class="change pre">{{ 'issue.doneCriteria' | t }}：{{ c.from }} → {{ c.to }}</p>
-                }
-                @if (item.reason) { <p class="pre reason">{{ item.reason }}</p> }
-              </li>
-            }
-          </ul>
-          @if (i.status !== 'deleted') {
-            <div class="comment-box">
-              <textarea [(ngModel)]="comment" rows="3" [placeholder]="'detail.commentPlaceholder' | t"></textarea>
-              <button type="button" class="primary" [disabled]="busy() || !comment.trim()" (click)="sendComment()">
-                {{ 'detail.send' | t }}</button>
-            </div>
-          }
-        </section>
-      }
-    </main>
-  `,
-  styles: `
-    .bar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--border); }
-    .crumbs { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 14px; color: var(--text-muted); }
-    .crumb-project { display: block; min-width: 0; color: var(--primary); text-decoration: none;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .crumb-num { white-space: nowrap; }
-    main { max-width: 720px; margin: 0 auto; padding: 16px 16px 48px; }
-    h1 { font-size: 20px; margin: 4px 0 8px; overflow-wrap: anywhere; }
-    h2 { font-size: 16px; margin-top: 24px; }
-    .num { color: var(--text-muted); font-size: 13px; margin: 0; }
-    .badges { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .badges span { font-size: 12px; padding: 4px 10px; border-radius: 12px; background: var(--surface-muted); }
-    .status[data-s='in_progress'] { background: var(--primary-bg); }
-    .status[data-s='on_hold'] { background: var(--hold-bg); }
-    .status[data-s='resolved'] { background: var(--success-bg); }
-    .status[data-s='closed'], .status[data-s='rejected'] { background: var(--surface-muted); color: var(--text-secondary); }
-    .prio[data-p='high'] { background: var(--danger-bg); color: var(--danger-text); }
-    .prio[data-p='mid'] { background: var(--warning-bg); color: var(--warning-text); }
-    .prio[data-p='low'] { background: var(--success-bg); color: var(--success-text); }
-    .due.overdue { background: var(--danger-bg); color: var(--danger-text); font-weight: bold; }
-    .reason { background: var(--warning-bg); padding: 8px 12px; border-radius: 8px; white-space: pre-wrap; }
-    .fields { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 16px 0; }
-    .fields dt { color: var(--text-muted); font-size: 13px; }
-    .fields dd { margin: 0; }
-    .pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
-    .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .actions button { min-height: 44px; padding: 0 16px; border: 1px solid var(--primary); color: var(--primary);
-      background: var(--surface); border-radius: 8px; font-size: 14px; }
-    .actions button.on { background: var(--primary); color: var(--on-primary); }
-    .actions button:disabled { border-color: var(--border-strong); color: var(--text-disabled); }
-    .help { font-size: 12px; color: var(--text-muted); margin: 4px 0; }
-    .panel { border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-top: 12px;
-      display: flex; flex-direction: column; gap: 12px; }
-    .panel h2 { margin: 0; }
-    .field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: bold; }
-    fieldset { border: none; padding: 0; margin: 0; }
-    legend { font-size: 14px; font-weight: bold; }
-    textarea { font-size: 16px; padding: 8px 12px; font-weight: normal; }
-    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-    .chips button { display: inline-flex; align-items: center; gap: 6px;
-      min-height: 44px; padding: 0 14px; border: 1px solid var(--border-strong); background: var(--surface);
-      border-radius: 22px; font-size: 14px; }
-    .chips button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
-    .criteria { background: var(--surface-alt); padding: 12px; border-radius: 8px; }
-    .check { display: flex; align-items: center; gap: 8px; margin-top: 8px; min-height: 44px; }
-    .check input { width: 22px; height: 22px; }
-    .row { display: flex; justify-content: flex-end; gap: 8px; }
-    .link { background: none; border: none; color: var(--primary); min-height: 44px; }
-    .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
-      border-radius: 8px; font-size: 14px; }
-    .primary:disabled { background: var(--disabled); }
-    .error { color: var(--danger-text); }
-    .conflict { padding: 10px 12px; border-radius: 8px; font-size: 13px;
-      background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
-    .conflict p { margin: 0 0 4px; }
-    .conflict p:last-child { margin-bottom: 0; }
-      .status[data-s='deleted'] { background: var(--danger-bg); color: var(--danger-text); }
-    .trash { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; padding: 12px;
-      border-radius: 8px; background: var(--danger-bg); color: var(--danger-text); }
-    .trash p { margin: 0; }
-    .trash .primary { align-self: flex-start; }
-    .primary.danger { background: var(--danger); }
-    .tools .danger-btn { color: var(--danger-text); }
-    .timeline { list-style: none; padding: 0; margin: 0; }
-    .timeline li { padding: 8px 0; border-bottom: 1px solid var(--border); }
-    .timeline li.comment { background: var(--surface-alt); padding: 8px 12px; }
-    .timeline .meta { font-size: 12px; color: var(--text-muted); }
-    .comment-box { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
-    .comment-box .primary { align-self: flex-end; }
-    .tools { display: flex; gap: 8px; margin-bottom: 4px; align-items: center; }
-    .tools button { min-height: 44px; padding: 0 16px; border: 1px solid var(--border-strong); background: var(--surface);
-      border-radius: 8px; font-size: 14px; }
-    .tools button:disabled { color: var(--text-disabled); }
-    .change { font-size: 13px; color: var(--text-secondary); margin: 4px 0 0; }
-    .label-row { display: flex; flex-wrap: wrap; gap: 4px; }
-    .edited { font-size: 11px; color: var(--text-subtle); }
-    .c-actions { float: right; display: inline-flex; gap: 4px; }
-    .icon { min-width: 32px; min-height: 32px; border: none; background: none; border-radius: 6px;
-      color: var(--text-muted); cursor: pointer; }
-    .icon:hover { background: var(--surface-muted); }
-    .deleted { margin: 4px 0 0; font-size: 13px; font-style: italic; color: var(--text-subtle); }
-    .edit-box { width: 100%; box-sizing: border-box; margin-top: 6px; }
-    .badges .stale { background: var(--warning-bg); color: var(--warning-text); }
-    .related { font-size: 13px; }
-    .prevention { margin: 8px 0 16px; display: flex; flex-direction: column; gap: 6px; }
-    .prevention h2 { margin: 8px 0 0; }
-    .prev-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; color: var(--text);
-      text-decoration: none; border-bottom: 1px solid var(--border); }
-    .prev-title { flex: 1; overflow-wrap: anywhere; }
-    .prev-st { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--surface-muted); }
-    .recommend { margin: 0; padding: 8px 12px; border-radius: 8px; font-size: 13px;
-      background: var(--warning-bg); color: var(--warning-text); }
-    .prev-btn { align-self: flex-start; display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px;
-      border: 1px solid var(--primary); border-radius: 8px; color: var(--primary); text-decoration: none; font-size: 14px; }
-    .links { margin: 8px 0 16px; display: flex; flex-direction: column; gap: 4px; }
-    .links h2 { margin: 8px 0 0; }
-    .link-group { margin: 8px 0 0; font-size: 12px; color: var(--text-muted); }
-    .link-proj { font-size: 11px; color: var(--text-muted); margin-right: 6px; }
-    .muted { color: var(--text-subtle); }
-    .add-link { align-self: flex-start; min-height: 44px; padding: 0 16px; margin-top: 4px; border: 1px solid var(--primary);
-      border-radius: 8px; color: var(--primary); background: var(--surface); font-size: 14px; cursor: pointer; }
-    .waiting { display: flex; flex-wrap: wrap; gap: 4px 12px; white-space: normal; }
-    a.add-link { display: inline-flex; align-items: center; text-decoration: none; }
-    .status[data-s='merged'] { background: var(--surface-muted); color: var(--text-secondary); }
-    .merged { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; padding: 12px; border-radius: 8px;
-      background: var(--surface-alt); }
-    .merged p { margin: 0; }
-  `,
+  imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, StatusDialog, PriorityMark, LinkDialog,
+    MergeDialog, LabelPicker, MemberSelect],
+  host: {
+    '(document:keydown.escape)':
+      'menuOpen.set(false); statusMenu.set(false); prioMenu.set(false); typeMenu.set(false); closeField()',
+    '(document:click)': 'onDocClick($event)',
+  },
+  templateUrl: './issue-detail.html',
+  styleUrl: './issue-detail.css',
 })
 export class IssueDetail implements OnInit {
   private route = inject(ActivatedRoute);
@@ -543,7 +77,6 @@ export class IssueDetail implements OnInit {
   readonly levels: Level[] = ['high', 'mid', 'low'];
 
   // 編集と優先度の手動変更
-  editing = signal(false);
   prioPanel = signal(false);
   prioChoice = signal<Level | 'auto' | null>(null);
   prioReason = '';
@@ -569,11 +102,54 @@ export class IssueDetail implements OnInit {
   private causeBase = signal<Issue | null>(null);
   /** 保存で衝突した（blocked＝対応中・保留ではなくなって、もう書けない） */
   causeConflict = signal<{ latest: Issue; blocked: boolean } | null>(null);
+  // 回避策
+  waPanel = signal(false);
+  waText = '';
+  private waBase = signal<Issue | null>(null);
+  waConflict = signal<{ latest: Issue; blocked: boolean } | null>(null);
+  /** 保存したあと、重要度の見直しをすすめる（中身があり、重要度が「小」でないときだけ） */
+  waSaved = signal(false);
+  waEndError = signal('');
+  workaroundOn = computed(() => {
+    const i = this.issue();
+    return !!i && hasWorkaround(i);
+  });
+  /** 回避策を書けるか：担当者と管理者（アーカイブ中は不可） */
+  canEditWorkaround = computed(() => {
+    const i = this.issue();
+    const r = this.role();
+    if (!i || !r || !this.isActive(i) || this.projectArchived()) return false;
+    return r === 'admin' || (r === 'member' && i.assigneeId === this.myUid);
+  });
 
   issue = signal<Issue | null>(null);
   role = signal<Role | null>(null);
   members = signal<Member[]>([]);
   timeline = signal<TimelineItem[]>([]);
+  /** 経緯の絞り込み（すべて／コメントだけ） */
+  tlFilter = signal<'all' | 'comments'>('all');
+  /** たたんだ途中を開いたか */
+  tlExpanded = signal(false);
+  /**
+   * 表示する経緯：長いときは、最初の3件と最新の10件を出し、間を1行にたたむ。
+   * 開いたあとは、同じ場所に「途中をたたむ」を出す。
+   * 中で別のスクロールを作らない（画面のスクロールの中にもう1つあると、スマホで迷うため）
+   */
+  timelineView = computed<(
+    TimelineItem | { kind: 'fold'; id: string; n: number } | { kind: 'unfold'; id: string; n: number }
+  )[]>(() => {
+    const list = this.tlFilter() === 'comments'
+      ? this.timeline().filter((t) => t.kind === 'comment')
+      : this.timeline();
+    const head = 3;
+    const tail = 10;
+    // たたんでも2件しか隠れないなら、たたまない（押す手間のほうが大きいため）
+    if (list.length <= head + tail + 2) return list;
+    const n = list.length - head - tail;
+    return this.tlExpanded()
+      ? [...list.slice(0, head), { kind: 'unfold' as const, id: 'unfold', n }, ...list.slice(head)]
+      : [...list.slice(0, head), { kind: 'fold' as const, id: 'fold', n }, ...list.slice(-tail)];
+  });
   projectLabels = signal<Label[]>([]);
   issueLabels = computed(() => labelsOf(this.issue()?.labelIds, this.projectLabels()));
   /** 役割・メンバー・プロジェクトの読み込み中 */
@@ -582,7 +158,7 @@ export class IssueDetail implements OnInit {
   private issueReady = signal(false);
   loading = computed(() => this.metaLoading() || !this.issueReady());
   private stops: Unsubscribe[] = [];
-  /** モーダル（編集・ステータス変更）を開いた時点の課題。開いている間に変更が届いても、入力の土台は変えない */
+  /** モーダル（ステータス変更）を開いた時点の課題。開いている間に変更が届いても、入力の土台は変えない */
   base = signal<Issue | null>(null);
 
   constructor() {
@@ -590,6 +166,7 @@ export class IssueDetail implements OnInit {
     inject(DestroyRef).onDestroy(() => {
       this.stops.forEach((stop) => stop());
       this.linkStops.forEach((stop) => stop());
+      clearTimeout(this.flashTimer);
     });
   }
   busy = signal(false);
@@ -678,6 +255,60 @@ export class IssueDetail implements OnInit {
   canMerge = computed(() => this.showMerge() && this.role() === 'admin' && !this.projectArchived());
   mergeOpen = signal(false);
 
+  /** ⋮ のメニュー */
+  menuOpen = signal(false);
+  statusMenu = signal(false);
+  prioMenu = signal(false);
+  // ---- その場編集 ----
+  readonly types = ISSUE_TYPES;
+  typeMenu = signal(false);
+  /** 今入力中の欄（null＝どれも開いていない） */
+  editField = signal<string | null>(null);
+  /** 欄を開いた時点の課題（衝突のあとは最新） */
+  private editBase = signal<Issue | null>(null);
+  /** 同じ欄をほかの人が先に変えていた（中身は最新の課題） */
+  fieldConflict = signal<Issue | null>(null);
+  fieldError = signal('');
+  /** 入力中の値（どの欄も1つずつしか開かないので、入れ物は共通） */
+  draftText = '';
+  draftDate = '';
+  draftLabels = signal<string[]>([]);
+  draftAssignee = signal('');
+  draftDue = signal<Date | null>(null);
+  draftDueInput = '';
+  draftReason = '';
+  /** 外を押したのに理由が書いてない（理由の欄に注意を出す） */
+  reasonNeeded = signal(false);
+  readonly duePresets = [
+    { key: 'today', days: 0 }, { key: 'tomorrow', days: 1 }, { key: 'in3', days: 3 }, { key: 'in7', days: 7 },
+  ];
+  /** 担当者にできる人（閲覧者は担当者になれない） */
+  assignable = computed(() => this.members().filter((m) => m.role !== 'viewer'));
+  assigneeChanged = computed(() => this.draftAssignee() !== this.editBase()?.assigneeId);
+  dueChanged = computed(() => {
+    const d = this.draftDue();
+    return !!d && d.getTime() !== this.editBase()?.dueAt.toMillis();
+  });
+  /** 変えた期限が、今より前か（赤い「期限切れとして確定」にする） */
+  duePast = computed(() => this.dueChanged() && this.draftDue()!.getTime() <= this.clock.now());
+  /** 発生日に選べる最後の日（自分のタイムゾーンの今日） */
+  todayKey = computed(() => dateKey(new Date(this.clock.now()), this.tz()));
+  /** 衝突の知らせの文（だれが＋どうすればよいか） */
+  conflictText = computed(() => {
+    const c = this.fieldConflict();
+    if (!c) return '';
+    const w = this.who(c);
+    return `${this.i18n.t(w.key, w.params)} ${this.i18n.t(this.editField() ? 'field.conflictText' : 'field.conflictPick')}`;
+  });
+  /** 下に数秒だけ出す知らせ（翻訳キー） */
+  flash = signal('');
+  private flashTimer: ReturnType<typeof setTimeout> | undefined;
+  /** 再発防止のすすめ：クローズで、効果が一部・なしのとき */
+  showRecommend = computed(() => {
+    const i = this.issue();
+    return !!i && (i.status === 'resolved' || i.status === 'closed') && (i.effect === 'partial' || i.effect === 'no');
+  });
+
   /** 復元は、管理者と、提起した本人（メンバー） */
   canRestore = computed(() => {
     const i = this.issue();
@@ -687,11 +318,9 @@ export class IssueDetail implements OnInit {
   });
 
   toolDenied = computed(() => [
-    ...(this.canEdit() ? [] : ['edit.denied']),
-    ...(this.canSetPriority() ? [] : ['priorityEdit.denied']),
-    ...(this.canDelete() ? [] : ['delete.denied']),
-    ...(this.showMerge() && !this.canMerge() ? ['merge.denied'] : []),
     ...(this.showCauseButton() && !this.canEditCause() ? ['causeEdit.denied'] : []),
+    ...(this.issue() && this.isActive(this.issue()!) && !this.workaroundOn() && !this.canEditWorkaround()
+      ? ['workaround.denied'] : []),
   ]);
   overdue = computed(() => this.issue()!.dueAt.toMillis() < this.clock.now());
   dueText = computed(() => {
@@ -834,9 +463,169 @@ export class IssueDetail implements OnInit {
     this.active.set(t);
   }
 
-  openEdit() {
-    this.base.set(this.issue());
-    this.editing.set(true);
+  /** 欄を開く。ほかの欄を開いていたら、先にそちらを保存して閉じる（閉じられなければ開かない） */
+  async openField(f: string) {
+    const current = this.editField();
+    if (current === f) return;
+    if (current && !(await this.leaveField())) return;
+    const i = this.issue()!;
+    this.editBase.set(i);
+    this.fieldConflict.set(null);
+    this.fieldError.set('');
+    this.reasonNeeded.set(false);
+    const texts: Record<string, string> = {
+      title: i.title, description: i.description, doneCriteria: i.doneCriteria, impact: i.impact ?? '',
+    };
+    this.draftText = texts[f] ?? '';
+    this.draftDate = i.occurredOn ?? '';
+    this.draftLabels.set(i.labelIds ?? []);
+    this.draftAssignee.set(i.assigneeId);
+    this.draftDue.set(i.dueAt.toDate());
+    this.draftDueInput = toLocalInput(i.dueAt.toDate(), this.tz());
+    this.draftReason = '';
+    this.editField.set(f);
+    setTimeout(() => focusById('e-' + f));
+  }
+
+  closeField() {
+    this.editField.set(null);
+    this.fieldConflict.set(null);
+  }
+
+  /** 入力欄の外を押したとき（押したのが、ほかの欄の文字やメニューなら、そちらに任せる） */
+  onDocClick(e: MouseEvent) {
+    if (!this.editField()) return;
+    const t = e.target as Element | null;
+    if (!t || t.closest('.inline-edit, .text-btn, .menu, .backdrop, app-help-tip, [role="dialog"]')) return;
+    this.leaveField();
+  }
+
+  /**
+   * 欄から離れる：変えていなければ閉じる、変えていれば保存して閉じる。
+   * 期限・担当者を変えたのに理由が無ければ、閉じずに理由の欄へ（勝手に捨てない・勝手に理由なしで保存しない）
+   */
+  async leaveField(): Promise<boolean> {
+    const f = this.editField();
+    if (!f) return true;
+    if (this.busy()) return false;
+    const needs = (f === 'due' && this.dueChanged()) || (f === 'assignee' && this.assigneeChanged());
+    if (needs && !this.draftReason.trim()) {
+      this.reasonNeeded.set(true);
+      setTimeout(() => focusById('e-reason'));
+      return false;
+    }
+    return this.saveField();
+  }
+
+  pickDuePreset(days: number) {
+    const d = endOfDayIn(days, this.tz());
+    this.draftDue.set(d);
+    this.draftDueInput = toLocalInput(d, this.tz());
+  }
+
+  onDueInput(value: string) {
+    this.draftDueInput = value;
+    this.draftDue.set(parseLocalInput(value, this.tz()));
+  }
+
+  /** 1行の欄（タイトル・影響範囲）は Enter で保存（日本語の変換中は除く） */
+  onLineKey(e: KeyboardEvent) {
+    enterKey(e, () => this.saveField());
+  }
+
+  /** 開いている欄を保存する。変わっていなければ、保存せずに閉じる */
+  async saveField(): Promise<boolean> {
+    const f = this.editField();
+    const base = this.editBase();
+    if (!f || !base || this.busy()) return false;
+    let edits: IssueEdits | null = null;
+    if (f === 'title') {
+      const v = this.draftText.trim();
+      if (!v) return false;
+      if (v !== base.title) edits = { title: v };
+    } else if (f === 'description') {
+      if (this.draftText !== base.description) edits = { description: this.draftText };
+    } else if (f === 'doneCriteria') {
+      const v = this.draftText.trim();
+      if (!v) return false;
+      if (v !== base.doneCriteria) edits = { doneCriteria: v };
+    } else if (f === 'impact') {
+      const v = this.draftText.trim();
+      if (v !== (base.impact ?? '')) edits = { impact: v };
+    } else if (f === 'occurredOn') {
+      const v = this.draftDate || null;
+      if (v !== (base.occurredOn ?? null)) edits = { occurredOn: v };
+    } else if (f === 'labels') {
+      const next = this.draftLabels();
+      if ([...next].sort().join() !== [...(base.labelIds ?? [])].sort().join()) edits = { labelIds: next };
+    }else if (f === 'assignee') {
+      if (this.draftAssignee() !== base.assigneeId) edits = { assigneeId: this.draftAssignee() };
+    } else if (f === 'due') {
+      const d = this.draftDue();
+      if (!d) return false;
+      if (d.getTime() !== base.dueAt.toMillis()) edits = { dueAt: d };
+    }
+    if (!edits) {
+      this.closeField();
+      return true;
+    }
+    // 期限と担当者は、理由が必須（経緯と通知に残る）
+    const reason = f === 'assignee' || f === 'due' ? this.draftReason.trim() : '';
+    if ((f === 'assignee' || f === 'due') && !reason) return false;
+    const saved = await this.saveEdits(edits, reason);
+    if (saved && this.editField() === f) this.closeField();
+    return saved;
+  }
+
+  /** 選ぶだけの欄（種別・重要度）：選んだらすぐ保存。今と同じなら何もしない */
+  saveNow(edits: IssueEdits) {
+    const i = this.issue()!;
+    if (edits.type !== undefined && edits.type === i.type) return;
+    if (edits.importance !== undefined && edits.importance === i.importance) return;
+    this.editBase.set(i);
+    this.saveEdits(edits);
+  }
+
+  /**
+   * 1つの欄を保存する。ほかの人が「別の欄」を変えていただけなら、ぶつかっていないので、
+   * 最新を土台に1回だけ保存し直す。「同じ欄」を変えていたら保存せず、知らせて入力を残す
+   */
+  private async saveEdits(edits: IssueEdits, reason = ''): Promise<boolean> {
+    let base = this.editBase() ?? this.issue()!;
+    this.busy.set(true);
+    this.fieldError.set('');
+    this.fieldConflict.set(null);
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          await this.issueService.updateIssue(this.pid, base, edits, reason, this.myUid, this.tz());
+          return true;
+        } catch (e) {
+          if (!(e instanceof ConflictError)) throw e;
+          const latest = e.latest;
+          const touched = (Object.keys(edits) as (keyof IssueEdits)[]).some((k) => !sameField(k, base, latest));
+          const locked = ['closed', 'merged', 'deleted'].includes(latest.status);
+          this.editBase.set(latest);
+          if (touched || locked || attempt === 1) {
+            this.fieldConflict.set(latest);
+            return false;
+          }
+          base = latest; // ぶつかっていないので、最新を土台にもう一度
+        }
+      }
+      return false;
+    } catch (e) {
+      console.error(e);
+      this.fieldError.set('common.saveError');
+      return false;
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /** 回避策のあと「重要度を見直す」：右の重要度へ動かす */
+  reviewImportance() {
+    focusById('f-importance');
   }
 
   openMerge() {
@@ -1000,6 +789,11 @@ export class IssueDetail implements OnInit {
     return formatDateTime(ts.toDate(), this.tz(), this.i18n.lang());
   }
 
+  /** Date をそのまま、見る人のタイムゾーンで表示する（入力中の期限など） */
+  fmtDate(d: Date) {
+    return formatDateTime(d, this.tz(), this.i18n.lang());
+  }
+
   /** 'YYYY-MM-DD' を「2026年10月13日(火)」のように出す（暦の日付なので、タイムゾーンで変えない） */
   dayLabel(key: string) {
     const [y, m, d] = key.split('-').map(Number);
@@ -1007,16 +801,11 @@ export class IssueDetail implements OnInit {
       year: 'numeric', month: 'short', day: 'numeric', weekday: 'short', timeZone: 'UTC',
     }).format(new Date(Date.UTC(y, m - 1, d)));
   }
-  
-  async onEdited() {
-    this.editing.set(false);
 
-  }
-
-  openPriority() {
+  openPriority(choice: Level | 'auto' | null = null) {
     this.prioBase.set(this.issue());
     this.prioConflict.set(null);
-    this.prioChoice.set(null);
+    this.prioChoice.set(choice);
     this.prioReason = '';
     this.error.set('');
     this.prioPanel.set(true);
@@ -1081,6 +870,75 @@ export class IssueDetail implements OnInit {
     } finally {
       this.busy.set(false);
     }
+  }
+
+  openWorkaround() {
+    const i = this.issue()!;
+    this.waBase.set(i);
+    this.waText = i.workaroundEnded ? '' : (i.workaround ?? '');
+    this.waConflict.set(null);
+    this.waSaved.set(false);
+    this.error.set('');
+    this.waPanel.set(true);
+  }
+
+  async confirmWorkaround() {
+    const text = this.waText.trim();
+    this.busy.set(true);
+    this.error.set('');
+    this.waConflict.set(null);
+    try {
+      await this.issueService.updateWorkaround(this.pid, this.waBase()!, text, this.myUid, this.tz());
+      this.waPanel.set(false);
+      this.waSaved.set(!!text && this.issue()?.importance !== 'low');
+    } catch (e) {
+      if (e instanceof ConflictError) {
+        const blocked = !this.isActive(e.latest);
+        if (!blocked) this.waBase.set(e.latest);
+        this.waConflict.set({ latest: e.latest, blocked });
+      } else {
+        console.error(e);
+        this.error.set('common.saveError');
+      }
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /** 回避策をやめる（箱から）。書き直せば戻せるので、確認はしない */
+  async endWorkaround() {
+    this.busy.set(true);
+    this.waEndError.set('');
+    try {
+      await this.issueService.endWorkaround(this.pid, this.issue()!, this.myUid, this.tz());
+      this.waSaved.set(false);
+    } catch (e) {
+      if (e instanceof ConflictError) {
+        this.waEndError.set('conflict.again'); // 画面は見張りで最新になっている
+      } else {
+        console.error(e);
+        this.waEndError.set('common.saveError');
+      }
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /** この課題のリンク（URL）をコピーする */
+  async copyLink() {
+    this.menuOpen.set(false);
+    try {
+      await navigator.clipboard.writeText(`${location.origin}/p/${this.pid}/i/${this.iid}`);
+      this.showFlash('detailMenu.copied');
+    } catch {
+      this.showFlash('detailMenu.copyFailed');
+    }
+  }
+
+  private showFlash(key: string) {
+    this.flash.set(key);
+    clearTimeout(this.flashTimer);
+    this.flashTimer = setTimeout(() => this.flash.set(''), 3000);
   }
 
   openDelete() {

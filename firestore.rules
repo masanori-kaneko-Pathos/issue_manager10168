@@ -106,7 +106,11 @@ service cloud.firestore {
         && d.countermeasure is string && d.countermeasure.size() > 0
         && d.causeCategory in ['requirements', 'design', 'testing', 'operation', 'communication', 'external', 'other']
         && d.doneCriteriaMet == true
-        && d.resolvedAt == request.time;
+        && d.resolvedAt == request.time
+        // 回避策が入っているなら、外したことを確かめてから
+        && (resource.data.get('workaround', '') == ''
+            || resource.data.get('workaroundEnded', false) == true
+            || d.get('workaroundEnded', false) == true);
     }
 
     function closeOk() {
@@ -266,6 +270,18 @@ service cloud.firestore {
             || d.causeCategory in ['requirements', 'design', 'testing', 'operation', 'communication', 'external', 'other']);
     }
 
+    // 回避策：担当者と管理者。未完了のときだけ。書き直したら「外した」の印は戻す
+    function workaroundAllowed(pid) {
+      let d = request.resource.data;
+      return d.diff(resource.data).affectedKeys().hasOnly(['workaround', 'workaroundEnded', 'updatedAt', 'updatedBy'])
+        && resource.data.status in ['open', 'in_progress', 'on_hold']
+        && (myRole(pid) == 'admin' || resource.data.assigneeId == request.auth.uid)
+        && d.workaround is string && d.workaround.size() <= 2000
+        // 書く・書き直す（適用中にする）か、文章はそのままで「やめた」にするか
+        && (d.workaroundEnded == false
+            || (d.workaroundEnded == true && d.workaround == resource.data.get('workaround', '')));
+    }
+
     // 統合：管理者のみ。統合元・統合先とも同じプロジェクトの未クローズ。理由必須。統合済みからは出られない（元に戻せない）
     function mergeAllowed(pid, iid) {
       let d = request.resource.data;
@@ -413,11 +429,12 @@ service cloud.firestore {
           && (
             (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                'status', 'statusReason', 'updatedAt', 'updatedBy', 'cause', 'countermeasure', 'causeCategory',
-               'doneCriteriaMet', 'resolvedAt', 'effect', 'learning', 'closedAt'])
+               'doneCriteriaMet', 'resolvedAt', 'effect', 'learning', 'closedAt', 'workaroundEnded'])
              && statusChangeAllowed(pid))
             || editAllowed(pid)
             || priorityAllowed(pid)
             || causeAllowed(pid)
+            || workaroundAllowed(pid)
             || deleteAllowed(pid)
             || mergeAllowed(pid, iid)
             || restoreAllowed(pid)
