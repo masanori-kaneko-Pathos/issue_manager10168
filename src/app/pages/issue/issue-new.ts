@@ -11,6 +11,7 @@ import { dateKey, endOfDayIn, formatDateTime, parseLocalInput, toLocalInput, zon
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { HelpTip } from '../../shared/help-tip';
 import { LabelPicker } from '../../shared/label-picker';
+import { MemberSelect } from '../../shared/member-select';
 
 const LAST_PROJECT_KEY = 'issuemanager.lastProject';
 
@@ -32,7 +33,7 @@ function writeLastProject(pid: string) {
 
 @Component({
   selector: 'app-issue-new',
-  imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelPicker],
+  imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelPicker, MemberSelect],
   template: `
     <header class="bar"><a [routerLink]="backLink()" class="link">{{ 'common.back' | t }}</a></header>
     <main>
@@ -96,17 +97,11 @@ function writeLastProject(pid: string) {
           }
         </fieldset>
 
-        <fieldset>
-          <legend>{{ 'issue.assignee' | t }}</legend>
-          <div class="chips">
-            @for (m of members(); track m.uid) {
-              <button type="button" [class.on]="assigneeId() === m.uid" [attr.aria-pressed]="assigneeId() === m.uid"
-                (click)="assigneeId.set(m.uid)">
-                {{ m.displayName }}{{ m.uid === myUid ? ('issueNew.you' | t) : '' }}
-              </button>
-            }
-          </div>
-        </fieldset>
+        <div class="field">
+          <span><label for="f-assignee">{{ 'issue.assignee' | t }}</label></span>
+          <app-member-select selectId="f-assignee" [members]="members()" [value]="assigneeId()"
+            (picked)="assigneeId.set($event)" />
+        </div>
 
         <div class="field">
           <span><label for="f-done">{{ 'issue.doneCriteria' | t }}</label> <app-help-tip [keys]="['help.doneCriteria']" /></span>

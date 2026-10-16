@@ -492,6 +492,7 @@ export const ja = {
     issues: '引き継ぐ課題（未完了 {{n}} 件）',
     none: '担当している未完了の課題はありません。',
     to: '引き継ぐ人',
+    choose: '引き継ぐ人を選ぶ',
     reason: '理由',
     reasonHint: '例：長期の休みに入るため',
     confirm: { handover: '引き継ぐ', remove: '外す', role: '変える', leave: '抜ける' },

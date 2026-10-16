@@ -7,6 +7,7 @@ import { ISSUE_TYPES, Issue, IssueType, Label, Level, Member } from '../../core/
 import { LabelPicker } from '../../shared/label-picker';
 import { dateKey, endOfDayIn, formatDateTime, parseLocalInput, toLocalInput } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
+import { MemberSelect } from '../../shared/member-select';
 
 /** 並び順を無視して、同じ id の組み合わせかを比べる */
 function sameIds(a: string[], b: string[]) {
@@ -15,7 +16,7 @@ function sameIds(a: string[], b: string[]) {
 
 @Component({
   selector: 'app-issue-edit-dialog',
-  imports: [FormsModule, TPipe, LabelPicker],
+  imports: [FormsModule, TPipe, LabelPicker, MemberSelect],
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
     <section class="dialog" role="dialog" aria-modal="true">
@@ -61,15 +62,11 @@ function sameIds(a: string[], b: string[]) {
         }
       </fieldset>
 
-      <fieldset>
-        <legend>{{ 'issue.assignee' | t }}</legend>
-        <div class="chips">
-          @for (m of assignable(); track m.uid) {
-            <button type="button" [class.on]="assigneeId() === m.uid" (click)="assigneeId.set(m.uid)">
-              {{ m.displayName }}</button>
-          }
-        </div>
-      </fieldset>
+      <div class="field">
+        <label for="e-assignee">{{ 'issue.assignee' | t }}</label>
+        <app-member-select selectId="e-assignee" [members]="assignable()" [value]="assigneeId()"
+          (picked)="assigneeId.set($event)" />
+      </div>
 
       <label class="field">{{ 'issue.doneCriteria' | t }}
         <textarea [(ngModel)]="doneCriteria" rows="2"></textarea>

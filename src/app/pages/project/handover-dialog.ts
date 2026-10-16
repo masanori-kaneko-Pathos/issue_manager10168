@@ -6,6 +6,7 @@ import { Member, Role } from '../../core/models';
 import { MemberChange, ProjectService } from '../../core/project/project.service';
 import { ProjectContext } from './project-context';
 import { I18nService, TPipe } from '../../i18n/i18n';
+import { MemberSelect } from '../../shared/member-select';
 
 /** handover＝担当の引き継ぎだけ、remove＝外す、role＝閲覧者に変える、leave＝自分から抜ける */
 export type HandoverMode = 'handover' | 'remove' | 'role' | 'leave';
@@ -13,7 +14,7 @@ export type HandoverMode = 'handover' | 'remove' | 'role' | 'leave';
 /** 担当の引き継ぎ（外す・閲覧者に変える・抜けるときにも、先に引き継ぐ） */
 @Component({
   selector: 'app-handover-dialog',
-  imports: [FormsModule, TPipe],
+  imports: [FormsModule, TPipe, MemberSelect],
   host: { '(document:keydown.escape)': 'cancel.emit()' },
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
@@ -29,15 +30,11 @@ export type HandoverMode = 'handover' | 'remove' | 'role' | 'leave';
               <span class="st">{{ 'status.' + i.status | t }}</span></li>
           }
         </ul>
-        <fieldset>
-          <legend>{{ 'handover.to' | t }}</legend>
-          <div class="chips">
-            @for (m of successors(); track m.uid) {
-              <button type="button" [class.on]="to() === m.uid" [attr.aria-pressed]="to() === m.uid"
-                (click)="to.set(m.uid)">{{ m.displayName }}</button>
-            }
-          </div>
-        </fieldset>
+        <div class="field">
+          <label for="h-to">{{ 'handover.to' | t }}</label>
+          <app-member-select selectId="h-to" placeholder="handover.choose" [members]="successors()" [value]="to()"
+            (picked)="to.set($event)" />
+        </div>
         <label class="field">{{ 'handover.reason' | t }}
           <textarea [(ngModel)]="reason" rows="2" [placeholder]="'handover.reasonHint' | t"></textarea>
         </label>

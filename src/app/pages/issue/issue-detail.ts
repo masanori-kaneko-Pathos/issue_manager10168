@@ -28,7 +28,17 @@ const FIELD_LABEL_KEYS: Record<string, string> = { assigneeId: 'assignee', dueAt
   selector: 'app-issue-detail',
   imports: [FormsModule, RouterLink, TPipe, IssueEdit, HelpTip, LabelChip, StatusDialog, PriorityMark],
   template: `
-    <header class="bar"><button type="button" class="link" (click)="back()">{{ 'common.back' | t }}</button></header>
+    <header class="bar">
+      <button type="button" class="link" (click)="back()">{{ 'common.back' | t }}</button>
+      @if (projectName()) {
+        <nav class="crumbs">
+          <a class="crumb-project" [routerLink]="['/p', pid]">{{ projectName() }}</a>
+          @if (issue(); as i) {
+            <span aria-hidden="true">›</span><span class="crumb-num">#{{ i.number }}</span>
+          }
+        </nav>
+      }
+    </header>
     <main>
       @if (loading()) {
         <p>{{ 'common.loading' | t }}</p>
@@ -327,7 +337,11 @@ const FIELD_LABEL_KEYS: Record<string, string> = { assigneeId: 'assignee', dueAt
     </main>
   `,
   styles: `
-    .bar { padding: 8px 16px; border-bottom: 1px solid var(--border); }
+    .bar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--border); }
+    .crumbs { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 14px; color: var(--text-muted); }
+    .crumb-project { display: block; min-width: 0; color: var(--primary); text-decoration: none;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .crumb-num { white-space: nowrap; }
     main { max-width: 720px; margin: 0 auto; padding: 16px 16px 48px; }
     h1 { font-size: 20px; margin: 4px 0 8px; overflow-wrap: anywhere; }
     h2 { font-size: 16px; margin-top: 24px; }
@@ -504,8 +518,8 @@ export class IssueDetail implements OnInit {
     const i = this.issue();
     return !!i && isStale(i, this.staleDays(), this.clock.now());
   });
-  /** 外されたときの知らせに使うプロジェクト名 */
-  private projectName = '';
+  /** 上の道しるべと、外されたときの知らせに使うプロジェクト名 */
+  projectName = signal('');
   /** 外れた人の名前（uid → 名前） */
   private formerMembers: Record<string, string> = {};
 
@@ -636,7 +650,7 @@ export class IssueDetail implements OnInit {
     this.projectLabels.set(project?.labels ?? []);
     this.projectArchived.set(project?.archived ?? false);
     this.staleDays.set(project?.settings?.staleDays ?? DEFAULT_SETTINGS.staleDays);
-    this.projectName = project?.name ?? '';
+    this.projectName.set(project?.name ?? '');
     this.formerMembers = project?.formerMembers ?? {};
   }
 
@@ -680,7 +694,7 @@ export class IssueDetail implements OnInit {
     if (!this.stops.length) return;
     this.stops.forEach((stop) => stop());
     this.stops = [];
-    this.router.navigate(['/'], { replaceUrl: true, state: { removedFrom: this.projectName } });
+    this.router.navigate(['/'], { replaceUrl: true, state: { removedFrom: this.projectName() } });
   }
 
   click(t: Transition) {

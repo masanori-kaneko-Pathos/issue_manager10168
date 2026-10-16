@@ -496,6 +496,7 @@ export const en: Dict = {
     issues: 'Issues to hand over ({{n}} open)',
     none: 'No open issues are assigned.',
     to: 'Hand over to',
+    choose: 'Choose a person',
     reason: 'Reason',
     reasonHint: 'e.g. Going on extended leave',
     confirm: { handover: 'Hand over', remove: 'Remove', role: 'Change', leave: 'Leave' },
