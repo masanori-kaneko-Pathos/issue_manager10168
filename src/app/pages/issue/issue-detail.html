@@ -1,0 +1,701 @@
+<header class="bar">
+    <button type="button" class="link" (click)="back()">{{ 'common.back' | t }}</button>
+    @if (projectName()) {
+      <nav class="crumbs">
+        <a class="crumb-project" [routerLink]="['/p', pid]">{{ projectName() }}</a>
+        @if (issue(); as i) {
+          <span aria-hidden="true">›</span><span class="crumb-num">#{{ i.number }}</span>
+        }
+      </nav>
+    }
+    @if (issue(); as i) {
+      <div class="more-wrap">
+        <button type="button" class="more" [attr.aria-label]="'detailMenu.open' | t" [title]="'detailMenu.open' | t"
+          [attr.aria-expanded]="menuOpen()" (click)="menuOpen.set(!menuOpen())">⋮</button>
+        @if (menuOpen()) {
+          <div class="backdrop" (click)="menuOpen.set(false)"></div>
+          <div class="menu" role="menu">
+            <button type="button" role="menuitem" (click)="copyLink()">{{ 'detailMenu.copyLink' | t }}</button>
+            @if (canCreate() && (i.status === 'resolved' || i.status === 'closed')) {
+              <a role="menuitem" [routerLink]="['/p', pid, 'new']" [queryParams]="{ from: i.id }"
+                (click)="menuOpen.set(false)">{{ 'prevention.create' | t }}</a>
+              <a role="menuitem" [routerLink]="['/p', pid, 'new']" [queryParams]="{ recur: i.id }"
+                (click)="menuOpen.set(false)">{{ 'detailMenu.recur' | t }}</a>
+            }
+            @if (showMerge()) {
+              <div class="item-row">
+                <button type="button" role="menuitem" [disabled]="!canMerge()"
+                  (click)="menuOpen.set(false); openMerge()">{{ 'merge.open' | t }}</button>
+                @if (!canMerge()) { <app-help-tip kind="denied" align="right" [keys]="['merge.denied']" /> }
+              </div>
+            }
+            @if (i.status !== 'deleted') {
+              <div class="item-row">
+                <button type="button" role="menuitem" class="danger-item" [disabled]="!canDelete()"
+                  (click)="menuOpen.set(false); openDelete()">{{ 'delete.open' | t }}</button>
+                @if (!canDelete()) { <app-help-tip kind="denied" align="right" [keys]="['delete.denied']" /> }
+              </div>
+            }
+          </div>
+        }
+      </div>
+    }
+  </header>
+  <main>
+    @if (loading()) {
+      <p>{{ 'common.loading' | t }}</p>
+    } @else if (!issue()) {
+      <p>{{ 'project.notFound' | t }}</p>
+    } @else {
+      @let i = issue()!;
+      <!-- 上：番号・タイトル・バッジ・状態の箱（全幅） -->
+      <div class="num">#{{ i.number }} ·
+        @if (canEdit()) {
+          <span class="dd">
+            <button type="button" class="type-btn" aria-haspopup="menu" [attr.aria-expanded]="typeMenu()"
+              (click)="typeMenu.set(!typeMenu())">{{ 'issueTypes.' + i.type | t }} <span aria-hidden="true">▾</span></button>
+            @if (typeMenu()) {
+              <div class="backdrop" (click)="typeMenu.set(false)"></div>
+              <div class="menu left" role="menu">
+                @for (t of types; track t) {
+                  <button type="button" role="menuitemradio" [attr.aria-checked]="i.type === t" [disabled]="busy()"
+                    (click)="typeMenu.set(false); saveNow({ type: t })">{{ 'issueTypes.' + t | t }}</button>
+                }
+              </div>
+            }
+          </span>
+        } @else {
+          {{ 'issueTypes.' + i.type | t }}
+        }
+        @if (i.relatedFrom; as r) {
+          · <a class="related" [routerLink]="['/p', pid, 'i', r.iid]">{{ 'prevention.from' | t: { n: '' + r.number } }}</a>
+        }
+      </div>
+      @if (editField() === 'title') {
+        <div class="inline-edit">
+          <input id="e-title" class="title-input" [(ngModel)]="draftText" maxlength="200" (keydown)="onLineKey($event)" />
+          @if (fieldConflict()) { <p class="field-conflict" role="alert">{{ conflictText() }}</p> }
+          <div class="row">
+            <button type="button" class="link" (click)="closeField()">{{ 'workflow.cancel' | t }}</button>
+            <button type="button" class="primary" [disabled]="busy() || !draftText.trim()" (click)="saveField()">
+              {{ 'edit.save' | t }}</button>
+          </div>
+        </div>
+      } @else if (canEdit()) {
+        <h1><button type="button" class="text-btn" (click)="openField('title')">{{ i.title }}</button></h1>
+      } @else {
+        <h1>{{ i.title }}</h1>
+      }
+      <div class="badges">
+        <!-- ステータス：押すと、今選べる操作が並ぶ -->
+        <div class="dd">
+          @if (transitions().length) {
+            <button type="button" class="pill status" [attr.data-s]="i.status" aria-haspopup="menu"
+              [attr.aria-expanded]="statusMenu()" (click)="statusMenu.set(!statusMenu())">
+              {{ 'status.' + i.status | t }} <span aria-hidden="true">▾</span></button>
+            @if (statusMenu()) {
+              <div class="backdrop" (click)="statusMenu.set(false)"></div>
+              <div class="menu left" role="menu">
+                @for (a of transitions(); track a.t.key) {
+                  <button type="button" role="menuitem" [disabled]="!a.allowed || busy()"
+                    (click)="statusMenu.set(false); click(a.t)">{{ 'workflow.' + a.t.key | t }}</button>
+                }
+                @if (deniedReasons().length || showRejectHelp()) {
+                  <div class="menu-help">
+                    @if (deniedReasons().length) { <app-help-tip kind="denied" [keys]="deniedReasons()" /> }
+                    @if (showRejectHelp()) { <app-help-tip [keys]="['help.reject']" /> }
+                  </div>
+                }
+              </div>
+            }
+          } @else {
+            <span class="pill status" [attr.data-s]="i.status">{{ 'status.' + i.status | t }}</span>
+          }
+        </div>
+        <!-- 優先度：変えられる人は押して選ぶ。選ぶと理由の欄が出る -->
+        @if (isActive(i)) {
+          <div class="dd">
+            @if (canSetPriority()) {
+              <button type="button" class="pill prio" [attr.data-p]="priority()" aria-haspopup="menu"
+                [attr.aria-expanded]="prioMenu()" (click)="prioMenu.set(!prioMenu())">
+                {{ 'issue.priority' | t }}：{{ 'priority.' + priority() | t }}
+                @if (i.priorityOverride) {
+                  {{ 'priorityEdit.manual' | t: { auto: i18n.t('priority.' + autoPriority()) } }}
+                }
+                <span aria-hidden="true">▾</span></button>
+              @if (prioMenu()) {
+                <div class="backdrop" (click)="prioMenu.set(false)"></div>
+                <div class="menu left" role="menu">
+                  @for (l of levels; track l) {
+                    <button type="button" role="menuitemradio" [attr.aria-checked]="i.priorityOverride === l"
+                      (click)="prioMenu.set(false); openPriority(l)">
+                      <app-priority-mark [level]="l" decorative /> {{ 'priority.' + l | t }}</button>
+                  }
+                  @if (i.priorityOverride) {
+                    <button type="button" role="menuitemradio" (click)="prioMenu.set(false); openPriority('auto')">
+                      {{ 'priorityEdit.autoLabel' | t: { p: i18n.t('priority.' + autoPriority()) } }}</button>
+                  }
+                </div>
+              }
+            } @else {
+              <span class="pill prio" [attr.data-p]="priority()">
+                {{ 'issue.priority' | t }}：{{ 'priority.' + priority() | t }}
+                @if (i.priorityOverride) {
+                  {{ 'priorityEdit.manual' | t: { auto: i18n.t('priority.' + autoPriority()) } }}
+                }
+              </span>
+            }
+          </div>
+          <app-help-tip [keys]="canSetPriority() ? ['help.priority'] : ['help.priority', 'priorityEdit.denied']" />
+        }
+        @if (i.status !== 'closed' && i.status !== 'rejected' && i.status !== 'deleted' && i.status !== 'merged') {
+          <span class="due" [class.overdue]="overdue()">{{ dueText() }}</span>
+        }
+        @if (stale()) {
+          <span class="stale" [title]="'stale.title' | t: { n: '' + staleDays() }">{{ 'stale.label' | t }}</span>
+        }
+        @if (workaroundOn()) { <span class="wa">{{ 'workaround.label' | t }}</span> }
+      </div>
+        @if (prioPanel()) {
+          <section class="panel">
+            <h2>{{ 'priorityEdit.open' | t }}</h2>
+            <div class="chips">
+              @for (l of levels; track l) {
+                <button type="button" [class.on]="prioChoice() === l" (click)="prioChoice.set(l)">
+                  <app-priority-mark [level]="l" decorative />{{ 'priority.' + l | t }}</button>
+              }
+              @if (i.priorityOverride) {
+                <button type="button" [class.on]="prioChoice() === 'auto'" (click)="prioChoice.set('auto')">
+                  {{ 'priorityEdit.auto' | t }}</button>
+              }
+            </div>
+            <label class="field">{{ 'priorityEdit.reason' | t }}
+              <textarea [(ngModel)]="prioReason" rows="2" [placeholder]="'priorityEdit.reasonHint' | t"></textarea>
+            </label>
+            @if (prioConflict(); as c) {
+              @let w = who(c.latest);
+              <div class="conflict" role="alert">
+                <p>{{ w.key | t: w.params }}</p>
+                @if (c.blocked) {
+                  <p>{{ 'conflict.statusChanged' | t: { status: i18n.t('status.' + c.latest.status) } }}</p>
+                } @else {
+                  <p>{{ 'conflict.retry' | t }}</p>
+                }
+              </div>
+            }
+            @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
+            <div class="row">
+              <button type="button" class="link" (click)="prioPanel.set(false)">{{ 'workflow.cancel' | t }}</button>
+              <button type="button" class="primary"
+                [disabled]="busy() || !prioChoice() || !prioReason.trim() || !!prioConflict()?.blocked"
+                (click)="confirmPriority()">{{ 'workflow.confirm' | t }}</button>
+            </div>
+          </section>
+        }
+      @if (actionConflict(); as c) {
+        @let w = who(c);
+        <p class="error" role="alert">{{ w.key | t: w.params }} {{ 'conflict.again' | t }}</p>
+      }
+      @if (i.statusReason && (i.status === 'on_hold' || i.status === 'rejected')) {
+        <p class="reason">{{ i.statusReason }}</p>
+      }
+      @if (i.status === 'on_hold' && waitingFor().length) {
+        <div class="reason waiting">
+          <span>{{ 'links.groups.waitsFor_out' | t }}：</span>
+          @for (r of waitingFor(); track r.id) {
+            @let li = linkedIssue(r);
+            @if (li) {
+              <a [routerLink]="['/p', r.pid, 'i', r.iid]">#{{ li.number }} {{ li.title }}（{{ 'status.' + li.status | t }}）</a>
+            } @else if (li === null) {
+              <span>{{ 'links.unreadable' | t }}</span>
+            }
+          }
+        </div>
+      }
+      @if (workaroundOn()) {
+        <div class="wa-box" role="status">
+          <p class="wa-title">{{ 'workaround.label' | t }}</p>
+          <p class="pre">{{ i.workaround }}</p>
+          @if (canEditWorkaround()) {
+            <div class="wa-actions">
+              <button type="button" class="link" [disabled]="busy()" (click)="openWorkaround()">
+                {{ 'workaround.edit' | t }}</button>
+              <button type="button" class="link wa-end" [disabled]="busy()" (click)="endWorkaround()">
+                {{ 'workaround.end' | t }}</button>
+            </div>
+          }
+          @if (waEndError(); as k) { <p class="error">{{ k | t }}</p> }
+        </div>
+      }
+      @if (i.status === 'deleted') {
+        <div class="trash" role="status">
+          <p><strong>{{ 'delete.inTrash' | t }}</strong></p>
+          <p>{{ 'delete.by' | t: { name: memberName(i.deletedBy ?? ''), when: i.deletedAt ? fmt(i.deletedAt) : '' } }}</p>
+          @if (i.deletedReason) { <p class="pre">{{ i.deletedReason }}</p> }
+          @if (canRestore()) {
+            <button type="button" class="primary" [disabled]="busy()" (click)="restore()">{{ 'delete.restore' | t }}</button>
+          }
+          @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
+        </div>
+      }
+      @if (i.status === 'merged' && i.mergedInto; as m) {
+        <div class="merged" role="status">
+          <p><strong>{{ 'merge.banner' | t }}
+            <a [routerLink]="['/p', pid, 'i', m.iid]">#{{ m.number }}</a></strong></p>
+          @if (i.statusReason) { <p class="pre">{{ i.statusReason }}</p> }
+        </div>
+      }
+
+      <div class="layout">
+        <!-- 右（スマホでは上）：項目 -->
+        <aside class="side" [attr.aria-label]="'detailMenu.props' | t">
+          <div class="side-head">
+            <span>{{ 'detailMenu.props' | t }}</span>
+            @if (!canEdit()) { <app-help-tip kind="denied" align="right" [keys]="['edit.denied']" /> }
+          </div>
+          @if (!editField() && fieldConflict()) { <p class="field-conflict" role="alert">{{ conflictText() }}</p> }
+          @if (fieldError()) { <p class="error" role="alert">{{ fieldError() | t }}</p> }
+          <dl class="props">
+            <dt>{{ 'issue.assignee' | t }}</dt>
+            <dd>
+              @if (editField() === 'assignee') {
+                <div class="inline-edit">
+                  <app-member-select selectId="e-assignee" [members]="assignable()" [value]="draftAssignee()"
+                    (picked)="draftAssignee.set($event)" />
+                  @if (assigneeChanged()) {
+                    <textarea id="e-reason" [(ngModel)]="draftReason" rows="2" [attr.aria-label]="'edit.reason' | t"
+                      [placeholder]="'edit.reasonHint' | t"></textarea>
+                    @if (reasonNeeded() && !draftReason.trim()) { <p class="warn" role="alert">{{ 'field.needReason' | t }}</p> }
+                  }
+                  @if (fieldConflict()) { <p class="field-conflict" role="alert">{{ conflictText() }}</p> }
+                  <div class="row">
+                    <button type="button" class="link" (click)="closeField()">{{ 'workflow.cancel' | t }}</button>
+                    <button type="button" class="primary" [disabled]="busy() || (assigneeChanged() && !draftReason.trim())"
+                      (click)="saveField()">{{ 'edit.save' | t }}</button>
+                  </div>
+                </div>
+              } @else if (canEdit()) {
+                <button type="button" class="text-btn" (click)="openField('assignee')">{{ memberName(i.assigneeId) }}</button>
+              } @else {
+                {{ memberName(i.assigneeId) }}
+              }
+            </dd>
+            <dt>{{ 'detail.reporter' | t }}</dt><dd>{{ memberName(i.reporterId) }}</dd>
+            <dt>{{ 'issue.importance' | t }}</dt>
+            <dd>
+              @if (canEdit()) {
+                <div class="imp" role="radiogroup" id="f-importance" tabindex="-1" [attr.aria-label]="'issue.importance' | t">
+                  @for (l of levels; track l) {
+                    <button type="button" role="radio" [attr.data-l]="l" [attr.aria-checked]="i.importance === l"
+                      [class.on]="i.importance === l" [disabled]="busy()" (click)="saveNow({ importance: l })">
+                      <span class="dot" aria-hidden="true"></span><span class="t">{{ 'importance.' + l | t }}</span>
+                    </button>
+                  }
+                </div>
+              } @else {
+                {{ 'importance.' + i.importance | t }}
+              }
+            </dd>
+            <dt>{{ 'issue.due' | t }}</dt>
+            <dd>
+              @if (editField() === 'due') {
+                <div class="inline-edit">
+                  <div class="chips small">
+                    @for (p of duePresets; track p.key) {
+                      <button type="button" (click)="pickDuePreset(p.days)">{{ 'duePresets.' + p.key | t }}</button>
+                    }
+                  </div>
+                  <input id="e-due" type="datetime-local" [ngModel]="draftDueInput" (ngModelChange)="onDueInput($event)" />
+                  @if (draftDue(); as d) { <p class="help">{{ fmtDate(d) }}（{{ tz() }}）</p> }
+                  @if (duePast()) { <p class="warn" role="alert">{{ 'dueDialog.pastWarning' | t }}</p> }
+                  @if (dueChanged()) {
+                    <textarea id="e-reason" [(ngModel)]="draftReason" rows="2" [attr.aria-label]="'edit.reason' | t"
+                      [placeholder]="'edit.reasonHint' | t"></textarea>
+                    @if (reasonNeeded() && !draftReason.trim()) { <p class="warn" role="alert">{{ 'field.needReason' | t }}</p> }
+                  }
+                  @if (fieldConflict()) { <p class="field-conflict" role="alert">{{ conflictText() }}</p> }
+                  <div class="row">
+                    <button type="button" class="link" (click)="closeField()">{{ 'workflow.cancel' | t }}</button>
+                    <button type="button" class="primary" [class.danger]="duePast()"
+                      [disabled]="busy() || !draftDue() || (dueChanged() && !draftReason.trim())" (click)="saveField()">
+                      {{ (duePast() ? 'dueDialog.confirmPast' : 'edit.save') | t }}</button>
+                  </div>
+                </div>
+              } @else if (canEdit()) {
+                <button type="button" class="text-btn" (click)="openField('due')">{{ dueLabel() }}</button>
+              } @else {
+                {{ dueLabel() }}
+              }
+            </dd>
+            <dt>{{ 'issue.labelIds' | t }}</dt>
+            <dd>
+              @if (editField() === 'labels') {
+                <div class="inline-edit">
+                  <app-label-picker [labels]="projectLabels()" [(selected)]="draftLabels" />
+                  @if (fieldConflict()) { <p class="field-conflict" role="alert">{{ conflictText() }}</p> }
+                  <div class="row">
+                    <button type="button" class="link" (click)="closeField()">{{ 'workflow.cancel' | t }}</button>
+                    <button type="button" class="primary" [disabled]="busy()" (click)="saveField()">{{ 'edit.save' | t }}</button>
+                  </div>
+                </div>
+              } @else if (canEdit()) {
+                <button type="button" class="text-btn label-row" [attr.aria-label]="'field.editLabels' | t"
+                  (click)="openField('labels')">
+                  @for (l of issueLabels(); track l.id) { <app-label-chip [label]="l" /> } @empty { <span class="muted">—</span> }
+                </button>
+              } @else {
+                <div class="label-row">
+                  @for (l of issueLabels(); track l.id) { <app-label-chip [label]="l" /> } @empty { <span class="muted">—</span> }
+                </div>
+              }
+            </dd>
+            <dt>{{ 'issue.occurredOn' | t }}</dt>
+            <dd>
+              @if (editField() === 'occurredOn') {
+                <div class="inline-edit">
+                  <input id="e-occurredOn" type="date" [(ngModel)]="draftDate" [max]="todayKey()" />
+                  @if (fieldConflict()) { <p class="field-conflict" role="alert">{{ conflictText() }}</p> }
+                  <div class="row">
+                    <button type="button" class="link" (click)="closeField()">{{ 'workflow.cancel' | t }}</button>
+                    <button type="button" class="primary" [disabled]="busy()" (click)="saveField()">{{ 'edit.save' | t }}</button>
+                  </div>
+                </div>
+              } @else if (canEdit()) {
+                <button type="button" class="text-btn" (click)="openField('occurredOn')">@if (i.occurredOn) {{{ dayLabel(i.occurredOn) }}} @else {<span class="muted">—</span>}</button>
+              } @else {
+                @if (i.occurredOn) {{{ dayLabel(i.occurredOn) }}} @else {<span class="muted">—</span>}
+              }
+            </dd>
+            <dt>{{ 'issue.impact' | t }}</dt>
+            <dd>
+              @if (editField() === 'impact') {
+                <div class="inline-edit">
+                  <input id="e-impact" [(ngModel)]="draftText" maxlength="200" (keydown)="onLineKey($event)"
+                    [placeholder]="'issueNew.impactPlaceholder' | t" />
+                  @if (fieldConflict()) { <p class="field-conflict" role="alert">{{ conflictText() }}</p> }
+                  <div class="row">
+                    <button type="button" class="link" (click)="closeField()">{{ 'workflow.cancel' | t }}</button>
+                    <button type="button" class="primary" [disabled]="busy()" (click)="saveField()">{{ 'edit.save' | t }}</button>
+                  </div>
+                </div>
+              } @else if (canEdit()) {
+                <button type="button" class="text-btn" (click)="openField('impact')">@if (i.impact) {<span class="pre">{{ i.impact }}</span>} @else {<span class="muted">—</span>}</button>
+              } @else {
+                @if (i.impact) {<span class="pre">{{ i.impact }}</span>} @else {<span class="muted">—</span>}
+              }
+            </dd>
+          </dl>
+        </aside>
+
+        <!-- 左（スマホでは下）：本文・関連・操作・経緯 -->
+        <div class="body">
+          <dl class="fields">
+            @if (i.description.trim() || canEdit()) {
+              <dt>{{ 'issue.description' | t }}</dt>
+              <dd>
+                @if (editField() === 'description') {
+                  <div class="inline-edit">
+                    <textarea id="e-description" [(ngModel)]="draftText" rows="8"></textarea>
+                    @if (fieldConflict()) { <p class="field-conflict" role="alert">{{ conflictText() }}</p> }
+                    <div class="row">
+                      <button type="button" class="link" (click)="closeField()">{{ 'workflow.cancel' | t }}</button>
+                      <button type="button" class="primary" [disabled]="busy()" (click)="saveField()">{{ 'edit.save' | t }}</button>
+                    </div>
+                  </div>
+                } @else if (canEdit()) {
+                  <button type="button" class="text-btn" (click)="openField('description')">@if (i.description.trim()) {<span class="pre">{{ i.description }}</span>} @else {<span class="muted">{{ 'field.empty' | t }}</span>}</button>
+                } @else {
+                  <span class="pre">{{ i.description }}</span>
+                }
+              </dd>
+            }
+            <dt>{{ 'issue.doneCriteria' | t }}</dt>
+            <dd>
+              @if (editField() === 'doneCriteria') {
+                <div class="inline-edit">
+                  <textarea id="e-doneCriteria" [(ngModel)]="draftText" rows="3"></textarea>
+                  @if (fieldConflict()) { <p class="field-conflict" role="alert">{{ conflictText() }}</p> }
+                  <div class="row">
+                    <button type="button" class="link" (click)="closeField()">{{ 'workflow.cancel' | t }}</button>
+                    <button type="button" class="primary" [disabled]="busy() || !draftText.trim()" (click)="saveField()">
+                      {{ 'edit.save' | t }}</button>
+                  </div>
+                </div>
+              } @else if (canEdit()) {
+                <button type="button" class="text-btn" (click)="openField('doneCriteria')"><span class="pre">{{ i.doneCriteria }}</span></button>
+              } @else {
+                <span class="pre">{{ i.doneCriteria }}</span>
+              }
+            </dd>
+            @if (i.cause) {
+              <dt>{{ 'workflow.cause' | t }}</dt><dd class="pre">{{ i.cause }}</dd>
+            }
+            @if (i.countermeasure) {
+              <dt>{{ 'workflow.countermeasure' | t }}</dt><dd class="pre">{{ i.countermeasure }}</dd>
+            }
+            @if (i.causeCategory) {
+              <dt>{{ 'workflow.causeCategory' | t }}</dt><dd>{{ 'causeCategories.' + i.causeCategory | t }}</dd>
+            }
+            @if (i.effect) {
+              <dt>{{ 'workflow.effect' | t }}</dt><dd>{{ 'workflow.effectOpts.' + i.effect | t }}</dd>
+              @if (i.learning) { <dt>{{ 'workflow.learning' | t }}</dt><dd class="pre">{{ i.learning }}</dd> }
+            }
+          </dl>
+
+          @if (preventions().length || showRecommend()) {
+            <section class="prevention">
+              <h2>{{ 'prevention.title' | t }} <app-help-tip [keys]="['prevention.help']" /></h2>
+              @for (p of preventions(); track p.id) {
+                <a class="prev-row" [routerLink]="['/p', pid, 'i', p.id]">
+                  <span class="prev-title">#{{ p.number }} {{ p.title }}</span>
+                  <span class="prev-st">{{ 'status.' + p.status | t }}</span>
+                </a>
+              }
+              @if (showRecommend()) {
+                <p class="recommend">{{ 'prevention.recommend' | t }}
+                  @if (canCreate()) {
+                    <a [routerLink]="['/p', pid, 'new']" [queryParams]="{ from: i.id }">{{ 'prevention.create' | t }}</a>
+                  }
+                </p>
+              }
+            </section>
+          }
+
+          @if (relations().length || canLink()) {
+            <section class="links">
+              <h2>{{ 'links.title' | t }} <app-help-tip [keys]="['links.help']" /></h2>
+              @for (g of linkGroups(); track g.key) {
+                <p class="link-group">{{ 'links.groups.' + g.key | t }}</p>
+                @for (r of g.rels; track r.id) {
+                  @let li = linkedIssue(r);
+                  <div class="prev-row">
+                    @if (li) {
+                      <a class="prev-title" [routerLink]="['/p', r.pid, 'i', r.iid]">
+                        @if (r.pid !== pid && projectNames()[r.pid]) {
+                          <span class="link-proj">{{ projectNames()[r.pid] }}</span>
+                        }
+                        #{{ li.number }} {{ li.title }}</a>
+                      <span class="prev-st">{{ 'status.' + li.status | t }}</span>
+                    } @else if (li === null) {
+                      <span class="prev-title muted">{{ 'links.unreadable' | t }}</span>
+                    } @else {
+                      <span class="prev-title muted">{{ 'common.loading' | t }}</span>
+                    }
+                    @if (canUnlink(r)) {
+                      <button type="button" class="icon" [attr.aria-label]="'links.remove' | t" [title]="'links.remove' | t"
+                        [disabled]="busy()" (click)="unlink(r)">✕</button>
+                    }
+                  </div>
+                }
+              }
+              @if (linkError()) { <p class="error" role="alert">{{ linkError() | t }}</p> }
+              @if (canLink()) {
+                <button type="button" class="add-link" (click)="linkOpen.set(true)">{{ 'links.add' | t }}</button>
+              }
+            </section>
+          }
+          @if (linkOpen()) {
+            <app-link-dialog [pid]="pid" [iid]="iid" [number]="i.number" [relations]="relations()"
+              (done)="linkOpen.set(false)" (cancel)="linkOpen.set(false)" />
+          }
+
+          @if (i.status !== 'deleted') {
+            <section class="tools">
+              @if (showCauseButton()) {
+                <button type="button" [disabled]="!canEditCause()" (click)="openCause()">{{ 'causeEdit.open' | t }}</button>
+              }
+              @if (isActive(i) && !workaroundOn()) {
+                <button type="button" [disabled]="!canEditWorkaround()" (click)="openWorkaround()">
+                  {{ 'workaround.open' | t }}</button>
+              }
+              @if (toolDenied().length) { <app-help-tip kind="denied" [keys]="toolDenied()" /> }
+            </section>
+
+            @if (causePanel()) {
+              <section class="panel">
+                <h2>{{ 'causeEdit.title' | t }}</h2>
+                <p class="help">{{ 'causeEdit.help' | t }}</p>
+                <label class="field">{{ 'workflow.cause' | t }}
+                  <textarea [(ngModel)]="causeText" rows="3" maxlength="2000"></textarea>
+                </label>
+                <label class="field">{{ 'workflow.countermeasure' | t }}
+                  <textarea [(ngModel)]="counterText" rows="3" maxlength="2000"></textarea>
+                </label>
+                <fieldset>
+                  <legend>{{ 'workflow.causeCategory' | t }}</legend>
+                  <div class="chips">
+                    @for (c of causeCategories; track c) {
+                      <button type="button" [class.on]="causeCat() === c" [attr.aria-pressed]="causeCat() === c"
+                        (click)="causeCat.set(causeCat() === c ? null : c)">{{ 'causeCategories.' + c | t }}</button>
+                    }
+                  </div>
+                </fieldset>
+                @if (causeConflict(); as c) {
+                  @let w = who(c.latest);
+                  <div class="conflict" role="alert">
+                    <p>{{ w.key | t: w.params }}</p>
+                    @if (c.blocked) {
+                      <p>{{ 'conflict.statusChanged' | t: { status: i18n.t('status.' + c.latest.status) } }}</p>
+                    } @else {
+                      <p>{{ 'conflict.retry' | t }}</p>
+                    }
+                  </div>
+                }
+                @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
+                <div class="row">
+                  <button type="button" class="link" (click)="causePanel.set(false)">{{ 'workflow.cancel' | t }}</button>
+                  <button type="button" class="primary" [disabled]="busy() || !!causeConflict()?.blocked"
+                    (click)="confirmCause()">{{ 'edit.save' | t }}</button>
+                </div>
+              </section>
+            }
+
+            @if (waPanel()) {
+              <section class="panel">
+                <h2>{{ 'workaround.title' | t }}</h2>
+                <p class="help">{{ 'workaround.help' | t }}</p>
+                <textarea [(ngModel)]="waText" rows="3" maxlength="2000" [placeholder]="'workaround.placeholder' | t"></textarea>
+                @if (waConflict(); as c) {
+                  @let w = who(c.latest);
+                  <div class="conflict" role="alert">
+                    <p>{{ w.key | t: w.params }}</p>
+                    @if (c.blocked) {
+                      <p>{{ 'conflict.statusChanged' | t: { status: i18n.t('status.' + c.latest.status) } }}</p>
+                    } @else {
+                      <p>{{ 'conflict.retry' | t }}</p>
+                    }
+                  </div>
+                }
+                @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
+                <div class="row">
+                  <button type="button" class="link" (click)="waPanel.set(false)">{{ 'workflow.cancel' | t }}</button>
+                  <button type="button" class="primary" [disabled]="busy() || !!waConflict()?.blocked"
+                    (click)="confirmWorkaround()">{{ 'edit.save' | t }}</button>
+                </div>
+              </section>
+            }
+            @if (waSaved()) {
+              <div class="wa-saved" role="status">
+                <p>{{ 'workaround.saved' | t }}</p>
+                <div class="row">
+                  <button type="button" class="link" (click)="waSaved.set(false)">{{ 'projects.dismiss' | t }}</button>
+                  @if (canEdit()) {
+                    <button type="button" class="primary" (click)="waSaved.set(false); reviewImportance()">{{ 'workaround.review' | t }}</button>
+                  }
+                </div>
+              </div>
+            }
+
+            @if (delPanel()) {
+              <section class="panel">
+                <h2>{{ 'delete.title' | t }}</h2>
+                <p class="help">{{ 'delete.note' | t }}</p>
+                <label class="field">{{ 'delete.reason' | t }}
+                  <textarea [(ngModel)]="delReason" rows="2" [placeholder]="'delete.reasonHint' | t"></textarea>
+                </label>
+                @if (delConflict(); as c) {
+                  @let w = who(c);
+                  <div class="conflict" role="alert">
+                    <p>{{ w.key | t: w.params }}</p>
+                    <p>{{ 'conflict.retry' | t }}</p>
+                  </div>
+                }
+                @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
+                <div class="row">
+                  <button type="button" class="link" (click)="delPanel.set(false)">{{ 'workflow.cancel' | t }}</button>
+                  <button type="button" class="primary danger" [disabled]="busy() || !delReason.trim()"
+                    (click)="confirmDelete()">{{ 'delete.confirm' | t }}</button>
+                </div>
+              </section>
+            }
+
+            @if (mergeOpen()) {
+              <app-merge-dialog [pid]="pid" [issue]="base()!" (done)="mergeOpen.set(false)" (cancel)="mergeOpen.set(false)" />
+            }
+
+            @if (active(); as t) {
+              <app-status-dialog [issue]="base()!" [transition]="t" [pid]="pid" [members]="members()"
+                (done)="onStatusDone()" (cancel)="active.set(null)" />
+            }
+          } <!-- ここまで、削除フォルダにない課題だけ -->
+
+          <section>
+            <div class="tl-head">
+              <h2>{{ 'detail.timeline' | t }}</h2>
+              <div class="seg" role="radiogroup" [attr.aria-label]="'detail.timeline' | t">
+                <button type="button" role="radio" [attr.aria-checked]="tlFilter() === 'all'" [class.on]="tlFilter() === 'all'"
+                  (click)="tlFilter.set('all')">{{ 'detail.filterAll' | t }}</button>
+                <button type="button" role="radio" [attr.aria-checked]="tlFilter() === 'comments'"
+                  [class.on]="tlFilter() === 'comments'" (click)="tlFilter.set('comments')">{{ 'detail.filterComments' | t }}</button>
+              </div>
+            </div>
+            <ul class="timeline">
+              @for (item of timelineView(); track item.id) {
+                @if (item.kind === 'fold') {
+                  <li class="fold">
+                    <button type="button" (click)="tlExpanded.set(true)">{{ 'detail.showHidden' | t: { n: '' + item.n } }}</button>
+                  </li>
+                } @else if (item.kind === 'unfold') {
+                  <li class="fold">
+                    <button type="button" (click)="tlExpanded.set(false)">{{ 'detail.hideHidden' | t }}</button>
+                  </li>
+                } @else {
+                <li [class.comment]="item.kind === 'comment'">
+                  <div class="meta">
+                    {{ item.kind === 'comment' ? memberName(item.by) : eventText(item) }} · {{ when(item) }}
+                    @if (item.editedAt && !item.deleted) {
+                      <span class="edited" [title]="fmt(item.editedAt)">（{{ 'comment.edited' | t }}）</span>
+                    }
+                    @if (item.kind === 'comment' && !item.deleted && editingId() !== item.id && !projectArchived()
+                      && i.status !== 'deleted') {
+                      <span class="c-actions">
+                        @if (item.by === myUid) {
+                          <button type="button" class="icon" [attr.aria-label]="'comment.edit' | t" [title]="'comment.edit' | t"
+                            (click)="startEdit(item)">✎</button>
+                        }
+                        @if (item.by === myUid || role() === 'admin') {
+                          <button type="button" class="icon" [attr.aria-label]="'comment.delete' | t" [title]="'comment.delete' | t"
+                            [disabled]="busy()" (click)="askDelete(item)">🗑</button>
+                        }
+                      </span>
+                    }
+                  </div>
+                  @if (item.deleted) {
+                    <p class="deleted">{{ 'comment.deletedBy' | t: { name: memberName(item.deletedBy!) } }}</p>
+                  } @else if (editingId() === item.id) {
+                    <textarea class="edit-box" [(ngModel)]="editBody" rows="3"></textarea>
+                    <div class="row">
+                      <button type="button" class="link" (click)="editingId.set(null)">{{ 'workflow.cancel' | t }}</button>
+                      <button type="button" class="primary" [disabled]="busy() || !editBody.trim()" (click)="saveEdit(item)">
+                        {{ 'comment.save' | t }}</button>
+                    </div>
+                  } @else if (item.body) {
+                    <p class="pre">{{ item.body }}</p>
+                  }
+                  @if (item.changes?.dueAt; as c) {
+                    <p class="change">{{ 'issue.due' | t }}：{{ fmt(c.from) }} → {{ fmt(c.to) }}</p>
+                  }
+                  @if (item.changes?.assigneeId; as c) {
+                    <p class="change">{{ 'issue.assignee' | t }}：{{ memberName(c.from) }} → {{ memberName(c.to) }}</p>
+                  }
+                  @if (item.changes?.doneCriteria; as c) {
+                    <p class="change pre">{{ 'issue.doneCriteria' | t }}：{{ c.from }} → {{ c.to }}</p>
+                  }
+                  @if (item.reason) { <p class="pre reason">{{ item.reason }}</p> }
+                </li>
+                }
+              }
+            </ul>
+            @if (i.status !== 'deleted') {
+              <div class="comment-box">
+                <textarea [(ngModel)]="comment" rows="3" [placeholder]="'detail.commentPlaceholder' | t"></textarea>
+                <button type="button" class="primary" [disabled]="busy() || !comment.trim()" (click)="sendComment()">
+                  {{ 'detail.send' | t }}</button>
+              </div>
+            }
+          </section>
+        </div>
+      </div>
+    }
+  </main>
+  @if (flash(); as k) { <div class="toast" role="status">{{ k | t }}</div> }
