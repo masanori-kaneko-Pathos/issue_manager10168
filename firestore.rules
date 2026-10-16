@@ -452,6 +452,48 @@ service cloud.firestore {
           // 文書そのものは、ふだんは誰も消せない（跡を残すため）。課題ごと完全削除するときだけ消せる
           allow delete: if purgeChildAllowed(pid, iid);
         }
+        // 関連課題：両側に1枚ずつ。相手側の写し（in）は、対になる out と同じ保存でしか作れない・消せない
+        match /links/{lid} {
+          function linkPath(p, i, l) {
+            return /databases/$(database)/documents/projects/$(p)/issues/$(i)/links/$(l);
+          }
+          // 相手側に置かれる、対の文書の名前（相手から見ると、こちらが「相手」）
+          function pairId(kind, dir) { return kind + '_' + dir + '_' + pid + '_' + iid; }
+          function validLink() {
+            let d = request.resource.data;
+            return d.keys().hasOnly(['kind', 'dir', 'pid', 'iid', 'by', 'at'])
+              && d.kind in ['relates', 'recurrence', 'duplicate', 'waitsFor']
+              && d.dir in ['out', 'in']
+              && d.pid is string && d.iid is string
+              && !(d.pid == pid && d.iid == iid)
+              && lid == d.kind + '_' + d.dir + '_' + d.pid + '_' + d.iid
+              && d.by == request.auth.uid
+              && d.at == request.time
+              // 同じ保存で生まれる課題も相手にできるように、「書いたあと」で確かめる
+              && existsAfter(/databases/$(database)/documents/projects/$(d.pid)/issues/$(d.iid));
+          }
+          allow read: if isMember(pid);
+          allow create: if validLink() && (
+            // こちらから付ける：この課題のプロジェクトに書ける人。相手側の写しも同じ保存で作ること
+            (request.resource.data.dir == 'out' && canWrite(pid)
+              && existsAfter(linkPath(request.resource.data.pid, request.resource.data.iid,
+                   pairId(request.resource.data.kind, 'in'))))
+            // 相手側の写し：このプロジェクトのメンバーで、対の out が同じ保存でできること
+            || (request.resource.data.dir == 'in' && isMember(pid)
+              && existsAfter(linkPath(request.resource.data.pid, request.resource.data.iid,
+                   pairId(request.resource.data.kind, 'out'))))
+          );
+          allow delete: if
+            // こちらから外す：書ける人。相手側の写しも同じ保存で消すこと
+            (resource.data.dir == 'out' && canWrite(pid)
+              && !existsAfter(linkPath(resource.data.pid, resource.data.iid, pairId(resource.data.kind, 'in'))))
+            // 相手側の写し：対の out が消えるなら（相手のプロジェクトを抜けたあとでも外せる）
+            || (resource.data.dir == 'in' && signedIn()
+              && !existsAfter(linkPath(resource.data.pid, resource.data.iid, pairId(resource.data.kind, 'out'))))
+            // 完全削除のとき
+            || purgeChildAllowed(pid, iid);
+        }
+
       }
     }
 

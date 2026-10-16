@@ -39,6 +39,7 @@ function writeLastProject(pid: string) {
     <main>
       <h1>{{ 'issueNew.title' | t }}</h1>
       @if (fromNumber(); as n) { <p class="notice">{{ 'prevention.creating' | t: { n: '' + n } }}</p> }
+      @if (recurNumber(); as n) { <p class="notice">{{ 'links.recurCreating' | t: { n: '' + n } }}</p> }
       <form (ngSubmit)="save()">
               @if (!loadingProjects() && projects().length === 0) {
           <p class="notice">
@@ -180,9 +181,15 @@ export class IssueNew implements OnInit {
   /** 再発防止課題として作るときの、元の課題の id（詳細画面の「再発防止課題を作る」から来たとき） */
   private readonly fromIid = this.route.snapshot.queryParamMap.get('from');
   private relatedFrom: IssueLink | null = null;
+  /** 再発として登録するときの、元の課題の id（詳細画面の「再発として新しく登録」から来たとき） */
+  private readonly recurIid = this.route.snapshot.queryParamMap.get('recur');
+  private recurrenceOf: { iid: string; number: number } | null = null;
+
+  recurNumber = signal<number | null>(null);
+
   fromNumber = signal<number | null>(null);
   backLink = computed(() => (this.memoId ? ['/inbox']
-    : this.fromIid && this.fromPid ? ['/p', this.fromPid, 'i', this.fromIid]
+    : (this.fromIid || this.recurIid) && this.fromPid ? ['/p', this.fromPid, 'i', (this.fromIid || this.recurIid)!]
     : this.fromPid ? ['/p', this.fromPid] : ['/']));
   readonly myUid = auth.currentUser!.uid;
   readonly types = ISSUE_TYPES;
@@ -257,6 +264,7 @@ export class IssueNew implements OnInit {
       }
       // 再発防止課題として作るときは、必須の欄を全部埋めておく
       if (this.fromIid && this.fromPid) await this.fillPrevention(this.fromPid, this.fromIid);
+      if (this.recurIid && this.fromPid) await this.fillRecurrence(this.fromPid, this.recurIid);
     } catch (e) {
       console.error(e);
     } finally {
@@ -268,8 +276,11 @@ export class IssueNew implements OnInit {
   async selectProject(pid: string) {
     this.pid.set(pid);
     if (pid !== this.fromPid) {
+      // 元の課題と別のプロジェクトにしたら、ひも付けはやめる（再発防止・再発は同じプロジェクトの中だけ）
       this.relatedFrom = null;
       this.fromNumber.set(null);
+      this.recurrenceOf = null;
+      this.recurNumber.set(null);
     }
     // ラベルはプロジェクトごとに違うので、切り替えたら選び直してもらう
     this.labelIds.set([]);
@@ -297,6 +308,24 @@ export class IssueNew implements OnInit {
     if (this.members().some((m) => m.uid === src.assigneeId)) this.assigneeId.set(src.assigneeId);
     this.doneCriteria = this.i18n.t('prevention.doneCriteria');
     this.description = this.i18n.t('prevention.description', {
+      n: String(src.number), title: src.title, cause: src.cause ?? '', countermeasure: src.countermeasure ?? '',
+    });
+    this.showDetail.set(true);
+  }
+
+  /**
+   * 再発：題名・種別・重要度・内容を元の課題から入れる。担当者は自分（見つけた人が起票するため）。
+   * 期限は入れない（いつまでに直すかは、そのときの状況で人が決める）
+   */
+  private async fillRecurrence(pid: string, iid: string) {
+    const src = await this.issues.get(pid, iid);
+    if (!src || this.pid() !== pid) return;
+    this.recurrenceOf = { iid: src.id, number: src.number };
+    this.recurNumber.set(src.number);
+    this.title = this.i18n.t('links.recurTitle', { n: String(src.number), title: src.title }).slice(0, 200);
+    this.selectType(src.type); // 完了条件の初期文も、種別に合わせて入る
+    this.importance.set(src.importance);
+    this.description = this.i18n.t('links.recurDescription', {
       n: String(src.number), title: src.title, cause: src.cause ?? '', countermeasure: src.countermeasure ?? '',
     });
     this.showDetail.set(true);
@@ -348,6 +377,7 @@ export class IssueNew implements OnInit {
         occurredOn: this.occurredOn || null,
         impact: this.impact.trim(),
         relatedFrom: this.relatedFrom,
+        recurrenceOf: this.recurrenceOf,
       }, this.myUid, this.tz(), this.memoId ?? undefined);
       writeLastProject(pid);
       await this.router.navigate(['/p', pid]);

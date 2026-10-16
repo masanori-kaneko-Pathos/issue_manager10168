@@ -240,7 +240,11 @@ export const en: Dict = {
       status: '{{name}} changed "{{from}}" → "{{to}}"',
       edit: '{{name}} edited ({{fields}})',
       priority: '{{name}} changed priority "{{from}}" → "{{to}}"',
-      imported: 'Imported by {{name}}'
+      imported: 'Imported by {{name}}',
+      link: {
+        add: '{{name}} linked an issue ({{kind}}: {{target}})',
+        remove: '{{name}} removed a link ({{kind}}: {{target}})',
+      },
     },
   },
   edit: {
@@ -661,6 +665,37 @@ export const en: Dict = {
     titlePrefix: '[Prevention] #{{n}} {{title}}',
     doneCriteria: 'The process was changed and the same kind of problem no longer occurs',
     description: '[Original issue] #{{n}} {{title}}\n[Cause] {{cause}}\n[Countermeasure] {{countermeasure}}\n\n[Process or system to change]\n',
+  },
+
+  links: {
+    title: 'Related issues',
+    help: 'Links between issues. A link also appears on the other issue. For "waiting for", the assignee is notified when the issue being waited on is resolved.',
+    add: '+ Add related issue',
+    remove: 'Remove link',
+    unreadable: 'An issue you cannot view',
+    dialogTitle: 'Add related issue',
+    searchPlaceholder: 'Search by number or title (other projects too)',
+    already: 'Already linked',
+    recurCreate: '+ Register a recurrence',
+    recurCreating: 'Registering a recurrence of #{{n}}. Set a due date, then press "Create".',
+    recurTitle: '[Recurrence] #{{n}} {{title}}',
+    recurDescription: '[Original issue] #{{n}} {{title}}\n[Previous cause] {{cause}}\n[Previous countermeasure] {{countermeasure}}\n\n[What is happening now]\n',
+    kinds: { relates: 'Related', recurrence: 'Recurrence', duplicate: 'Duplicate', waitsFor: 'Waiting for' },
+    kindHelp: {
+      relates: 'An issue that is related.',
+      recurrence: 'This issue is the same problem as the selected one, happening again.',
+      duplicate: 'This issue has the same content as the selected one.',
+      waitsFor: 'This issue cannot move forward until the selected one is done.',
+    },
+    groups: {
+      waitsFor_out: 'Waiting for',
+      waitsFor_in: 'Blocking',
+      recurrence_out: 'Recurrence of',
+      recurrence_in: 'Recurred as',
+      duplicate_out: 'Duplicate of',
+      duplicate_in: 'Duplicated by',
+      relates: 'Related',
+    },
   },
 
   stale: {

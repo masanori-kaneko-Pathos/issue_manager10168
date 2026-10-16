@@ -238,6 +238,10 @@ export const ja = {
       edit: '{{name}} さんが編集（{{fields}}）',
       priority: '{{name}} さんが優先度を「{{from}}」→「{{to}}」に変更',
       imported: '{{name}} さんが取り込み',
+      link: {
+        add: '{{name}} さんが関連課題を追加（{{kind}}：{{target}}）',
+        remove: '{{name}} さんが関連課題を解除（{{kind}}：{{target}}）',
+      },
     },
   },
   edit: {
@@ -279,7 +283,7 @@ export const ja = {
     close: '閉じる',
     showAll: '一覧で{{n}}件すべて見る',
     searching: '「{{q}}」で検索中（クローズ・却下も含む）',
-    clearSearch: '検索をやめる',  
+    clearSearch: '検索をやめる',
   },
   search: {
     title: '検索',
@@ -661,6 +665,37 @@ export const ja = {
     titlePrefix: '【再発防止】#{{n}} {{title}}',
     doneCriteria: '仕組み・手順を変え、同じ種類の問題が起きないことを確認できた',
     description: '【元の課題】#{{n}} {{title}}\n【原因】{{cause}}\n【対策】{{countermeasure}}\n\n【変える仕組み・手順】\n',
+  },
+
+  links: {
+    title: '関連課題',
+    help: '課題どうしのつながりです。付けると、相手の課題にも表示されます。完了待ちは、待っている課題が解決済みになると、担当者にお知らせします。',
+    add: '＋ 関連課題を追加',
+    remove: '関連を外す',
+    unreadable: '閲覧できない課題',
+    dialogTitle: '関連課題を追加',
+    searchPlaceholder: '番号かタイトルで探す（ほかのプロジェクトも）',
+    already: '付けてあります',
+    recurCreate: '＋ 再発として新しく登録',
+    recurCreating: '#{{n}} の再発として登録します。期限を決めて、「登録する」を押してください。',
+    recurTitle: '【再発】#{{n}} {{title}}',
+    recurDescription: '【元の課題】#{{n}} {{title}}\n【前回の原因】{{cause}}\n【前回の対策】{{countermeasure}}\n\n【今回起きていること】\n',
+    kinds: { relates: '関連', recurrence: '再発', duplicate: '重複', waitsFor: '完了待ち' },
+    kindHelp: {
+      relates: '関係のある課題です。',
+      recurrence: 'この課題は、選んだ課題と同じ問題が、また起きたものです。',
+      duplicate: 'この課題は、選んだ課題と同じ内容です。',
+      waitsFor: 'この課題は、選んだ課題が終わるまで進められません。',
+    },
+    groups: {
+      waitsFor_out: '完了を待っている課題',
+      waitsFor_in: 'この課題の完了を待っている',
+      recurrence_out: '再発元',
+      recurrence_in: '再発した課題',
+      duplicate_out: '同じ内容の課題（こちらが重複）',
+      duplicate_in: '重複して登録された課題',
+      relates: '関連',
+    },
   },
 
   stale: {

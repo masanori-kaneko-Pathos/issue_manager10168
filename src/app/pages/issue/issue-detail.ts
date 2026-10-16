@@ -9,9 +9,10 @@ import { Clock } from '../../core/time/clock';
 import { ProjectService } from '../../core/project/project.service';
 import { ConflictError, EMPTY_STATUS_PAYLOAD, IssueService, conflictWho } from '../../core/issue/issue.service';
 import {
-  CAUSE_CATEGORIES, CauseCategory, DEFAULT_SETTINGS, Issue, Label, Level, Member, Project, Role, TimelineItem,
-  labelsOf,
+  CAUSE_CATEGORIES, CauseCategory, DEFAULT_SETTINGS, Issue, IssueRelation, Label, Level, Member, Project, Role,
+  TimelineItem, labelsOf,
 } from '../../core/models';
+import { LinkDialog } from './link-dialog';
 import { StatusDialog } from '../../shared/status-dialog';
 import { LabelChip } from '../../shared/label-chip';
 import { IssueEdit } from './issue-edit-dialog';
@@ -24,9 +25,17 @@ import { I18nService, TPipe } from '../../i18n/i18n';
 
 /** 経緯の「編集した欄」の項目名 → 翻訳キー（issue.〇〇）。名前が違うものだけ書く */
 const FIELD_LABEL_KEYS: Record<string, string> = { assigneeId: 'assignee', dueAt: 'due' };
+/** 関連課題の欄の並び（種類と向きの組。「関連」は向きを分けない） */
+const LINK_GROUPS = [
+  'waitsFor_out', 'waitsFor_in', 'recurrence_out', 'recurrence_in', 'duplicate_out', 'duplicate_in', 'relates',
+];
+function linkGroupOf(kind: string, dir: string) {
+  return kind === 'relates' ? 'relates' : `${kind}_${dir}`;
+}
+
 @Component({
   selector: 'app-issue-detail',
-  imports: [FormsModule, RouterLink, TPipe, IssueEdit, HelpTip, LabelChip, StatusDialog, PriorityMark],
+  imports: [FormsModule, RouterLink, TPipe, IssueEdit, HelpTip, LabelChip, StatusDialog, PriorityMark, LinkDialog],
   template: `
     <header class="bar">
       <button type="button" class="link" (click)="back()">{{ 'common.back' | t }}</button>
@@ -72,6 +81,19 @@ const FIELD_LABEL_KEYS: Record<string, string> = { assigneeId: 'assignee', dueAt
         </div>
         @if (i.statusReason && (i.status === 'on_hold' || i.status === 'rejected')) {
           <p class="reason">{{ i.statusReason }}</p>
+        }
+        @if (i.status === 'on_hold' && waitingFor().length) {
+          <div class="reason waiting">
+            <span>{{ 'links.groups.waitsFor_out' | t }}：</span>
+            @for (r of waitingFor(); track r.id) {
+              @let li = linkedIssue(r);
+              @if (li) {
+                <a [routerLink]="['/p', r.pid, 'i', r.iid]">#{{ li.number }} {{ li.title }}（{{ 'status.' + li.status | t }}）</a>
+              } @else if (li === null) {
+                <span>{{ 'links.unreadable' | t }}</span>
+              }
+            }
+          </div>
         }
         @if (i.status === 'deleted') {
           <div class="trash" role="status">
@@ -128,6 +150,7 @@ const FIELD_LABEL_KEYS: Record<string, string> = { assigneeId: 'assignee', dueAt
                 <span class="prev-st">{{ 'status.' + p.status | t }}</span>
               </a>
             }
+
             @if (i.status === 'resolved' || i.status === 'closed') {
               @if (i.effect === 'partial' || i.effect === 'no') {
                 <p class="recommend">{{ 'prevention.recommend' | t }}</p>
@@ -138,6 +161,48 @@ const FIELD_LABEL_KEYS: Record<string, string> = { assigneeId: 'assignee', dueAt
               }
             }
           </section>
+        }
+
+        @if (relations().length || canLink()) {
+          <section class="links">
+            <h2>{{ 'links.title' | t }} <app-help-tip [keys]="['links.help']" /></h2>
+            @for (g of linkGroups(); track g.key) {
+              <p class="link-group">{{ 'links.groups.' + g.key | t }}</p>
+              @for (r of g.rels; track r.id) {
+                @let li = linkedIssue(r);
+                <div class="prev-row">
+                  @if (li) {
+                    <a class="prev-title" [routerLink]="['/p', r.pid, 'i', r.iid]">
+                      @if (r.pid !== pid && projectNames()[r.pid]) {
+                        <span class="link-proj">{{ projectNames()[r.pid] }}</span>
+                      }
+                      #{{ li.number }} {{ li.title }}</a>
+                    <span class="prev-st">{{ 'status.' + li.status | t }}</span>
+                  } @else if (li === null) {
+                    <span class="prev-title muted">{{ 'links.unreadable' | t }}</span>
+                  } @else {
+                    <span class="prev-title muted">{{ 'common.loading' | t }}</span>
+                  }
+                  @if (canUnlink(r)) {
+                    <button type="button" class="icon" [attr.aria-label]="'links.remove' | t" [title]="'links.remove' | t"
+                      [disabled]="busy()" (click)="unlink(r)">✕</button>
+                  }
+                </div>
+              }
+            }
+            @if (linkError()) { <p class="error" role="alert">{{ linkError() | t }}</p> }
+            @if (canLink()) {
+              <button type="button" class="add-link" (click)="linkOpen.set(true)">{{ 'links.add' | t }}</button>
+            }
+            @if (canLink() && (i.status === 'resolved' || i.status === 'closed')) {
+              <a class="add-link" [routerLink]="['/p', pid, 'new']" [queryParams]="{ recur: i.id }">
+                {{ 'links.recurCreate' | t }}</a>
+            }
+          </section>
+        }
+        @if (linkOpen()) {
+          <app-link-dialog [pid]="pid" [iid]="iid" [number]="i.number" [relations]="relations()"
+            (done)="linkOpen.set(false)" (cancel)="linkOpen.set(false)" />
         }
 
         @if (i.status !== 'deleted') {
@@ -430,6 +495,15 @@ const FIELD_LABEL_KEYS: Record<string, string> = { assigneeId: 'assignee', dueAt
       background: var(--warning-bg); color: var(--warning-text); }
     .prev-btn { align-self: flex-start; display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px;
       border: 1px solid var(--primary); border-radius: 8px; color: var(--primary); text-decoration: none; font-size: 14px; }
+    .links { margin: 8px 0 16px; display: flex; flex-direction: column; gap: 4px; }
+    .links h2 { margin: 8px 0 0; }
+    .link-group { margin: 8px 0 0; font-size: 12px; color: var(--text-muted); }
+    .link-proj { font-size: 11px; color: var(--text-muted); margin-right: 6px; }
+    .muted { color: var(--text-subtle); }
+    .add-link { align-self: flex-start; min-height: 44px; padding: 0 16px; margin-top: 4px; border: 1px solid var(--primary);
+      border-radius: 8px; color: var(--primary); background: var(--surface); font-size: 14px; cursor: pointer; }
+    .waiting { display: flex; flex-wrap: wrap; gap: 4px 12px; white-space: normal; }
+    a.add-link { display: inline-flex; align-items: center; text-decoration: none; }
   `,
 })
 export class IssueDetail implements OnInit {
@@ -494,6 +568,7 @@ export class IssueDetail implements OnInit {
     // 詳細画面を離れたら、見張りをやめる
     inject(DestroyRef).onDestroy(() => {
       this.stops.forEach((stop) => stop());
+      this.linkStops.forEach((stop) => stop());
     });
   }
   busy = signal(false);
@@ -510,6 +585,22 @@ export class IssueDetail implements OnInit {
   projectArchived = signal(false);
   /** この課題を元に作られた再発防止課題 */
   preventions = signal<Issue[]>([]);
+  // ---- 関連課題 ----
+  relations = signal<IssueRelation[]>([]);
+  /** 相手の課題（キーは「pid/iid」。null＝読めない・見つからない。まだ届いていなければキーがない） */
+  private linked = signal<Record<string, Issue | null>>({});
+  private linkStops = new Map<string, Unsubscribe>();
+  /** ほかのプロジェクトの名前（読めたものだけ） */
+  projectNames = signal<Record<string, string>>({});
+  linkOpen = signal(false);
+  linkError = signal('');
+  /** 付けられるのは、管理者とメンバー（アーカイブ中・削除フォルダの中は不可） */
+  canLink = computed(() => this.canCreate() && this.issue()?.status !== 'deleted');
+  linkGroups = computed(() => LINK_GROUPS
+    .map((key) => ({ key, rels: this.relations().filter((r) => linkGroupOf(r.kind, r.dir) === key) }))
+    .filter((g) => g.rels.length));
+  /** 保留中に、理由の下に出す「完了待ち」（こちらから付けたもの） */
+  waitingFor = computed(() => this.relations().filter((r) => r.kind === 'waitsFor' && r.dir === 'out'));
   /** 再発防止課題を作れるか：管理者とメンバー（アーカイブ中は不可） */
   canCreate = computed(() => (this.role() === 'admin' || this.role() === 'member') && !this.projectArchived());
   /** 停滞とみなす日数（開いたときにプロジェクトの設定から読む） */
@@ -611,6 +702,10 @@ export class IssueDetail implements OnInit {
       ),
       this.issueService.watchTimeline(this.pid, this.iid, (items) => this.timeline.set(items), (e) => console.error(e)),
       this.issueService.watchRelatedTo(this.pid, this.iid, (list) => this.preventions.set(list), (e) => console.error(e)),
+      this.issueService.watchLinks(this.pid, this.iid, (rels) => {
+        this.relations.set(rels);
+        this.syncLinked(rels);
+      }, (e) => console.error(e)),
     );
   }
 
@@ -749,6 +844,68 @@ export class IssueDetail implements OnInit {
     }
   }
 
+  // ---- 関連課題 ----
+  /** 相手の課題を1件ずつ見張る（増えたら始め、外したらやめる）。読めなければ null */
+  private syncLinked(rels: IssueRelation[]) {
+    const keys = new Set(rels.map((r) => `${r.pid}/${r.iid}`));
+    for (const [k, stop] of this.linkStops) {
+      if (!keys.has(k)) {
+        stop();
+        this.linkStops.delete(k);
+      }
+    }
+    for (const r of rels) {
+      const k = `${r.pid}/${r.iid}`;
+      if (this.linkStops.has(k)) continue;
+      this.linkStops.set(k, this.issueService.watchIssue(r.pid, r.iid,
+        (issue) => this.linked.update((m) => ({ ...m, [k]: issue })),
+        () => this.linked.update((m) => ({ ...m, [k]: null }))));
+      if (r.pid !== this.pid) this.loadProjectName(r.pid);
+    }
+  }
+
+  /** ほかのプロジェクトの名前を読む（メンバーでなければ読めないので、出さない） */
+  private async loadProjectName(pid: string) {
+    if (this.projectNames()[pid]) return;
+    try {
+      const p = await this.ps.get(pid);
+      if (p) this.projectNames.update((m) => ({ ...m, [pid]: p.name }));
+    } catch {
+      // 読めないプロジェクト：名前は出さず、課題も「閲覧できない課題」になる
+    }
+  }
+
+  linkedIssue(r: IssueRelation) {
+    return this.linked()[`${r.pid}/${r.iid}`];
+  }
+
+  /** 外せるのは、こちらから付けたもの。相手から付けられたものは、同じプロジェクトのときだけ */
+  canUnlink(r: IssueRelation) {
+    return this.canLink() && (r.dir === 'out' || r.pid === this.pid);
+  }
+
+  async unlink(r: IssueRelation) {
+    this.busy.set(true);
+    this.linkError.set('');
+    try {
+      await this.issueService.removeLink(this.pid, this.iid, this.issue()!.number, r,
+        this.linkedIssue(r)?.number ?? null, this.myUid, this.tz());
+    } catch (e) {
+      console.error(e);
+      this.linkError.set('common.saveError');
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /** 経緯に出す相手：同じプロジェクトなら番号、ほかのプロジェクトは、今読めるときだけ名前つき */
+  private linkTarget(pid: string, number: number | null) {
+    if (number === null) return this.i18n.t('links.unreadable');
+    if (pid === this.pid) return '#' + number;
+    const name = this.projectNames()[pid];
+    return name ? `${name} #${number}` : this.i18n.t('links.unreadable');
+  }
+
   memberName(uid: string) {
     const m = this.members().find((x) => x.uid === uid);
     if (m) return m.displayName;
@@ -762,6 +919,12 @@ export class IssueDetail implements OnInit {
 
   eventText(item: TimelineItem) {
     const name = this.memberName(item.by);
+    if (item.type === 'link' && item.link) {
+      const l = item.link;
+      return this.i18n.t('detail.events.link.' + l.action, {
+        name, kind: this.i18n.t('links.groups.' + linkGroupOf(l.kind, l.dir)), target: this.linkTarget(l.pid, l.number),
+      });
+    }
     if (item.type === 'created') return this.i18n.t('detail.events.created', { name });
     if (item.type === 'imported') return this.i18n.t('detail.events.imported', { name });
     if (item.type === 'edit') {

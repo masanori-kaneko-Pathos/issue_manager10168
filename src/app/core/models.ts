@@ -7,7 +7,7 @@ export type LabelColor = (typeof LABEL_COLORS)[number];
 
 export interface Label { id: string; name: string; color?: LabelColor; }
 
-export const MAX_LABELS_PER_ISSUE = 5;   // 1つの課題に付けられる数（仕様メモ）
+export const MAX_LABELS_PER_ISSUE = 5;   // 1つの課題に付けられる数
 export const MAX_LABELS_PER_PROJECT = 30; // 1つのプロジェクトで作れる数
 
 /** 初期ラベルの色（色が未設定の古いプロジェクト用） */
@@ -129,6 +129,29 @@ export interface IssueLink {
   number: number;  // 元の課題の番号（表示用の写し）
 }
 
+/** 関連課題の種類（relates＝ただの関連、recurrence＝再発、duplicate＝重複、waitsFor＝完了待ち） */
+export type LinkKind = 'relates' | 'recurrence' | 'duplicate' | 'waitsFor';
+export const LINK_KINDS: LinkKind[] = ['relates', 'recurrence', 'duplicate', 'waitsFor'];
+
+/**
+ * 関連課題（projects/{pid}/issues/{iid}/links）。両側に1枚ずつ置く。
+ * out＝この課題から付けた、in＝相手から付けられた（相手側の写し）。相手の題名や番号は写さない
+ */
+export interface IssueRelation {
+  id: string;
+  kind: LinkKind;
+  dir: 'out' | 'in';
+  pid: string;  // 相手の課題のプロジェクト
+  iid: string;  // 相手の課題
+  by: string;
+  at: Timestamp;
+}
+
+/** 関連課題の文書の名前。「種類・向き・相手」で決めるので、同じひも付けは2つ作れない */
+export function relationId(kind: LinkKind, dir: 'out' | 'in', pid: string, iid: string) {
+  return `${kind}_${dir}_${pid}_${iid}`;
+}
+
 export interface Issue {
   id: string;
   number: number;
@@ -177,7 +200,9 @@ export type Effect = 'yes' | 'partial' | 'no';
 export interface TimelineItem {
   id: string;
   kind: 'event' | 'comment';
-  type?: 'created' | 'imported' | 'status' | 'edit' | 'priority';
+  type?: 'created' | 'imported' | 'status' | 'edit' | 'priority' | 'link';
+  /** 関連課題を付けた・外した（type が link のときだけ） */
+  link?: { action: 'add' | 'remove'; kind: LinkKind; dir: 'out' | 'in'; pid: string; iid: string; number: number | null };
   fields?: string[];  // 編集した項目
   changes?: {
     dueAt?: { from: Timestamp; to: Timestamp };

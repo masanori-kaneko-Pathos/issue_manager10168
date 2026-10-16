@@ -7,7 +7,8 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
-  CauseCategory, Effect, Issue, IssueLink, IssueType, Level, Member, NotificationType, OPEN_STATUSES, TimelineItem,
+  CauseCategory, Effect, Issue, IssueLink, IssueRelation, IssueType, Level, LinkKind, Member, NotificationType,
+  OPEN_STATUSES, TimelineItem, relationId,
 } from '../models';
 import { Transition, TransitionKey } from './workflow';
 import { ImportValues } from '../import/convert';
@@ -69,6 +70,8 @@ export interface NewIssue {
   occurredOn: string | null;
   impact: string;
   relatedFrom?: IssueLink | null;
+  /** 再発として登録するときの、元の課題（同じプロジェクト） */
+  recurrenceOf?: { iid: string; number: number } | null;
 }
 
 export interface StatusPayload {
@@ -160,6 +163,18 @@ export class IssueService {
         ...(input.relatedFrom ? { relatedFrom: input.relatedFrom } : {}),
       });
       tx.set(doc(collection(issueRef, 'events')), { type: 'created', by: uid, tz, at: serverTimestamp() });
+      // 再発として登録：新しい課題（再発元を指す）と元の課題（再発した課題を指す）を、登録と同じ封筒でつなぐ
+      if (input.recurrenceOf) {
+        const src = doc(projectRef, 'issues', input.recurrenceOf.iid);
+        tx.set(doc(issueRef, 'links', relationId('recurrence', 'out', pid, src.id)),
+          { kind: 'recurrence', dir: 'out', pid, iid: src.id, by: uid, at: serverTimestamp() });
+        tx.set(doc(src, 'links', relationId('recurrence', 'in', pid, issueRef.id)),
+          { kind: 'recurrence', dir: 'in', pid, iid: issueRef.id, by: uid, at: serverTimestamp() });
+        tx.set(doc(collection(src, 'events')), {
+          type: 'link', link: { action: 'add', kind: 'recurrence', dir: 'in', pid, iid: issueRef.id, number },
+          by: uid, tz, at: serverTimestamp(),
+        });
+      }
       if (memoId) tx.delete(doc(db, 'users', uid, 'inbox', memoId));
       // 担当者が自分以外なら、担当者に知らせる（自分のときは notice が null を返す）
       const n = this.notifications.notice(input.assigneeId, 'assigned', {
@@ -308,8 +323,8 @@ export class IssueService {
       await assertUnchanged(tx, ref, issue);
       const notes = rule
         ? await this.prepareNotices(tx, pid, issue, [{
-            to: rule.to === 'assignee' ? issue.assigneeId : issue.reporterId, type: rule.type, detail: p.reason,
-          }])
+          to: rule.to === 'assignee' ? issue.assigneeId : issue.reporterId, type: rule.type, detail: p.reason,
+        }])
         : [];
       tx.update(ref, update);
       tx.set(doc(collection(ref, 'events')), {
@@ -518,6 +533,80 @@ export class IssueService {
       notes.forEach((n) => tx.set(n.ref, n.data));
     });
   }
+  /**
+   * 関連課題を付ける。こちら（out）と相手側の写し（in）を1つのバッチで書く（片方だけにならない）。
+   * 経緯はこの課題に残す。相手が同じプロジェクトなら、相手の経緯にも残す（別のプロジェクトは書けないことがあるため）
+   */
+  async addLink(
+    pid: string, iid: string, hereNumber: number, kind: LinkKind,
+    to: { pid: string; iid: string; number: number }, uid: string, tz: string,
+  ) {
+    const here = doc(db, 'projects', pid, 'issues', iid);
+    const there = doc(db, 'projects', to.pid, 'issues', to.iid);
+    const batch = writeBatch(db);
+    batch.set(doc(here, 'links', relationId(kind, 'out', to.pid, to.iid)),
+      { kind, dir: 'out', pid: to.pid, iid: to.iid, by: uid, at: serverTimestamp() });
+    batch.set(doc(there, 'links', relationId(kind, 'in', pid, iid)),
+      { kind, dir: 'in', pid, iid, by: uid, at: serverTimestamp() });
+    batch.set(doc(collection(here, 'events')), {
+      type: 'link', link: { action: 'add', kind, dir: 'out', pid: to.pid, iid: to.iid, number: to.number },
+      by: uid, tz, at: serverTimestamp(),
+    });
+    if (to.pid === pid) {
+      batch.set(doc(collection(there, 'events')), {
+        type: 'link', link: { action: 'add', kind, dir: 'in', pid, iid, number: hereNumber },
+        by: uid, tz, at: serverTimestamp(),
+      });
+    }
+    await batch.commit();
+  }
+
+  /** 関連課題を外す。こちらの1枚と、相手側の対の1枚を一緒に消す。otherNumber は相手の番号（わからなければ null） */
+  async removeLink(
+    pid: string, iid: string, hereNumber: number, rel: IssueRelation, otherNumber: number | null,
+    uid: string, tz: string,
+  ) {
+    const here = doc(db, 'projects', pid, 'issues', iid);
+    const there = doc(db, 'projects', rel.pid, 'issues', rel.iid);
+    const pairDir = rel.dir === 'out' ? 'in' : 'out';
+    const write = (withPair: boolean) => {
+      const batch = writeBatch(db);
+      batch.delete(doc(here, 'links', rel.id));
+      if (withPair) batch.delete(doc(there, 'links', relationId(rel.kind, pairDir, pid, iid)));
+      batch.set(doc(collection(here, 'events')), {
+        type: 'link',
+        link: { action: 'remove', kind: rel.kind, dir: rel.dir, pid: rel.pid, iid: rel.iid, number: otherNumber },
+        by: uid, tz, at: serverTimestamp(),
+      });
+      if (withPair && rel.pid === pid) {
+        batch.set(doc(collection(there, 'events')), {
+          type: 'link', link: { action: 'remove', kind: rel.kind, dir: pairDir, pid, iid, number: hereNumber },
+          by: uid, tz, at: serverTimestamp(),
+        });
+      }
+      return batch.commit();
+    };
+    try {
+      await write(true);
+    } catch (e) {
+      // 相手の課題が完全削除されていると、対の1枚はもう無く、消そうとするとルールに断られる。
+      // そのときは、こちらの1枚だけを消す（ルールは「対が無いこと」を見るので通る）
+      if ((e as { code?: string }).code !== 'permission-denied') throw e;
+      await write(false);
+    }
+  }
+  /** この課題の関連課題（こちらから付けたもの・相手から付けられたもの）を見張る */
+  watchLinks(
+    pid: string, iid: string, onData: (rels: IssueRelation[]) => void, onError: (e: FirestoreError) => void,
+  ): Unsubscribe {
+    return onSnapshot(
+      collection(db, 'projects', pid, 'issues', iid, 'links'),
+      (s) => onData(s.docs.map((d) => ({
+        ...(d.data({ serverTimestamps: 'estimate' }) as Omit<IssueRelation, 'id'>), id: d.id,
+      }))),
+      onError,
+    );
+  }
 
   /** この課題を元にして作られた課題（再発防止など）を見張る。削除フォルダのものは出さない */
   watchRelatedTo(
@@ -543,17 +632,26 @@ export class IssueService {
   /** 完全削除：経緯とコメントを消してから、課題を消す（管理者のみ。削除フォルダの中だけ。元に戻せない） */
   async purgeIssue(pid: string, iid: string) {
     const ref = doc(db, 'projects', pid, 'issues', iid);
-    const [events, comments] = await Promise.all([
+    const [events, comments, links] = await Promise.all([
       getDocs(collection(ref, 'events')),
       getDocs(collection(ref, 'comments')),
+      getDocs(collection(ref, 'links')),
     ]);
-    const children = [...events.docs, ...comments.docs].map((d) => d.ref);
+    const children = [...events.docs, ...comments.docs, ...links.docs].map((d) => d.ref);
     // まとめ書きは1回500件まで。余裕をみて400件ずつ
     for (let i = 0; i < children.length; i += 400) {
       const batch = writeBatch(db);
       children.slice(i, i + 400).forEach((r) => batch.delete(r));
       await batch.commit();
     }
+
+    // 相手側に残った対の1枚も、消せるものは消す（相手のプロジェクトに書けないときは残る。
+    // 残っても、相手の画面では「閲覧できない課題」と出て、✕で外せる）
+    await Promise.allSettled(links.docs.map((d) => {
+      const r = d.data() as Omit<IssueRelation, 'id'>;
+      const pairDir = r.dir === 'out' ? 'in' : 'out';
+      return deleteDoc(doc(db, 'projects', r.pid, 'issues', r.iid, 'links', relationId(r.kind, pairDir, pid, iid)));
+    }));
     // 親は最後に消す。子のルールは「親が削除フォルダにあるか」を見ているので、親が先に消えると子を消せなくなる
     await deleteDoc(ref);
   }
