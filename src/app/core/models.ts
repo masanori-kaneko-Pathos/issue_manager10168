@@ -72,7 +72,7 @@ export interface InboxMemo {
 
 /** 管理ログ（今は書くだけ。見る画面は後日） */
 export interface AdminLog {
-  type: 'role' | 'remove' | 'leave' | 'handover';
+  type: 'role' | 'remove' | 'leave' | 'handover' | 'import';
   by: string;           // 操作した人
   target: string;       // 対象の人
   from: Role;           // 操作する前の役割
@@ -164,6 +164,8 @@ export interface Issue {
   deletedAt?: Timestamp;
   deletedBy?: string;
   relatedFrom?: IssueLink;    // この課題が、どの課題から作られたか（再発防止など）
+  importId?: string;          // 取り込みの1回ごとの印（まとめて取り消すときに使う）
+  importedBy?: string;        // 取り込んだ人
 }
 export const CAUSE_CATEGORIES = [
   'requirements', 'design', 'testing', 'operation', 'communication', 'external', 'other',
@@ -175,7 +177,7 @@ export type Effect = 'yes' | 'partial' | 'no';
 export interface TimelineItem {
   id: string;
   kind: 'event' | 'comment';
-  type?: 'created' | 'status' | 'edit' | 'priority';
+  type?: 'created' | 'imported' | 'status' | 'edit' | 'priority';
   fields?: string[];  // 編集した項目
   changes?: {
     dueAt?: { from: Timestamp; to: Timestamp };

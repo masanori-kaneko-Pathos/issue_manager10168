@@ -105,8 +105,11 @@ export function memberRows(members: Member[], issues: Issue[], from: number, to:
     .map((m) => {
       const mine = issues.filter((i) => isActive(i) && i.assigneeId === m.uid);
       const done = resolved.filter((i) => i.assigneeId === m.uid);
-      // 初回の期限（firstDueAt）がない古い課題は、今の期限で代わりに数える
-      const onTimeN = done.filter((i) => i.resolvedAt!.toMillis() <= (i.firstDueAt ?? i.dueAt).toMillis()).length;
+      // 初回の期限（firstDueAt）がない古い課題は、今の期限で代わりに数える。
+      // 登録した時点ですでに期限を過ぎていた課題は、誰がやっても間に合わないので、遵守率の計算から外す
+      const firstDue = (i: Issue) => (i.firstDueAt ?? i.dueAt).toMillis();
+      const counted = done.filter((i) => firstDue(i) >= i.createdAt.toMillis());
+      const onTimeN = counted.filter((i) => i.resolvedAt!.toMillis() <= firstDue(i)).length;
       const effect: Record<Effect, number> = { yes: 0, partial: 0, no: 0 };
       for (const i of closed) if (i.assigneeId === m.uid && i.effect) effect[i.effect]++;
       return {
@@ -115,7 +118,7 @@ export function memberRows(members: Member[], issues: Issue[], from: number, to:
         assigned: mine.length,
         overdue: mine.filter((i) => i.dueAt.toMillis() < nowMs).length,
         resolved: done.length,
-        onTime: done.length ? onTimeN / done.length : null,
+        onTime: counted.length ? onTimeN / counted.length : null,
         effect,
       };
     })

@@ -32,6 +32,10 @@ import { CsvExportDialog } from './csv-export-dialog';
               <div class="menu" role="menu">
                 <a role="menuitem" [routerLink]="['/p', ctx.pid(), 'trash']" (click)="menuOpen.set(false)">
                   {{ 'trash.title' | t }}</a>
+            @if (ctx.role() !== 'viewer') {
+                  <a role="menuitem" [routerLink]="['/p', ctx.pid(), 'import']" (click)="menuOpen.set(false)">
+                    {{ 'importPage.open' | t }}</a>
+                }
                 <button type="button" role="menuitem" (click)="menuOpen.set(false); exportOpen.set(true)">
                   {{ 'csv.export' | t }}</button>
                 <div class="item-row">

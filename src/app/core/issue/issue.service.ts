@@ -10,6 +10,7 @@ import {
   CauseCategory, Effect, Issue, IssueLink, IssueType, Level, Member, NotificationType, OPEN_STATUSES, TimelineItem,
 } from '../models';
 import { Transition, TransitionKey } from './workflow';
+import { ImportValues } from '../import/convert';
 
 /** 見張りで届いた文書を課題にする。保存直後の手元の版では、サーバーの時刻が null なので仮の時刻を入れる */
 function toIssue(d: QueryDocumentSnapshot): Issue {
@@ -166,6 +167,88 @@ export class IssueService {
       });
       if (n) tx.set(n.ref, n.data);
       return number;
+    });
+  }
+
+
+  /**
+   * 取り込み：1件を登録する。採番は create と同じトランザクション。通知は出さない（50件取り込んで50通を防ぐ）。
+   * 管理者は、提起者・ステータス・登録日時を表のとおりに入れられる（ルールで確認）
+   */
+  importIssue(pid: string, v: ImportValues, importId: string, uid: string, tz: string): Promise<number> {
+    return runTransaction(db, async (tx) => {
+      const projectRef = doc(db, 'projects', pid);
+      const project = await tx.get(projectRef);
+      const number = (project.data()!['issueSeq'] as number) + 1;
+      const issueRef = doc(collection(projectRef, 'issues'));
+      const due = Timestamp.fromDate(v.dueAt);
+      const created = v.createdAt ? Timestamp.fromDate(v.createdAt) : serverTimestamp();
+      const done = v.status === 'resolved' || v.status === 'closed';
+
+      tx.update(projectRef, { issueSeq: number });
+      tx.set(issueRef, {
+        number,
+        title: v.title,
+        type: v.type,
+        status: v.status,
+        importance: v.importance,
+        priorityOverride: null,
+        dueAt: due,
+        firstDueAt: due,
+        startAt: created,
+        doneCriteria: v.doneCriteria,
+        description: v.description,
+        assigneeId: v.assigneeId,
+        reporterId: v.reporterId,
+        labelIds: v.labelIds,
+        occurredOn: v.occurredOn,
+        impact: v.impact,
+        createdAt: created,
+        updatedAt: serverTimestamp(),
+        updatedBy: uid,
+        importId,
+        importedBy: uid,
+        // 解決済み・クローズの記録（管理者の取り込みだけ）。日時が分からなければ書かない（集計に混ぜない）
+        ...(done ? {
+          cause: v.cause, countermeasure: v.countermeasure, causeCategory: v.causeCategory,
+          ...(v.resolvedAt ? { resolvedAt: Timestamp.fromDate(v.resolvedAt) } : {}),
+        } : {}),
+        ...(v.status === 'closed' ? {
+          effect: v.effect, learning: v.learning,
+          ...(v.closedAt ? { closedAt: Timestamp.fromDate(v.closedAt) } : {}),
+        } : {}),
+      });
+      tx.set(doc(collection(issueRef, 'events')), { type: 'imported', importId, by: uid, tz, at: serverTimestamp() });
+      return number;
+    });
+  }
+
+  /** 取り込みの取り消し：その回に取り込んだ課題を、まとめて削除フォルダへ（理由つき）。移した件数を返す */
+  async undoImport(pid: string, importId: string, reason: string, uid: string, tz: string): Promise<number> {
+    const s = await getDocs(query(collection(db, 'projects', pid, 'issues'), where('importId', '==', importId)));
+    const targets = s.docs.filter((d) => d.data()['status'] !== 'deleted');
+    // 1件につき2つ書く（課題と経緯）。まとめ書きは500件までなので、200件ずつ
+    for (let i = 0; i < targets.length; i += 200) {
+      const batch = writeBatch(db);
+      for (const d of targets.slice(i, i + 200)) {
+        const from = d.data()['status'];
+        batch.update(d.ref, {
+          status: 'deleted', deletedFrom: from, deletedReason: reason, deletedAt: serverTimestamp(), deletedBy: uid,
+          updatedAt: serverTimestamp(), updatedBy: uid,
+        });
+        batch.set(doc(collection(d.ref, 'events')), {
+          type: 'status', from, to: 'deleted', reason, by: uid, tz, at: serverTimestamp(),
+        });
+      }
+      await batch.commit();
+    }
+    return targets.length;
+  }
+
+  /** 取り込みを管理ログに残す（追加の取り決め：取り込みは「誰が、いつ」を記録する） */
+  logImport(pid: string, count: number, uid: string, role: string) {
+    return addDoc(collection(db, 'projects', pid, 'adminLogs'), {
+      type: 'import', by: uid, target: uid, from: role, to: null, moved: count, at: serverTimestamp(),
     });
   }
 

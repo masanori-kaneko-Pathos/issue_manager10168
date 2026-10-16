@@ -749,6 +749,7 @@ export class IssueDetail implements OnInit {
   eventText(item: TimelineItem) {
     const name = this.memberName(item.by);
     if (item.type === 'created') return this.i18n.t('detail.events.created', { name });
+    if (item.type === 'imported') return this.i18n.t('detail.events.imported', { name });
     if (item.type === 'edit') {
       const fields = (item.fields ?? [])
         .map((f) => this.i18n.t('issue.' + (FIELD_LABEL_KEYS[f] ?? f)))

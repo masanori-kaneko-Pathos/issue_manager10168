@@ -34,6 +34,8 @@ export const routes: Routes = [
         // 削除フォルダ（タブには出さず、「⋮」メニューから開く）
         { path: 'trash',
           loadComponent: () => import('./pages/project/trash').then((m) => m.Trash) },
+        { path: 'import',
+          loadComponent: () => import('./pages/project/import').then((m) => m.ImportPage) },
         ] },
         { path: 'inbox', canActivate: [authGuard],
           loadComponent: () => import('./pages/inbox/inbox').then((m) => m.Inbox) },
