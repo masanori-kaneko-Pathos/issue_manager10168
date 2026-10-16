@@ -181,7 +181,7 @@ export const ja = {
   },
   status: {
     open: '未着手', in_progress: '対応中', on_hold: '保留',
-    resolved: '解決済み', closed: 'クローズ', rejected: '却下', deleted: '削除済み',
+    resolved: '解決済み', closed: 'クローズ', rejected: '却下', deleted: '削除済み', merged: '統合済み',
   },
   causeCategories: {
     requirements: '仕様・要件の不足',
@@ -242,6 +242,7 @@ export const ja = {
         add: '{{name}} さんが関連課題を追加（{{kind}}：{{target}}）',
         remove: '{{name}} さんが関連課題を解除（{{kind}}：{{target}}）',
       },
+      merge: '{{name}} さんが #{{n}} をこの課題に統合',
     },
   },
   edit: {
@@ -697,7 +698,22 @@ export const ja = {
       relates: '関連',
     },
   },
-
+  merge: {
+    open: '統合する',
+    title: '別の課題に統合',
+    note: 'この課題を、選んだ課題に統合します。この課題は「統合済み」になり、編集やステータスの変更はできなくなります。2つの課題は「重複」の関連課題でつながります。統合は元に戻せません。',
+    target: '統合先の課題',
+    searchPlaceholder: '番号かタイトルで探す（このプロジェクトの未クローズの課題）',
+    change: '選び直す',
+    reason: '統合の理由',
+    reasonHint: '例：#12 と同じ不具合のため',
+    confirm: '統合する',
+    confirmAsk: '#{{n}} を #{{to}} に統合しますか？ 元に戻せません。',
+    denied: '統合できるのは管理者だけです。必要な場合は、管理者に依頼してください。',
+    banner: 'この課題は、次の課題に統合されました：',
+    conflict: 'ほかの人が先にこの課題を更新しました。閉じて、最新の状態を確かめてから、もう一度統合してください。',
+    targetClosed: '統合先の課題がクローズなどになり、統合できなくなりました。別の課題を選んでください。',
+  },
   stale: {
     label: '停滞中',
     title: '{{n}}日以上、更新がありません',
@@ -722,6 +738,8 @@ export const ja = {
       handover: '{{name}} さんから、「{{project}}」の課題 {{n}} 件の担当を引き継ぎました',
       daily: '今日のまとめ：{{parts}}',
       effectCheck: '#{{n}}「{{title}}」の効果を確かめる時期です。確かめて、クローズしてください',
+      unblocked: '#{{n}}「{{title}}」が待っていた課題が、解決済みになりました。進められるか確かめてください',
+      merged: '{{name}} さんが、#{{n}}「{{title}}」を別の課題に統合しました',
     },
     daily: {
       overdue: '期限切れ {{n}}件',

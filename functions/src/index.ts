@@ -2,7 +2,7 @@ import { initializeApp } from 'firebase-admin/app';
 import { DocumentData, FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { logger } from 'firebase-functions';
-import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 
 initializeApp();
@@ -242,6 +242,8 @@ const PUSH_TEXT: Record<'ja' | 'en', Record<string, string>> = {
     handover: '{{name}} さんから、「{{project}}」の課題 {{n}} 件の担当を引き継ぎました',
     daily: '今日のまとめ：{{parts}}',
     effectCheck: '#{{n}}「{{title}}」の効果を確かめる時期です。確かめて、クローズしてください',
+    unblocked: '#{{n}}「{{title}}」が待っていた課題が、解決済みになりました。進められるか確かめてください',
+    merged: '{{name}} さんが、#{{n}}「{{title}}」を別の課題に統合しました',
   },
   en: {
     assigned: '{{name}} assigned you to #{{n}} "{{title}}"',
@@ -256,6 +258,8 @@ const PUSH_TEXT: Record<'ja' | 'en', Record<string, string>> = {
     handover: '{{name}} handed over {{n}} issues in "{{project}}" to you',
     daily: 'Today: {{parts}}',
     effectCheck: 'Time to check whether #{{n}} "{{title}}" worked. Check the effect and close it',
+    unblocked: 'The issue that #{{n}} "{{title}}" was waiting for is resolved. Check whether you can move forward',
+    merged: '{{name}} merged #{{n}} "{{title}}" into another issue',
   },
 };
 const DAILY_PARTS: Record<'ja' | 'en', Record<string, string>> = {
@@ -328,5 +332,67 @@ export const imOnNotification = onDocumentCreated(
         }
       }
     }));
+  },
+);
+
+// ---- 完了待ちの解消 ----
+
+/**
+ * 課題が解決済みになったら、その課題を「完了待ち」にしている課題の担当者に知らせる。
+ * 待っている課題は別のプロジェクトのこともあり、解決した人の画面からはルールで書けないので、ここで書く。
+ * Admin はルールを通らないので、「未完了か」「担当者が今もメンバーか」を自分で確かめる
+ */
+export const imOnIssueResolved = onDocumentUpdated(
+  { document: 'projects/{pid}/issues/{iid}', database: 'issuemanager', region: 'asia-northeast1' },
+  async (event) => {
+    const before = event.data?.before.data();
+    const after = event.data?.after.data();
+    // 「解決済み以外 → 解決済み」の瞬間だけ（ほかの編集では何もしない）
+    if (!before || !after || before.status === 'resolved' || after.status !== 'resolved') return;
+    const { pid, iid } = event.params;
+
+    // この課題を待っている課題（相手から付けられた「完了待ち」）
+    const links = await db.collection(`projects/${pid}/issues/${iid}/links`)
+      .where('kind', '==', 'waitsFor').where('dir', '==', 'in').get();
+    if (links.empty) return;
+
+    const resolvedMs = after.resolvedAt?.toMillis?.() ?? Date.now();
+    let written = 0;
+    await Promise.all(links.docs.map(async (l) => {
+      const wpid = l.get('pid') as string;
+      const wiid = l.get('iid') as string;
+      try {
+        const [waiting, wproject] = await Promise.all([
+          db.doc(`projects/${wpid}/issues/${wiid}`).get(),
+          db.doc(`projects/${wpid}`).get(),
+        ]);
+        const w = waiting.data();
+        // 待っている課題が、もう無い・終わっている・アーカイブ中なら送らない
+        if (!w || !ACTIVE.includes(w.status) || !w.assigneeId || wproject.get('archived')) return;
+        const to = w.assigneeId as string;
+        // 解決した本人が担当者なら、知らせるまでもない
+        if (to === after.updatedBy) return;
+        const [member, canSeeResolved] = await Promise.all([
+          db.doc(`projects/${wpid}/members/${to}`).get(),
+          db.doc(`projects/${pid}/members/${to}`).get(),
+        ]);
+        if (!member.exists) return;
+        // 解決した課題の番号と題名は、宛先がそのプロジェクトのメンバーのときだけ添える
+        const detail = canSeeResolved.exists ? `#${after.number}「${after.title}」`.slice(0, 200) : '';
+        // 名札：同じ解決で2通にならない。差し戻して解決し直したら、時刻が変わるので改めて届く
+        await db.doc(`users/${to}/notifications/unblocked-${wiid}-${iid}-${resolvedMs}`).create({
+          type: 'unblocked', pid: wpid, projectName: wproject.get('name') ?? '', iid: wiid,
+          issueNumber: w.number ?? null, issueTitle: w.title ?? '',
+          by: after.updatedBy ?? '', byName: '', detail,
+          at: FieldValue.serverTimestamp(), read: false,
+          expireAt: Timestamp.fromMillis(Date.now() + NOTIFY_KEEP_DAYS * DAY),
+        });
+        written++;
+      } catch (e) {
+        if ((e as { code?: number }).code === 6) return; // もう送ってある
+        logger.error('unblocked notice failed', { pid, iid, wpid, wiid, error: String(e) });
+      }
+    }));
+    logger.info('unblocked notices', { pid, iid, written });
   },
 );

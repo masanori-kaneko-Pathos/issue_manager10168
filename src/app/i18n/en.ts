@@ -184,7 +184,7 @@ export const en: Dict = {
   },
   status: {
     open: 'Open', in_progress: 'In progress', on_hold: 'On hold',
-    resolved: 'Resolved', closed: 'Closed', rejected: 'Rejected', deleted: 'Deleted',
+    resolved: 'Resolved', closed: 'Closed', rejected: 'Rejected', deleted: 'Deleted', merged: 'Merged',
   },
   causeCategories: {
     requirements: 'Unclear requirements',
@@ -245,6 +245,7 @@ export const en: Dict = {
         add: '{{name}} linked an issue ({{kind}}: {{target}})',
         remove: '{{name}} removed a link ({{kind}}: {{target}})',
       },
+      merge: '{{name}} merged #{{n}} into this issue',
     },
   },
   edit: {
@@ -697,7 +698,22 @@ export const en: Dict = {
       relates: 'Related',
     },
   },
-
+  merge: {
+    open: 'Merge',
+    title: 'Merge into another issue',
+    note: 'This issue will be merged into the one you choose. It becomes "Merged" and can no longer be edited or have its status changed. The two issues are linked as duplicates. Merging cannot be undone.',
+    target: 'Merge into',
+    searchPlaceholder: 'Search by number or title (open issues in this project)',
+    change: 'Choose again',
+    reason: 'Reason for merging',
+    reasonHint: 'e.g. Same bug as #12',
+    confirm: 'Merge',
+    confirmAsk: 'Merge #{{n}} into #{{to}}? This cannot be undone.',
+    denied: 'Only admins can merge issues. Please ask an admin if needed.',
+    banner: 'This issue was merged into:',
+    conflict: 'Someone else updated this issue first. Close this, check the latest state, and merge again.',
+    targetClosed: 'The target issue was closed or changed and can no longer be merged into. Choose another issue.',
+  },
   stale: {
     label: 'Stale',
     title: 'Not updated for {{n}}+ days',
@@ -722,6 +738,8 @@ export const en: Dict = {
       handover: '{{name}} handed over {{n}} issues in "{{project}}" to you',
       daily: 'Today: {{parts}}',
       effectCheck: 'Time to check whether #{{n}} "{{title}}" worked. Check the effect and close it',
+      unblocked: 'The issue that #{{n}} "{{title}}" was waiting for is resolved. Check whether you can move forward',
+      merged: '{{name}} merged #{{n}} "{{title}}" into another issue',
     },
     daily: {
       overdue: '{{n}} overdue',

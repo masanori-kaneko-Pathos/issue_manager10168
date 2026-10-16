@@ -84,7 +84,7 @@ export interface AdminLog {
 /** 通知の種類 */
 export type NotificationType =
   'assigned' | 'comment' | 'dueChanged' | 'resolved' | 'sentBack' | 'closed' | 'rejected' | 'restored' | 'joined'
-  | 'handover' | 'daily' | 'effectCheck';
+  | 'handover' | 'daily' | 'effectCheck' | 'unblocked' | 'merged';
 
 /**
  * 画面内の通知（users/{uid}/notifications）。本人だけが読める。
@@ -117,7 +117,8 @@ export const DEFAULT_LABEL_IDS = ['customer', 'internal', 'spec', 'ops', 'qualit
 
 export type IssueType = 'bug' | 'request' | 'question' | 'task' | 'risk';
 export type Level = 'high' | 'mid' | 'low'; // 重要度・緊急度・優先度で共通
-export type IssueStatus = 'open' | 'in_progress' | 'on_hold' | 'resolved' | 'closed' | 'rejected' | 'deleted';
+export type IssueStatus =
+  'open' | 'in_progress' | 'on_hold' | 'resolved' | 'closed' | 'rejected' | 'deleted' | 'merged';
 
 export const ISSUE_TYPES: IssueType[] = ['bug', 'request', 'question', 'task', 'risk'];
 export const OPEN_STATUSES: IssueStatus[] = ['open', 'in_progress', 'on_hold', 'resolved'];
@@ -189,6 +190,7 @@ export interface Issue {
   relatedFrom?: IssueLink;    // この課題が、どの課題から作られたか（再発防止など）
   importId?: string;          // 取り込みの1回ごとの印（まとめて取り消すときに使う）
   importedBy?: string;        // 取り込んだ人
+  mergedInto?: { iid: string; number: number }; // 統合済みのとき、統合先の課題
 }
 export const CAUSE_CATEGORIES = [
   'requirements', 'design', 'testing', 'operation', 'communication', 'external', 'other',
@@ -200,7 +202,9 @@ export type Effect = 'yes' | 'partial' | 'no';
 export interface TimelineItem {
   id: string;
   kind: 'event' | 'comment';
-  type?: 'created' | 'imported' | 'status' | 'edit' | 'priority' | 'link';
+  type?: 'created' | 'imported' | 'status' | 'edit' | 'priority' | 'link' | 'merge';
+  /** 統合先の経緯に残す「どの課題を統合したか」（type が merge のときだけ） */
+  merged?: { iid: string; number: number };
   /** 関連課題を付けた・外した（type が link のときだけ） */
   link?: { action: 'add' | 'remove'; kind: LinkKind; dir: 'out' | 'in'; pid: string; iid: string; number: number | null };
   fields?: string[];  // 編集した項目

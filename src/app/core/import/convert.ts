@@ -98,7 +98,8 @@ import {
     low: ['小', '低', 'c', '3', 'lowest', 'minor'],
   }, ja.importance, en.importance, ja.priority, en.priority);
   
-  const STATUS_WORDS = lookup<Exclude<IssueStatus, 'deleted'>>({
+  // 削除済みと統合済みは、取り込みでは作らない
+  const STATUS_WORDS = lookup<Exclude<IssueStatus, 'deleted' | 'merged'>>({
     open: ['未着手', '未対応', '新規', 'to do', 'todo', 'new', 'backlog'],
     in_progress: ['対応中', '処理中', '進行中', 'in progress', 'doing'],
     on_hold: ['保留', '待ち', 'on hold', 'pending'],

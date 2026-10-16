@@ -47,7 +47,7 @@ service cloud.firestore {
                       'by', 'byName', 'detail', 'at', 'read', 'expireAt'];
           return d.keys().hasOnly(keys) && d.keys().hasAll(keys)
             && d.type in ['assigned', 'comment', 'dueChanged', 'resolved', 'sentBack',
-                          'closed', 'rejected', 'restored', 'joined', 'handover']
+                          'closed', 'rejected', 'restored', 'joined', 'handover', 'merged']
             && d.pid is string
             && d.projectName is string && d.projectName.size() <= 100
             && (d.iid == null || d.iid is string)
@@ -232,7 +232,7 @@ service cloud.firestore {
         && (d.get('occurredOn', null) == null || d.occurredOn.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))
         && d.get('impact', '') is string && d.get('impact', '').size() <= 200
         && d.labelIds is list && d.labelIds.size() <= 5
-        && !(resource.data.status in ['closed', 'deleted'])
+        && !(resource.data.status in ['closed', 'deleted', 'merged'])
         && (myRole(pid) == 'admin'
             || resource.data.reporterId == request.auth.uid
             || resource.data.assigneeId == request.auth.uid)
@@ -265,7 +265,25 @@ service cloud.firestore {
         && (d.get('causeCategory', null) == null
             || d.causeCategory in ['requirements', 'design', 'testing', 'operation', 'communication', 'external', 'other']);
     }
-  
+
+    // 統合：管理者のみ。統合元・統合先とも同じプロジェクトの未クローズ。理由必須。統合済みからは出られない（元に戻せない）
+    function mergeAllowed(pid, iid) {
+      let d = request.resource.data;
+      let open = ['open', 'in_progress', 'on_hold', 'resolved'];
+      let target = get(/databases/$(database)/documents/projects/$(pid)/issues/$(d.mergedInto.iid)).data;
+      return d.diff(resource.data).affectedKeys()
+               .hasOnly(['status', 'statusReason', 'mergedInto', 'updatedAt', 'updatedBy'])
+        && myRole(pid) == 'admin'
+        && resource.data.status in open
+        && d.status == 'merged'
+        && hasReason()
+        && d.mergedInto.keys().hasOnly(['iid', 'number'])
+        && d.mergedInto.iid is string && d.mergedInto.iid != iid
+        && d.mergedInto.number is int
+        && target.status in open
+        && target.number == d.mergedInto.number;
+    }
+
       // 削除：管理者のみ。削除フォルダにないものだけ。元のステータスと理由を残す
     function deleteAllowed(pid) {
       let d = request.resource.data;
@@ -401,6 +419,7 @@ service cloud.firestore {
             || priorityAllowed(pid)
             || causeAllowed(pid)
             || deleteAllowed(pid)
+            || mergeAllowed(pid, iid)
             || restoreAllowed(pid)
           );
 

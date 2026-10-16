@@ -485,6 +485,45 @@ export class IssueService {
     });
   }
 
+  /**
+   * 統合（管理者のみ）：統合元を「統合済み」にし、統合先へのリンクを残す。元に戻せない。
+   * 1つのトランザクションで、統合元のステータス・両方の経緯・「重複」の関連課題・通知をまとめて書く
+   */
+  async mergeIssue(pid: string, issue: Issue, target: Issue, reason: string, uid: string, tz: string) {
+    const ref = doc(db, 'projects', pid, 'issues', issue.id);
+    const targetRef = doc(db, 'projects', pid, 'issues', target.id);
+    const outRef = doc(ref, 'links', relationId('duplicate', 'out', pid, target.id));
+    await runTransaction(db, async (tx) => {
+      // ---- 読む（全部、書く前に） ----
+      await assertUnchanged(tx, ref, issue);
+      const t = await tx.get(targetRef);
+      if (!t.exists() || !OPEN_STATUSES.includes(t.data()['status'])) throw new Error('merge-target-closed');
+      const linked = (await tx.get(outRef)).exists();
+      const notes = await this.prepareNotices(tx, pid, issue, [
+        { to: issue.assigneeId, type: 'merged', detail: `#${target.number} ${target.title}` },
+        { to: issue.reporterId, type: 'merged', detail: `#${target.number} ${target.title}` },
+      ]);
+      // ---- 書く ----
+      tx.update(ref, {
+        status: 'merged', statusReason: reason, mergedInto: { iid: target.id, number: target.number },
+        updatedAt: serverTimestamp(), updatedBy: uid,
+      });
+      tx.set(doc(collection(ref, 'events')), {
+        type: 'status', from: issue.status, to: 'merged', reason, by: uid, tz, at: serverTimestamp(),
+      });
+      tx.set(doc(collection(targetRef, 'events')), {
+        type: 'merge', merged: { iid: issue.id, number: issue.number }, reason, by: uid, tz, at: serverTimestamp(),
+      });
+      // 「重複」でつなぐ（もうつながっていれば、そのまま）
+      if (!linked) {
+        tx.set(outRef, { kind: 'duplicate', dir: 'out', pid, iid: target.id, by: uid, at: serverTimestamp() });
+        tx.set(doc(targetRef, 'links', relationId('duplicate', 'in', pid, issue.id)),
+          { kind: 'duplicate', dir: 'in', pid, iid: issue.id, by: uid, at: serverTimestamp() });
+      }
+      notes.forEach((n) => tx.set(n.ref, n.data));
+    });
+  }
+
   /** 削除：削除フォルダへ移す（管理者のみ。ルールで確認）。元のステータスは deletedFrom に残す */
   async deleteIssue(pid: string, issue: Issue, reason: string, uid: string, tz: string) {
     const ref = doc(db, 'projects', pid, 'issues', issue.id);

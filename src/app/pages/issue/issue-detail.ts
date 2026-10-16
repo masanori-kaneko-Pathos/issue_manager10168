@@ -10,7 +10,7 @@ import { ProjectService } from '../../core/project/project.service';
 import { ConflictError, EMPTY_STATUS_PAYLOAD, IssueService, conflictWho } from '../../core/issue/issue.service';
 import {
   CAUSE_CATEGORIES, CauseCategory, DEFAULT_SETTINGS, Issue, IssueRelation, Label, Level, Member, Project, Role,
-  TimelineItem, labelsOf,
+  TimelineItem, labelsOf, OPEN_STATUSES,
 } from '../../core/models';
 import { LinkDialog } from './link-dialog';
 import { StatusDialog } from '../../shared/status-dialog';
@@ -22,6 +22,7 @@ import { isStale, priorityOf } from '../../core/issue/priority';
 import { formatDateTime, remainingOf } from '../../core/time/time';
 import { Transition, availableTransitions } from '../../core/issue/workflow';
 import { I18nService, TPipe } from '../../i18n/i18n';
+import { MergeDialog } from './merge-dialog';
 
 /** 経緯の「編集した欄」の項目名 → 翻訳キー（issue.〇〇）。名前が違うものだけ書く */
 const FIELD_LABEL_KEYS: Record<string, string> = { assigneeId: 'assignee', dueAt: 'due' };
@@ -35,7 +36,8 @@ function linkGroupOf(kind: string, dir: string) {
 
 @Component({
   selector: 'app-issue-detail',
-  imports: [FormsModule, RouterLink, TPipe, IssueEdit, HelpTip, LabelChip, StatusDialog, PriorityMark, LinkDialog],
+  imports: [FormsModule, RouterLink, TPipe, IssueEdit, HelpTip, LabelChip, StatusDialog, PriorityMark, LinkDialog,
+    MergeDialog],
   template: `
     <header class="bar">
       <button type="button" class="link" (click)="back()">{{ 'common.back' | t }}</button>
@@ -104,6 +106,14 @@ function linkGroupOf(kind: string, dir: string) {
               <button type="button" class="primary" [disabled]="busy()" (click)="restore()">{{ 'delete.restore' | t }}</button>
             }
             @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
+          </div>
+        }
+
+        @if (i.status === 'merged' && i.mergedInto; as m) {
+          <div class="merged" role="status">
+            <p><strong>{{ 'merge.banner' | t }}
+              <a [routerLink]="['/p', pid, 'i', m.iid]">#{{ m.number }}</a></strong></p>
+            @if (i.statusReason) { <p class="pre">{{ i.statusReason }}</p> }
           </div>
         }
 
@@ -213,6 +223,9 @@ function linkGroupOf(kind: string, dir: string) {
           @if (showCauseButton()) {
             <button type="button" [disabled]="!canEditCause()" (click)="openCause()">{{ 'causeEdit.open' | t }}</button>
           }
+          @if (showMerge()) {
+            <button type="button" [disabled]="!canMerge()" (click)="openMerge()">{{ 'merge.open' | t }}</button>
+          }
           <button type="button" class="danger-btn" [disabled]="!canDelete()" (click)="openDelete()">
             {{ 'delete.open' | t }}</button>
           @if (toolDenied().length) { <app-help-tip kind="denied" [keys]="toolDenied()" /> }
@@ -320,6 +333,10 @@ function linkGroupOf(kind: string, dir: string) {
         @if (editing()) {
           <app-issue-edit-dialog [issue]="base()!" [members]="members()" [pid]="pid" [labels]="projectLabels()"
             (saved)="onEdited()" (cancel)="editing.set(false)" />
+        }
+
+        @if (mergeOpen()) {
+          <app-merge-dialog [pid]="pid" [issue]="base()!" (done)="mergeOpen.set(false)" (cancel)="mergeOpen.set(false)" />
         }
 
         <section class="actions">
@@ -504,6 +521,10 @@ function linkGroupOf(kind: string, dir: string) {
       border-radius: 8px; color: var(--primary); background: var(--surface); font-size: 14px; cursor: pointer; }
     .waiting { display: flex; flex-wrap: wrap; gap: 4px 12px; white-space: normal; }
     a.add-link { display: inline-flex; align-items: center; text-decoration: none; }
+    .status[data-s='merged'] { background: var(--surface-muted); color: var(--text-secondary); }
+    .merged { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; padding: 12px; border-radius: 8px;
+      background: var(--surface-alt); }
+    .merged p { margin: 0; }
   `,
 })
 export class IssueDetail implements OnInit {
@@ -620,7 +641,7 @@ export class IssueDetail implements OnInit {
   canEdit = computed(() => {
     const i = this.issue();
     const r = this.role();
-    if (!i || !r || i.status === 'closed') return false;
+    if (!i || !r || i.status === 'closed' || i.status === 'merged') return false;
     if (r === 'admin') return true;
     return r === 'member' && (i.reporterId === this.myUid || i.assigneeId === this.myUid);
   });
@@ -647,6 +668,16 @@ export class IssueDetail implements OnInit {
 
   /** 削除は管理者だけ（アーカイブ中は不可） */
   canDelete = computed(() => this.role() === 'admin' && !this.projectArchived());
+
+  /** 統合のボタンを出すか：未クローズのときだけ */
+  showMerge = computed(() => {
+    const s = this.issue()?.status;
+    return !!s && OPEN_STATUSES.includes(s);
+  });
+  /** 統合は管理者だけ（アーカイブ中は不可） */
+  canMerge = computed(() => this.showMerge() && this.role() === 'admin' && !this.projectArchived());
+  mergeOpen = signal(false);
+
   /** 復元は、管理者と、提起した本人（メンバー） */
   canRestore = computed(() => {
     const i = this.issue();
@@ -659,6 +690,7 @@ export class IssueDetail implements OnInit {
     ...(this.canEdit() ? [] : ['edit.denied']),
     ...(this.canSetPriority() ? [] : ['priorityEdit.denied']),
     ...(this.canDelete() ? [] : ['delete.denied']),
+    ...(this.showMerge() && !this.canMerge() ? ['merge.denied'] : []),
     ...(this.showCauseButton() && !this.canEditCause() ? ['causeEdit.denied'] : []),
   ]);
   overdue = computed(() => this.issue()!.dueAt.toMillis() < this.clock.now());
@@ -807,6 +839,11 @@ export class IssueDetail implements OnInit {
     this.editing.set(true);
   }
 
+  openMerge() {
+    this.base.set(this.issue());
+    this.mergeOpen.set(true);
+  }
+
   /** 入力が要らない変更（対応を始める・再開）は、押したらすぐ保存する */
   private async applyNow(t: Transition) {
     this.busy.set(true);
@@ -927,6 +964,9 @@ export class IssueDetail implements OnInit {
     }
     if (item.type === 'created') return this.i18n.t('detail.events.created', { name });
     if (item.type === 'imported') return this.i18n.t('detail.events.imported', { name });
+    if (item.type === 'merge' && item.merged) {
+      return this.i18n.t('detail.events.merge', { name, n: String(item.merged.number) });
+    }
     if (item.type === 'edit') {
       const fields = (item.fields ?? [])
         .map((f) => this.i18n.t('issue.' + (FIELD_LABEL_KEYS[f] ?? f)))
