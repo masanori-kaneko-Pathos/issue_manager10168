@@ -107,6 +107,7 @@ service cloud.firestore {
         && d.causeCategory in ['requirements', 'design', 'testing', 'operation', 'communication', 'external', 'other']
         && d.doneCriteriaMet == true
         && d.resolvedAt == request.time
+        && d.resolvedAssignee == resource.data.assigneeId
         // 回避策が入っているなら、外したことを確かめてから
         && (resource.data.get('workaround', '') == ''
             || resource.data.get('workaroundEnded', false) == true
@@ -190,7 +191,7 @@ service cloud.firestore {
                'startAt', 'doneCriteria', 'description', 'assigneeId', 'reporterId', 'labelIds',
                'createdAt', 'updatedAt', 'updatedBy', 'occurredOn', 'impact',
                'importId', 'importedBy', 'cause', 'countermeasure', 'causeCategory', 'effect', 'learning',
-               'resolvedAt', 'closedAt'])
+               'resolvedAt', 'closedAt', 'resolvedAssignee'])
         && d.importId is string && d.importId.size() > 0
         && d.importedBy == request.auth.uid
         && (
@@ -448,7 +449,7 @@ service cloud.firestore {
           && (
             (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                'status', 'statusReason', 'updatedAt', 'updatedBy', 'cause', 'countermeasure', 'causeCategory',
-               'doneCriteriaMet', 'resolvedAt', 'effect', 'learning', 'closedAt', 'workaroundEnded'])
+               'doneCriteriaMet', 'resolvedAt', 'effect', 'learning', 'closedAt', 'workaroundEnded', 'resolvedAssignee'])
              && statusChangeAllowed(pid))
             || editAllowed(pid)
             || priorityAllowed(pid)

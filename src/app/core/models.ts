@@ -192,6 +192,7 @@ export interface Issue {
   workaround?: string;          // 回避策（暫定対応）
   workaroundEnded?: boolean;    // 解決済みにするときに「回避策は外した」と確かめた
   resolvedAt?: Timestamp;
+  resolvedAssignee?: string;  // 解決済みにした時点の担当者（実績の記録。あとで担当を替えても変わらない）  
   closedAt?: Timestamp;
   deletedFrom?: IssueStatus;  // 削除する前のステータス（復元で戻す）
   deletedReason?: string;

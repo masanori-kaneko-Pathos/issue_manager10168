@@ -1,24 +1,31 @@
 import { Component, DestroyRef, OnInit, WritableSignal, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { IssueService } from '../../core/issue/issue.service';
+import { ConflictError, IssueEdits, IssueService } from '../../core/issue/issue.service';
 import { auth } from '../../core/firebase';
 import { ProjectContext } from './project-context';
 import { Clock } from '../../core/time/clock';
 import { AuthService } from '../../core/auth/auth.service';
 import { HelpTip } from '../../shared/help-tip';
 import { 
-  DEFAULT_SETTINGS, ISSUE_TYPES, Issue, IssueType, Level, OPEN_STATUSES, labelsOf, hasWorkaround,
+  DEFAULT_SETTINGS, ISSUE_TYPES, Issue, IssueType, Level, OPEN_STATUSES, labelsOf, hasWorkaround, MAX_LABELS_PER_ISSUE
  } from '../../core/models';
 import { LabelChip } from '../../shared/label-chip';
 import { PriorityMark } from '../../shared/priority-mark';
 import { compareIssues, isManualPriority, isStale, priorityOf } from '../../core/issue/priority';
-import { formatDateTime, relativeTime, remainingOf, shortDue } from '../../core/time/time';
+import { formatDateTime, relativeTime, remainingOf, shortDue, endOfDayIn, parseLocalInput, toLocalInput } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { csvFileName, downloadText, issuesToCsv } from '../../core/issue/csv';
 import { issueMatches, terms } from '../../core/search/match';
+import { Selection } from '../../shared/selection';
+import { BulkBar } from '../../shared/bulk-bar';
+import { MemberSelect } from '../../shared/member-select';
+import { NotificationService } from '../../core/notification/notification.service';
+import { setDoc } from 'firebase/firestore';
 
 type SortKey = 'priority' | 'due' | 'number' | 'updated';
+type BulkAction = 'assignee' | 'labels' | 'importance' | 'due' | 'delete';
+const LOCKED = ['closed', 'merged', 'deleted'];
 type Dir = 'asc' | 'desc';
 
 /** 並べ替えを選んだときの初期の向き */
@@ -28,7 +35,7 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
 
 @Component({
   selector: 'app-tab-list',
-  imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, PriorityMark],
+  imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, PriorityMark, BulkBar, MemberSelect],
   host: { '(document:keydown.escape)': 'showFilters.set(false)' },
   template: `
     <section>
@@ -168,10 +175,32 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
       @if (loading()) {
         <p>{{ 'common.loading' | t }}</p>
       } @else {
-        <p class="count">{{ 'list.count' | t: { n: '' + visible().length } }}</p>
+        <div class="count-row">
+          @if (canBulk() && visible().length) {
+            <label class="pick-all">
+              <input type="checkbox" [checked]="allPicked()" (change)="sel.toggleAll(visibleIds())" />
+              {{ 'bulk.selectAll' | t }}
+            </label>
+          }
+          <p class="count">{{ 'list.count' | t: { n: '' + visible().length } }}</p>
+        </div>
+        @if (bulkResult(); as r) {
+          <div class="notice" role="status">
+            <span>
+              {{ r.key | t: { n: '' + r.n } }}
+              @if (r.failed.length) { {{ 'bulk.failed' | t: { n: '' + r.failed.length, list: r.failed.join(', ') } }} }
+              @if (r.tooMany) { {{ 'bulk.tooMany' | t: { n: '' + r.tooMany } }} }
+            </span>
+            <button type="button" class="link" (click)="bulkResult.set(null)">{{ 'projects.dismiss' | t }}</button>
+          </div>
+        }
         <ul class="list">
           @for (i of visible(); track i.id) {
-            <li class="issue" [class.done]="!isActive(i)">
+            <li class="issue" [class.done]="!isActive(i)" [class.picked]="sel.has(i.id)">
+              @if (canBulk()) {
+                <input type="checkbox" class="pick" [checked]="sel.has(i.id)" (change)="sel.toggle(i.id)"
+                  [attr.aria-label]="'bulk.select' | t: { n: '' + i.number }" />
+              }
               @if (isActive(i)) {
                 <app-priority-mark [level]="prio(i)" [manual]="manual(i)" showText />
               } @else {
@@ -201,6 +230,74 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
             <li class="empty">{{ (hasCondition() ? 'list.noMatch' : 'project.noIssues') | t }}</li>
           }
         </ul>
+        @if (canBulk() && sel.any()) {
+          <div class="bulk-wrap">
+            @if (bulkAction(); as a) {
+              <div class="bulk-panel">
+                @switch (a) {
+                  @case ('assignee') {
+                    <app-member-select placeholder="bulk.chooseAssignee" [members]="assignable()" [value]="bulkAssignee()"
+                      (picked)="bulkAssignee.set($event)" />
+                   @if (resolvedPicked()) { <p class="warn">{{ 'bulk.resolvedNote' | t: { n: '' + resolvedPicked() } }}</p> }
+                  }
+                  @case ('labels') {
+                    <div class="chips">
+                      <button type="button" [class.on]="bulkLabelMode() === 'add'" (click)="bulkLabelMode.set('add')">
+                        {{ 'bulk.addLabels' | t }}</button>
+                      <button type="button" [class.on]="bulkLabelMode() === 'remove'" (click)="bulkLabelMode.set('remove')">
+                        {{ 'bulk.removeLabels' | t }}</button>
+                    </div>
+                    <div class="chips">
+                      @for (l of labels(); track l.id) {
+                        <button type="button" [class.on]="bulkLabels().includes(l.id)" (click)="toggleBulkLabel(l.id)">{{ l.name }}</button>
+                      }
+                    </div>
+                  }
+                  @case ('importance') {
+                    <div class="chips">
+                      @for (l of levels; track l) {
+                        <button type="button" [class.on]="bulkImportance() === l" (click)="bulkImportance.set(l)">
+                          {{ 'importance.' + l | t }}</button>
+                      }
+                    </div>
+                  }
+                  @case ('due') {
+                    <div class="chips">
+                      @for (p of duePresets; track p.key) {
+                        <button type="button" (click)="pickBulkDue(p.days)">{{ 'duePresets.' + p.key | t }}</button>
+                      }
+                    </div>
+                    <input type="datetime-local" [ngModel]="bulkDueInput" (ngModelChange)="onBulkDue($event)" />
+                    @if (bulkDuePast()) { <p class="warn">{{ 'dueDialog.pastWarning' | t }}</p> }
+                  }
+                  @case ('delete') {
+                    <p class="help">{{ 'delete.note' | t }}</p>
+                  }
+                }
+                @if (a === 'assignee' || a === 'due' || a === 'delete') {
+                  <textarea [(ngModel)]="bulkReason" rows="2" [attr.aria-label]="'edit.reason' | t"
+                    [placeholder]="(a === 'delete' ? 'delete.reasonHint' : 'edit.reasonHint') | t"></textarea>
+                }
+                @if (skipped() && a !== 'delete') { <p class="help">{{ 'bulk.skipped' | t: { n: '' + skipped() } }}</p> }
+                <div class="row">
+                  <button type="button" class="link" (click)="bulkAction.set(null)">{{ 'workflow.cancel' | t }}</button>
+                  <button type="button" class="primary" [class.danger]="a === 'delete' || bulkDuePast()"
+                    [disabled]="bulkBusy() || !bulkReady()" (click)="applyBulk()">
+                    {{ 'bulk.run' | t: { n: '' + (a === 'delete' ? picked().length : targets().length) } }}</button>
+                </div>
+              </div>
+            }
+            <app-bulk-bar [count]="sel.count()" (clear)="sel.clear(); bulkAction.set(null)">
+              <button type="button" class="bulk-btn" (click)="openBulk('assignee')">{{ 'bulk.assignee' | t }}</button>
+              <button type="button" class="bulk-btn" (click)="openBulk('labels')">{{ 'bulk.labels' | t }}</button>
+              <button type="button" class="bulk-btn" (click)="openBulk('importance')">{{ 'bulk.importance' | t }}</button>
+              <button type="button" class="bulk-btn" (click)="openBulk('due')">{{ 'bulk.due' | t }}</button>
+              @if (ctx.role() === 'admin') {
+                <button type="button" class="bulk-btn danger" (click)="openBulk('delete')">{{ 'bulk.delete' | t }}</button>
+              }
+            </app-bulk-bar>
+          </div>
+        }
       }
     </section>
   `,
@@ -269,17 +366,64 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
     .empty { color: var(--text-muted); padding: 12px 8px; }
     .denied-wrap { display: inline-flex; align-items: center; gap: 8px; }
     .stale { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--warning-bg); color: var(--warning-text); }
-    .wa { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--hold-bg); }    
+    .wa { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--hold-bg); }
+    .count-row { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+    .count-row .count { margin: 0; }
+    .pick-all { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+    .pick, .pick-all input { width: 18px; height: 18px; cursor: pointer; }
+    .issue.picked { background: var(--primary-bg); }
+    .bulk-wrap { position: sticky; bottom: 12px; z-index: 15; display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+    .bulk-panel { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 10px;
+      background: var(--surface); border: 1px solid var(--border-strong); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15); }
+    .bulk-panel textarea, .bulk-panel input[type='datetime-local'] { font-size: 16px; padding: 8px 10px; }
+    .bulk-btn { min-height: 36px; padding: 0 12px; border: 1px solid rgba(255, 255, 255, 0.5); border-radius: 18px;
+      background: none; color: inherit; font-size: 13px; cursor: pointer; }
+    .bulk-btn:hover { background: rgba(255, 255, 255, 0.15); }
+    .bulk-btn.danger { border-color: var(--danger); }
+    .row { display: flex; justify-content: flex-end; gap: 8px; }
+    .primary.danger { background: var(--danger); }
+    .warn { margin: 0; padding: 8px 10px; border-radius: 8px; font-size: 12px;
+      background: var(--warning-bg); color: var(--warning-text); }    
     `,
 })
 export class TabList implements OnInit {
-  private ctx = inject(ProjectContext);
+  protected ctx = inject(ProjectContext);
   /** 値は入れ物の共有の置き場から直接読む（読むだけなので asReadonly） */
   pid = this.ctx.pid.asReadonly();
   members = this.ctx.members.asReadonly();
   canCreate = this.ctx.canCreate;
   isViewer = computed(() => this.ctx.role() === 'viewer');
   labels = computed(() => this.ctx.project()?.labels ?? []);
+  private notifications = inject(NotificationService);
+  private readonly myUid = auth.currentUser!.uid;
+
+  // ---- まとめて操作 ----
+  readonly sel = new Selection();
+  /** 閲覧者・アーカイブ中は、変えられる課題がないので、チェックを出さない */
+  canBulk = computed(() => !this.isViewer() && !this.ctx.archived());
+  visibleIds = computed(() => this.visible().map((i) => i.id));
+  allPicked = computed(() => this.sel.allOf(this.visibleIds()));
+  /** 選んでいる課題（見えているものだけ） */
+  picked = computed(() => this.visible().filter((i) => this.sel.has(i.id)));
+  /** そのうち自分が編集できる課題（ルールの editAllowed と同じ決まり） */
+  targets = computed(() => this.picked().filter((i) => this.editable(i)));
+  skipped = computed(() => this.picked().length - this.targets().length);
+  resolvedPicked = computed(() => this.targets().filter((i) => i.status === 'resolved').length);
+  bulkAction = signal<BulkAction | null>(null);
+  bulkBusy = signal(false);
+  bulkResult = signal<{ key: string; n: number; failed: number[]; tooMany: number } | null>(null);
+  bulkAssignee = signal<string | null>(null);
+  bulkLabels = signal<string[]>([]);
+  bulkLabelMode = signal<'add' | 'remove'>('add');
+  bulkImportance = signal<Level | null>(null);
+  bulkDue = signal<Date | null>(null);
+  bulkDueInput = '';
+  bulkReason = '';
+  readonly duePresets = [
+    { key: 'today', days: 0 }, { key: 'tomorrow', days: 1 }, { key: 'in3', days: 3 }, { key: 'in7', days: 7 },
+  ];
+  bulkDuePast = computed(() => this.bulkAction() === 'due' && !!this.bulkDue()
+    && this.bulkDue()!.getTime() <= this.clock.now());
 
   private route = inject(ActivatedRoute);
   private router = inject(Router);
@@ -367,6 +511,8 @@ export class TabList implements OnInit {
   constructor() {
     // 今見えている一覧を、「⋮」の書き出しのために置き場へ出す。リストのタブを離れたら空にする
     effect(() => this.ctx.listView.set(this.visible()));
+    // 絞り込みで見えなくなった課題は、選択から外す（見えないものを操作しないため）
+    effect(() => this.sel.keepOnly(this.visibleIds()));
     inject(DestroyRef).onDestroy(() => this.ctx.listView.set(null));
   }
 
@@ -464,6 +610,117 @@ export class TabList implements OnInit {
     this.overdueOnly.set(false);
     this.staleOnly.set(false);
     this.changed();
+  }
+
+  /** 編集できるか：管理者・提起者・担当者。クローズ・統合済み・削除済みは不可 */
+  private editable(i: Issue) {
+    if (LOCKED.includes(i.status)) return false;
+    const r = this.ctx.role();
+    return r === 'admin' || (r === 'member' && (i.reporterId === this.myUid || i.assigneeId === this.myUid));
+  }
+
+  openBulk(a: BulkAction) {
+    this.bulkAssignee.set(null);
+    this.bulkLabels.set([]);
+    this.bulkLabelMode.set('add');
+    this.bulkImportance.set(null);
+    this.bulkDue.set(null);
+    this.bulkDueInput = '';
+    this.bulkReason = '';
+    this.bulkResult.set(null);
+    this.bulkAction.set(this.bulkAction() === a ? null : a);
+  }
+
+  toggleBulkLabel(id: string) {
+    this.bulkLabels.update((l) => (l.includes(id) ? l.filter((x) => x !== id) : [...l, id]));
+  }
+  pickBulkDue(days: number) {
+    const d = endOfDayIn(days, this.tz());
+    this.bulkDue.set(d);
+    this.bulkDueInput = toLocalInput(d, this.tz());
+  }
+  onBulkDue(v: string) {
+    this.bulkDueInput = v;
+    this.bulkDue.set(parseLocalInput(v, this.tz()));
+  }
+
+  /** 実行できるか：選ぶものを選び、理由が要るものは理由がある */
+  bulkReady() {
+    const a = this.bulkAction();
+    const reason = !!this.bulkReason.trim();
+    if (a === 'assignee') return !!this.bulkAssignee() && reason && this.targets().length > 0;
+    if (a === 'labels') return this.bulkLabels().length > 0 && this.targets().length > 0;
+    if (a === 'importance') return !!this.bulkImportance() && this.targets().length > 0;
+    if (a === 'due') return !!this.bulkDue() && reason && this.targets().length > 0;
+    if (a === 'delete') return reason && this.picked().length > 0;
+    return false;
+  }
+
+  /** 選んだ課題に、1件ずつ保存する。1件失敗しても残りは続け、最後にまとめて知らせる */
+  async applyBulk() {
+    const a = this.bulkAction();
+    if (!a || !this.bulkReady()) return;
+    const reason = this.bulkReason.trim();
+    const pid = this.pid();
+    let changed = 0;
+    let tooMany = 0;
+    const failed: number[] = [];
+    /** 課題ごとに、変える中身を決める（変わらないなら null） */
+    const make = (i: Issue): IssueEdits | null => {
+      if (a === 'assignee') return this.bulkAssignee() !== i.assigneeId ? { assigneeId: this.bulkAssignee()! } : null;
+      if (a === 'importance') return this.bulkImportance() !== i.importance ? { importance: this.bulkImportance()! } : null;
+      if (a === 'due') return this.bulkDue()!.getTime() !== i.dueAt.toMillis() ? { dueAt: this.bulkDue()! } : null;
+      const cur = i.labelIds ?? [];
+      const next = this.bulkLabelMode() === 'add'
+        ? [...new Set([...cur, ...this.bulkLabels()])]
+        : cur.filter((x) => !this.bulkLabels().includes(x));
+      if (next.length > MAX_LABELS_PER_ISSUE) {
+        tooMany++;
+        return null;
+      }
+      return next.length === cur.length && next.every((x) => cur.includes(x)) ? null : { labelIds: next };
+    };
+    const list = a === 'delete' ? this.picked().filter((i) => i.status !== 'deleted') : this.targets();
+    this.bulkBusy.set(true);
+    for (const i of list) {
+      try {
+        if (a === 'delete') {
+          await this.withRetry(i, (b) => this.issueService.deleteIssue(pid, b, reason, this.myUid, this.tz()));
+        } else {
+          const edits = make(i);
+          if (!edits) continue;
+          const r = a === 'assignee' || a === 'due' ? reason : '';
+          await this.withRetry(i, (b) => this.issueService.updateIssue(pid, b, edits, r, this.myUid, this.tz(), false));
+        }
+        changed++;
+      } catch (e) {
+        console.error(e);
+        failed.push(i.number);
+      }
+    }
+    // 担当者をまとめて変えたら、新しい担当者に1通だけ（「引き継ぎ」の知らせを使う）
+    if (a === 'assignee' && changed) await this.notifyHandover(this.bulkAssignee()!, changed, reason);
+    this.bulkResult.set({ key: a === 'delete' ? 'bulk.deleted' : 'bulk.done', n: changed, failed, tooMany });
+    this.bulkAction.set(null);
+    this.sel.clear();
+    this.bulkBusy.set(false);
+  }
+
+  /** 選んだあとに、ほかの人が課題を変えていたら、最新を土台にもう一度（まとめて操作は、選んだ値で上書きする） */
+  private async withRetry(i: Issue, save: (base: Issue) => Promise<void>) {
+    try {
+      await save(i);
+    } catch (e) {
+      if (!(e instanceof ConflictError) || LOCKED.includes(e.latest.status)) throw e;
+      await save(e.latest);
+    }
+  }
+
+  private async notifyHandover(to: string, n: number, reason: string) {
+    const note = this.notifications.notice(to, 'handover', {
+      pid: this.pid(), projectName: this.ctx.project()?.name ?? '', iid: null, issueNumber: n, issueTitle: '',
+    }, reason);
+    if (note) await setDoc(note.ref, note.data).catch((e) => console.warn('まとめての知らせを送れませんでした', e));
   }
 
   /** 今見えている一覧（絞り込み・検索・並び順のまま）を、CSV にして保存させる */

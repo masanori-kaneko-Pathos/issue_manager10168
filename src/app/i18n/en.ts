@@ -270,6 +270,7 @@ export const en: Dict = {
     empty: 'Click to add',
     editLabels: 'Edit labels',
     needReason: 'Enter a reason before closing. (Press Esc to discard your changes.)',
+    resolvedAssignee: 'This issue is resolved. Changing the assignee keeps the record of who resolved it. Send-backs and effect-check notices go to the new assignee.',
   },
   edit: {
     open: 'Edit',
@@ -703,6 +704,28 @@ export const en: Dict = {
     titlePrefix: '[Prevention] #{{n}} {{title}}',
     doneCriteria: 'The process was changed and the same kind of problem no longer occurs',
     description: '[Original issue] #{{n}} {{title}}\n[Cause] {{cause}}\n[Countermeasure] {{countermeasure}}\n\n[Process or system to change]\n',
+  },
+
+  bulk: {
+    selected: '{{n}} selected',
+    clear: 'Clear selection',
+    selectAll: 'Select all shown',
+    select: 'Select #{{n}}',
+    assignee: 'Assignee',
+    labels: 'Labels',
+    importance: 'Importance',
+    due: 'Due',
+    delete: 'Delete',
+    chooseAssignee: 'Choose an assignee',
+    addLabels: 'Add',
+    removeLabels: 'Remove',
+    run: 'Apply to {{n}}',
+    skipped: '{{n}} issues you cannot edit are skipped.',
+    done: 'Updated {{n}} issues.',
+    deleted: 'Moved {{n}} issues to the trash.',
+    failed: "{{n}} issues couldn't be updated ({{list}}).",
+    tooMany: 'Labels were not added to {{n}} issues that would exceed 5 labels.',
+    resolvedNote: '{{n}} resolved issues are included. Changing the assignee keeps the record of who resolved them (dashboard credit stays with them).',
   },
 
   links: {

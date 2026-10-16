@@ -104,14 +104,15 @@ export function memberRows(members: Member[], issues: Issue[], from: number, to:
     .filter((m) => m.role !== 'viewer')
     .map((m) => {
       const mine = issues.filter((i) => isActive(i) && i.assigneeId === m.uid);
-      const done = resolved.filter((i) => i.assigneeId === m.uid);
+      // 解決した人の実績として数える（あとで担当を替えても動かない。古い課題は今の担当者で代わり）
+      const done = resolved.filter((i) => (i.resolvedAssignee ?? i.assigneeId) === m.uid);
       // 初回の期限（firstDueAt）がない古い課題は、今の期限で代わりに数える。
       // 登録した時点ですでに期限を過ぎていた課題は、誰がやっても間に合わないので、遵守率の計算から外す
       const firstDue = (i: Issue) => (i.firstDueAt ?? i.dueAt).toMillis();
       const counted = done.filter((i) => firstDue(i) >= i.createdAt.toMillis());
       const onTimeN = counted.filter((i) => i.resolvedAt!.toMillis() <= firstDue(i)).length;
       const effect: Record<Effect, number> = { yes: 0, partial: 0, no: 0 };
-      for (const i of closed) if (i.assigneeId === m.uid && i.effect) effect[i.effect]++;
+      for (const i of closed) if ((i.resolvedAssignee ?? i.assigneeId) === m.uid && i.effect) effect[i.effect]++;
       return {
         uid: m.uid,
         name: m.displayName,

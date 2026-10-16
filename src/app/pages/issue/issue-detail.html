@@ -265,6 +265,7 @@
                 <div class="inline-edit">
                   <app-member-select selectId="e-assignee" [members]="assignable()" [value]="draftAssignee()"
                     (picked)="draftAssignee.set($event)" />
+                    @if (i.status === 'resolved') { <p class="help">{{ 'field.resolvedAssignee' | t }}</p> }
                   @if (assigneeChanged()) {
                     <textarea id="e-reason" [(ngModel)]="draftReason" rows="2" [attr.aria-label]="'edit.reason' | t"
                       [placeholder]="'edit.reasonHint' | t"></textarea>

@@ -267,6 +267,7 @@ export const ja = {
     empty: '押して書く',
     editLabels: 'ラベルを変える',
     needReason: '理由を書いてから閉じてください。（書いた内容を捨てるときは Esc）',
+    resolvedAssignee: 'この課題は解決済みです。担当者を変えても、解決した人の記録は残ります。差し戻しや効果確認の知らせは、新しい担当者に届きます。',
   },
   edit: {
     open: '編集',
@@ -702,6 +703,28 @@ export const ja = {
     titlePrefix: '【再発防止】#{{n}} {{title}}',
     doneCriteria: '仕組み・手順を変え、同じ種類の問題が起きないことを確認できた',
     description: '【元の課題】#{{n}} {{title}}\n【原因】{{cause}}\n【対策】{{countermeasure}}\n\n【変える仕組み・手順】\n',
+  },
+
+  bulk: {
+    selected: '{{n}}件を選択中',
+    clear: '選択を外す',
+    selectAll: '表示中をすべて選ぶ',
+    select: '#{{n}} を選ぶ',
+    assignee: '担当者',
+    labels: 'ラベル',
+    importance: '重要度',
+    due: '期限',
+    delete: '削除',
+    chooseAssignee: '担当者を選ぶ',
+    addLabels: '付ける',
+    removeLabels: '外す',
+    run: '{{n}}件に適用',
+    skipped: '編集できない {{n}} 件は対象外です。',
+    done: '{{n}}件を変更しました。',
+    deleted: '{{n}}件を削除フォルダに移しました。',
+    failed: '{{n}}件は変更できませんでした（{{list}}）。',
+    tooMany: 'ラベルが5個を超える {{n}} 件には、付けませんでした。',
+    resolvedNote: '解決済みの課題が {{n}} 件含まれています。担当者を変えても、解決した人の記録は残ります（ダッシュボードの実績は、解決した人のまま）。',
   },
 
   links: {

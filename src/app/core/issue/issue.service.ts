@@ -228,6 +228,7 @@ export class IssueService {
         // 解決済み・クローズの記録（管理者の取り込みだけ）。日時が分からなければ書かない（集計に混ぜない）
         ...(done ? {
           cause: v.cause, countermeasure: v.countermeasure, causeCategory: v.causeCategory,
+          resolvedAssignee: v.assigneeId,
           ...(v.resolvedAt ? { resolvedAt: Timestamp.fromDate(v.resolvedAt) } : {}),
         } : {}),
         ...(v.status === 'closed' ? {
@@ -309,6 +310,8 @@ export class IssueService {
         causeCategory: p.causeCategory,
         doneCriteriaMet: p.doneCriteriaMet,
         resolvedAt: serverTimestamp(),
+        // だれが解決したかを残す（あとで担当を替えても、実績は解決した人のまま）
+        resolvedAssignee: issue.assigneeId,
       });
       if (p.workaroundEnded) update['workaroundEnded'] = true;
     }
@@ -421,7 +424,10 @@ export class IssueService {
     };
   }
   /** 編集：変えた項目だけを更新し、経緯に「何を、何から何へ、なぜ」を残す */
-  async updateIssue(pid: string, issue: Issue, edits: IssueEdits, reason: string, uid: string, tz: string) {
+  /** notify＝false のときは通知を出さない（まとめて操作で、まとめて1通にするため） */
+  async updateIssue(
+    pid: string, issue: Issue, edits: IssueEdits, reason: string, uid: string, tz: string, notify = true,
+  ) {
     const ref = doc(db, 'projects', pid, 'issues', issue.id);
     const keys = (Object.keys(edits) as (keyof IssueEdits)[]).filter((k) => edits[k] !== undefined);
 
@@ -438,7 +444,7 @@ export class IssueService {
     }
 
     // 担当者が変わったら新しい担当者に、期限だけ変わったら担当者に知らせる（両方変わっても1通）
-    const want: NoticeWant | null = edits.assigneeId
+    const want: NoticeWant | null = !notify ? null : edits.assigneeId
       ? { to: edits.assigneeId, type: 'assigned', detail: reason }
       : edits.dueAt ? { to: issue.assigneeId, type: 'dueChanged', detail: reason } : null;
     await runTransaction(db, async (tx) => {
