@@ -41,6 +41,7 @@ function writeLastProject(pid: string) {
       <h1>{{ 'issueNew.title' | t }}</h1>
       @if (fromNumber(); as n) { <p class="notice">{{ 'prevention.creating' | t: { n: '' + n } }}</p> }
       @if (recurNumber(); as n) { <p class="notice">{{ 'links.recurCreating' | t: { n: '' + n } }}</p> }
+      @if (splitNote(); as s) { <p class="notice">{{ 'subtask.splitCreating' | t: { n: '' + s.n, title: s.title } }}</p> }      
       <form (ngSubmit)="save()">
               @if (!loadingProjects() && projects().length === 0) {
           <p class="notice">
@@ -209,11 +210,18 @@ export class IssueNew implements OnInit {
   private recurrenceOf: { iid: string; number: number } | null = null;
 
   recurNumber = signal<number | null>(null);
-
+  /** サブタスクを切り出すときの、親の課題とサブタスクの id（サブタスクの ⋮「課題に切り出す」から来たとき） */
+  private readonly splitOf = this.route.snapshot.queryParamMap.get('splitOf');
+  private readonly splitSub = this.route.snapshot.queryParamMap.get('sub');
+  private splitFrom: { iid: string; sid: string; number: number } | null = null;
+  splitNote = signal<{ n: number; title: string } | null>(null);
   fromNumber = signal<number | null>(null);
-  backLink = computed(() => (this.memoId ? ['/inbox']
-    : (this.fromIid || this.recurIid) && this.fromPid ? ['/p', this.fromPid, 'i', (this.fromIid || this.recurIid)!]
-      : this.fromPid ? ['/p', this.fromPid] : ['/']));
+  backLink = computed(() => {
+    const src = this.fromIid || this.recurIid || this.splitOf;
+    return this.memoId ? ['/inbox']
+      : src && this.fromPid ? ['/p', this.fromPid, 'i', src]
+        : this.fromPid ? ['/p', this.fromPid] : ['/'];
+  });
   readonly myUid = auth.currentUser!.uid;
   readonly types = ISSUE_TYPES;
   readonly levels: Level[] = ['high', 'mid', 'low'];
@@ -255,7 +263,7 @@ export class IssueNew implements OnInit {
   similar = computed(() => {
     const typed = bigrams(this.titleQ());
     if (typed.size < 3) return [];
-    const skip = new Set([this.relatedFrom?.iid, this.recurrenceOf?.iid]);
+    const skip = new Set([this.relatedFrom?.iid, this.recurrenceOf?.iid, this.splitFrom?.iid]);
     return this.pool()
       .filter((p) => p.issue.status !== 'deleted' && p.issue.status !== 'merged' && !skip.has(p.issue.id))
       .map((p) => ({ issue: p.issue, score: coverage(typed, p.grams) }))
@@ -329,6 +337,7 @@ export class IssueNew implements OnInit {
       // 再発防止課題として作るときは、必須の欄を全部埋めておく
       if (this.fromIid && this.fromPid) await this.fillPrevention(this.fromPid, this.fromIid);
       if (this.recurIid && this.fromPid) await this.fillRecurrence(this.fromPid, this.recurIid);
+      if (this.splitOf && this.splitSub && this.fromPid) await this.fillSplit(this.fromPid, this.splitOf, this.splitSub);
       // 受信箱のメモや再発などで題名が入ったときも、似た課題を出す
       this.titleQ.set(this.title);
     } catch (e) {
@@ -347,6 +356,8 @@ export class IssueNew implements OnInit {
       this.fromNumber.set(null);
       this.recurrenceOf = null;
       this.recurNumber.set(null);
+      this.splitFrom = null;
+      this.splitNote.set(null);
     }
     // ラベルはプロジェクトごとに違うので、切り替えたら選び直してもらう
     this.labelIds.set([]);
@@ -398,6 +409,29 @@ export class IssueNew implements OnInit {
     this.showDetail.set(true);
   }
 
+  /**
+   * 切り出し：題名はサブタスクのまま。種別・重要度は親と同じ（赤G）、期限はサブタスクの期限、なければ親の期限（赤H）。
+   * 担当者は、サブタスクの担当者が今もメンバーならその人
+   */
+  private async fillSplit(pid: string, iid: string, sid: string) {
+    const [src, sub] = await Promise.all([this.issues.get(pid, iid), this.issues.getSubtask(pid, iid, sid)]);
+    if (!src || !sub || sub.splitTo || this.pid() !== pid) return;
+    this.splitFrom = { iid: src.id, sid: sub.id, number: src.number };
+    this.splitNote.set({ n: src.number, title: sub.title });
+    this.title = sub.title;
+    this.selectType(src.type); // 完了条件の初期文も、種別に合わせて入る
+    this.importance.set(src.importance);
+    const due = (sub.dueAt ?? src.dueAt).toDate();
+    this.dueAt.set(due);
+    this.dueInput = toLocalInput(due, this.tz());
+    this.duePreset.set(null);
+    if (this.members().some((m) => m.uid === sub.assigneeId)) this.assigneeId.set(sub.assigneeId);
+    this.description = this.i18n.t('subtask.splitDescription', {
+      n: String(src.number), title: src.title, memo: sub.memo,
+    }).trimEnd() + '\n';
+    this.showDetail.set(true);
+  }
+
   selectType(t: IssueType) {
     const prev = this.type();
     // 雛形のまま（未編集）なら差し替える。自分で書き換えた内容は消さない
@@ -445,12 +479,14 @@ export class IssueNew implements OnInit {
         impact: this.impact.trim(),
         relatedFrom: this.relatedFrom,
         recurrenceOf: this.recurrenceOf,
+        splitFrom: this.splitFrom,
       }, this.myUid, this.tz(), this.memoId ?? undefined);
       writeLastProject(pid);
-      await this.router.navigate(['/p', pid]);
+      // 切り出したときは、親の課題に戻る（切り出し済みになったことを、その場で確かめられるように）
+      await this.router.navigate(this.splitFrom ? ['/p', pid, 'i', this.splitFrom.iid] : ['/p', pid]);
     } catch (e) {
       console.error(e);
-      this.error.set('common.saveError');
+      this.error.set((e as Error).message === 'split-gone' ? 'subtask.splitGone' : 'common.saveError');
     } finally {
       this.busy.set(false);
     }

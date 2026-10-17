@@ -48,6 +48,8 @@ import { I18nService, TPipe } from '../i18n/i18n';
             </label>
           </div>
         }
+        @if (openSubs()) { <p class="warn" role="status">{{ 'subtask.resolveOpen' | t: { n: '' + openSubs() } }}</p> }
+        @if (openSplits()) { <p class="warn" role="status">{{ 'subtask.resolveSplits' | t: { n: '' + openSplits() } }}</p> }
       }
       @if (transition().needs === 'close') {
         <fieldset>
@@ -127,7 +129,9 @@ import { I18nService, TPipe } from '../i18n/i18n';
       background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
     .conflict p { margin: 0 0 4px; }
     .conflict p:last-child { margin-bottom: 0; }
-  `,
+    .warn { margin: 0; padding: 10px 12px; border-radius: 8px; font-size: 13px;
+      background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
+    `,
 })
 export class StatusDialog implements OnInit {
   issue = input.required<Issue>();
@@ -162,7 +166,9 @@ export class StatusDialog implements OnInit {
   /** 衝突のあとは、最新の課題を土台にする */
   private base = signal<Issue | null>(null);
   current = computed(() => this.base() ?? this.issue());
-
+  /** 解決するときの注意：未完了のサブタスクと、切り出してまだ終わっていない課題の数（止めない・赤ペン5） */
+  openSubs = signal(0);
+  openSplits = signal(0);
   private tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
 
   ngOnInit() {
@@ -171,6 +177,20 @@ export class StatusDialog implements OnInit {
     this.cause = i.cause ?? '';
     this.countermeasure = i.countermeasure ?? '';
     this.causeCategory.set(i.causeCategory ?? null);
+    if (this.transition().needs === 'resolve') this.loadSubtaskNote();
+  }
+
+  /** サブタスクを1回読んで、注意の件数を出す。読めなくても解決は止めない（注意が出ないだけ） */
+  private async loadSubtaskNote() {
+    try {
+      const subs = await this.issueService.listSubtasks(this.pid(), this.issue().id);
+      this.openSubs.set(subs.filter((s) => !s.splitTo && s.status !== 'done').length);
+      const splits = await Promise.all(subs.filter((s) => s.splitTo)
+        .map((s) => this.issueService.get(this.pid(), s.splitTo!.iid).catch(() => null)));
+      this.openSplits.set(splits.filter((x) => x && ['open', 'in_progress', 'on_hold'].includes(x.status)).length);
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   canConfirm(): boolean {

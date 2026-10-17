@@ -136,6 +136,17 @@ import { DeleteProjectDialog } from '../project/delete-project-dialog';
             <li class="empty">{{ 'mine.empty' | t }}</li>
           }
         </ul>
+        @if (mySubtaskIssues().length) {
+          <h3 class="sub-head">{{ 'mine.subtasks' | t: { n: '' + mySubtaskIssues().length } }}</h3>
+          <ul class="list">
+            @for (i of mySubtaskIssues(); track i.id) {
+              <li class="mine-item">
+                <a class="name" [routerLink]="['/p', i.projectId, 'i', i.id]">#{{ i.number }} {{ i.title }}</a>
+                <span class="small">{{ projectName(i.projectId) }}</span>
+              </li>
+            }
+          </ul>
+        }        
       </section>
 
       <h2>{{ 'projects.title' | t }}</h2>
@@ -261,7 +272,8 @@ import { DeleteProjectDialog } from '../project/delete-project-dialog';
     .menu button.danger { color: var(--danger-text); font-weight: bold; }
     .menu button.danger:hover { background: var(--danger-bg); }
     .menu.up { top: auto; bottom: calc(100% + 4px); }
-  `,
+    .sub-head { font-size: 13px; color: var(--text-muted); margin: 16px 0 0; }  
+    `,
 })
 export class Projects implements OnInit {
   private authService = inject(AuthService);
@@ -339,7 +351,17 @@ export class Projects implements OnInit {
     await this.load();
   }
   invitations = signal<Invitation[]>([]);
-  myIssues = computed(() => Object.values(this.mineByProject()).flat());
+  /** 見張りで届いた課題（担当が自分か、サブタスクの担当が自分） */
+  private watchedMine = computed(() => Object.values(this.mineByProject()).flat());
+  /** 自分が担当の課題（「自分の課題」と今日のまとめは、こちらだけを数える） */
+  myIssues = computed(() => this.watchedMine().filter((i) => i.assigneeId === auth.currentUser!.uid));
+  /** サブタスクだけ担当している、未完了の課題（親の担当も自分なら、上に出ているので除く・赤J） */
+  mySubtaskIssues = computed(() => {
+    const uid = auth.currentUser!.uid;
+    return this.watchedMine()
+      .filter((i) => i.assigneeId !== uid && this.isActive(i) && !this.archivedIds().has(i.projectId))
+      .sort((a, b) => compareIssues(a, b, this.clock.now()));
+  });
   showDone = signal(false);
   /** 今日のまとめの区分で、自分の課題を絞る（null＝絞らない） */
   bucket = signal<DueBucket | null>(null);

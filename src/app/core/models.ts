@@ -204,6 +204,7 @@ export interface Issue {
   mergedInto?: { iid: string; number: number }; // 統合済みのとき、統合先の課題
   subtaskTotal?: number;      // サブタスクの数（切り出したものは除く）。関数だけが書く
   subtaskDone?: number;       // そのうち完了の数。関数だけが書く
+  subtaskAssignees?: string[]; // 未完了のサブタスクの担当者（ホームの見張り用）。関数だけが書く
 }
 export const CAUSE_CATEGORIES = [
   'requirements', 'design', 'testing', 'operation', 'communication', 'external', 'other',

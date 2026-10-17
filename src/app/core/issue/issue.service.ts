@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { NoticeAbout, NotificationService } from '../notification/notification.service';
 import {
   DocumentReference, FirestoreError, QueryDocumentSnapshot, Timestamp, Transaction, Unsubscribe, collection,
-  doc, getDoc, getDocs, onSnapshot, orderBy, query, runTransaction, serverTimestamp, where,
+  doc, getDoc, getDocs, onSnapshot, orderBy, or, query, runTransaction, serverTimestamp, where,
   addDoc, updateDoc, deleteField, deleteDoc, writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -72,6 +72,8 @@ export interface NewIssue {
   relatedFrom?: IssueLink | null;
   /** 再発として登録するときの、元の課題（同じプロジェクト） */
   recurrenceOf?: { iid: string; number: number } | null;
+  /** サブタスクを課題に切り出すときの、親の課題とサブタスク（同じプロジェクト） */
+  splitFrom?: { iid: string; sid: string; number: number } | null;
 }
 
 export interface StatusPayload {
@@ -152,6 +154,11 @@ export class IssueService {
     return runTransaction(db, async (tx) => {
       const projectRef = doc(db, 'projects', pid);
       const project = await tx.get(projectRef);
+      // 切り出すサブタスクも、書く前に読む。もう無い・もう切り出し済みなら止める（2人が同時に切り出すと、課題が2つできるため）
+      const splitRef = input.splitFrom
+        ? doc(projectRef, 'issues', input.splitFrom.iid, 'subtasks', input.splitFrom.sid) : null;
+      const split = splitRef ? await tx.get(splitRef) : null;
+      if (split && (!split.exists() || split.data()['splitTo'])) throw new Error('split-gone');
       const number = (project.data()!['issueSeq'] as number) + 1;
       const issueRef = doc(collection(projectRef, 'issues'));
 
@@ -191,6 +198,19 @@ export class IssueService {
         tx.set(doc(collection(src, 'events')), {
           type: 'link', link: { action: 'add', kind: 'recurrence', dir: 'in', pid, iid: issueRef.id, number },
           by: uid, tz, at: serverTimestamp(),
+        });
+      }
+      // 切り出し：サブタスクに印を付け、親と「関連」でつなぎ、親の経緯に残す（登録と同じ封筒で）
+      if (split?.exists() && input.splitFrom) {
+        const parentRef = doc(projectRef, 'issues', input.splitFrom.iid);
+        const subTitle = split.data()['title'] as string;
+        tx.update(split.ref, { splitTo: { iid: issueRef.id, number }, updatedAt: serverTimestamp(), updatedBy: uid });
+        tx.set(doc(issueRef, 'links', relationId('relates', 'out', pid, parentRef.id)),
+          { kind: 'relates', dir: 'out', pid, iid: parentRef.id, by: uid, at: serverTimestamp() });
+        tx.set(doc(parentRef, 'links', relationId('relates', 'in', pid, issueRef.id)),
+          { kind: 'relates', dir: 'in', pid, iid: issueRef.id, by: uid, at: serverTimestamp() });
+        tx.set(doc(collection(parentRef, 'events')), {
+          type: 'subtask', sub: { action: 'split', title: subTitle, number }, by: uid, tz, at: serverTimestamp(),
         });
       }
       if (memoId) tx.delete(doc(db, 'users', uid, 'inbox', memoId));
@@ -725,6 +745,18 @@ export class IssueService {
     );
   }
 
+  /** サブタスクを1回だけ読む（解決のモーダルの注意に使う。見張るほどではないため） */
+  async listSubtasks(pid: string, iid: string): Promise<Subtask[]> {
+    const s = await getDocs(this.subtaskCol(pid, iid));
+    return s.docs.map((d) => ({ ...(d.data() as Omit<Subtask, 'id'>), id: d.id }));
+  }
+
+  /** サブタスクを1件読む（切り出しの雛形に使う） */
+  async getSubtask(pid: string, iid: string, sid: string): Promise<Subtask | null> {
+    const s = await getDoc(doc(this.subtaskCol(pid, iid), sid));
+    return s.exists() ? { ...(s.data() as Omit<Subtask, 'id'>), id: s.id } : null;
+  }
+
   /**
    * サブタスクを足す。経緯に「足した」を残し、担当者が自分以外なら知らせる（同じ封筒で）。
    * 宛先が今もメンバーかを読んでから書くので、トランザクションにする
@@ -843,7 +875,8 @@ export class IssueService {
 
 
   /**
-   * 1つのプロジェクトで、自分が担当している課題を見張る（ホームの「自分の課題」用。プロジェクトごとに1本）。
+   * 1つのプロジェクトで、自分が担当している課題と、自分がサブタスクを担当している課題を見張る
+   * （ホームの「自分の課題」用。プロジェクトごとに1本）。
    * コレクショングループでまとめて探すと、ルールで「そのプロジェクトのメンバーか」を確かめられないため
    */
   watchMyIssuesIn(
@@ -852,7 +885,8 @@ export class IssueService {
     onError: (e: FirestoreError) => void,
   ): Unsubscribe {
     return onSnapshot(
-      query(collection(db, 'projects', pid, 'issues'), where('assigneeId', '==', uid)),
+      query(collection(db, 'projects', pid, 'issues'),
+        or(where('assigneeId', '==', uid), where('subtaskAssignees', 'array-contains', uid))),
       (s) => onData(s.docs.map((d) => ({ ...toIssue(d), projectId: pid }))),
       onError,
     );

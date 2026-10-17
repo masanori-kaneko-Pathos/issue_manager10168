@@ -88,6 +88,9 @@ import { I18nService, TPipe } from '../../i18n/i18n';
                     }
                     @if (canEdit()) {
                       <button type="button" role="menuitem" (click)="startEdit(s)">{{ 'subtask.edit' | t }}</button>
+                      <a role="menuitem" [routerLink]="['/p', pid(), 'new']"
+                        [queryParams]="{ splitOf: issue().id, sub: s.id }" (click)="menuFor.set(null)">
+                        {{ 'subtask.split' | t }}</a>
                       <button type="button" role="menuitem" class="danger" (click)="remove(s)">{{ 'subtask.delete' | t }}</button>
                     }
                   </div>
@@ -140,9 +143,9 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .backdrop { position: fixed; inset: 0; z-index: 51; }
     .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 52; min-width: 180px; background: var(--surface);
       border-radius: 10px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2); padding: 6px 0; display: flex; flex-direction: column; }
-    .menu button { text-align: left; padding: 0 16px; min-height: 40px; background: none; border: none; color: var(--text);
-      font-size: 14px; cursor: pointer; }
-    .menu button:hover { background: var(--surface-alt); }
+    .menu button, .menu a { display: block; text-align: left; padding: 0 16px; min-height: 40px; line-height: 40px;
+      background: none; border: none; color: var(--text); text-decoration: none; font-size: 14px; cursor: pointer; }
+    .menu button:hover, .menu a:hover { background: var(--surface-alt); }
     .menu .danger { color: var(--danger-text); }
     .edit { flex: 1; display: flex; flex-direction: column; gap: 8px; }
     .edit input, .edit textarea { font-size: 16px; padding: 6px 10px; }

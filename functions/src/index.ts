@@ -469,7 +469,9 @@ export const imOnSubtaskChanged = onDocumentWritten(
     const before = event.data?.before.data();
     const after = event.data?.after.data();
     // 数に関係する変更（作った・消した・状態・切り出し）の瞬間だけ。タイトルやメモの直し、並べ替えでは何もしない
-    if (before && after && before.status === after.status && !!before.splitTo === !!after.splitTo) return;
+    // 担当者が変わったときも、「サブタスクの担当者の一覧」が変わるので、数え直す
+    if (before && after && before.status === after.status && !!before.splitTo === !!after.splitTo
+      && before.assigneeId === after.assigneeId) return;
 
     const { pid, iid } = event.params;
     const issueRef = db.doc(`projects/${pid}/issues/${iid}`);
@@ -481,9 +483,14 @@ export const imOnSubtaskChanged = onDocumentWritten(
       const counted = subs.docs.filter((d) => !d.get('splitTo'));
       const total = counted.length;
       const done = counted.filter((d) => d.get('status') === 'done').length;
+      // 未完了のサブタスクの担当者（重複なし・並びをそろえる）。ホームの「サブタスクの担当」の見張りに使う
+      const assignees = [...new Set(counted
+        .filter((d) => d.get('status') !== 'done')
+        .map((d) => d.get('assigneeId') as string))].sort();
+      const prev = ((issue.get('subtaskAssignees') as string[] | undefined) ?? []).join();
       // 変わっていなければ書かない（書くと、課題を見張っている全員の画面に、要らない知らせが飛ぶため）
-      if (issue.get('subtaskTotal') === total && issue.get('subtaskDone') === done) return;
-      tx.update(issueRef, { subtaskTotal: total, subtaskDone: done });
+      if (issue.get('subtaskTotal') === total && issue.get('subtaskDone') === done && prev === assignees.join()) return;
+      tx.update(issueRef, { subtaskTotal: total, subtaskDone: done, subtaskAssignees: assignees });
     });
   },
 );

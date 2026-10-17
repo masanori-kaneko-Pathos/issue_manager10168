@@ -336,6 +336,7 @@ export const en: Dict = {
     title: 'My issues',
     showDone: 'Show resolved and closed',
     empty: 'You have no assigned issues.',
+    subtasks: 'Subtasks assigned to you ({{n}})',
   },
   menu: {
     account: 'Account',
@@ -753,6 +754,12 @@ export const en: Dict = {
     dueHelp: 'The due date is optional. Dates after the parent issue\'s due date cannot be chosen.',
     splitTo: 'Split into #{{n}}',
     help: 'Break the work into pieces, each with an assignee and due date. The issue\'s assignee stays the same. Whether the issue can be resolved is decided by its definition of done.',
+    resolveOpen: '{{n}} subtasks are not done. If the definition of done is met, you can still resolve this issue (delete any subtasks that are no longer needed).',
+    resolveSplits: '{{n}} issues split from this issue are not finished yet.',
+    split: 'Split into an issue',
+    splitCreating: 'Creating an issue from the subtask "{{title}}" of #{{n}}. Once created, the subtask is marked as split and no longer counted in progress.',
+    splitDescription: '[Original issue] #{{n}} {{title}}\n\n{{memo}}',
+    splitGone: 'This subtask has already been split or deleted. Check the original issue.',
   },
   links: {
     title: 'Related issues',
