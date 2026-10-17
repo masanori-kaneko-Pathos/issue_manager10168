@@ -27,6 +27,8 @@ import { MemberSelect } from '../../shared/member-select';
 import { Transition, availableTransitions } from '../../core/issue/workflow';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { MergeDialog } from './merge-dialog';
+import { SubtaskList } from './subtask-list';
+
 
 /** 経緯の「編集した欄」の項目名 → 翻訳キー（issue.〇〇）。名前が違うものだけ書く */
 const FIELD_LABEL_KEYS: Record<string, string> = { assigneeId: 'assignee', dueAt: 'due' };
@@ -52,7 +54,7 @@ function sameField(k: keyof IssueEdits, a: Issue, b: Issue): boolean {
 @Component({
   selector: 'app-issue-detail',
   imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, StatusDialog, PriorityMark, LinkDialog,
-    MergeDialog, LabelPicker, MemberSelect],
+    MergeDialog, LabelPicker, MemberSelect, SubtaskList],
   host: {
     '(document:keydown.escape)':
       'menuOpen.set(false); statusMenu.set(false); prioMenu.set(false); typeMenu.set(false); closeField()',
@@ -222,6 +224,19 @@ export class IssueDetail implements OnInit {
     if (r === 'admin') return true;
     return r === 'member' && (i.reporterId === this.myUid || i.assigneeId === this.myUid);
   });
+
+  /** サブタスクを全部触れるか（親の課題を編集できる人。削除フォルダの中は不可） */
+  canEditSubtasks = computed(() => this.canEdit() && this.issue()?.status !== 'deleted');
+  /** 自分が担当のサブタスクの □ を押せるか（管理者・メンバーで、親がまだ動いている） */
+  canWork = computed(() => {
+    const s = this.issue()?.status;
+    const r = this.role();
+    return (r === 'admin' || r === 'member') && !this.projectArchived()
+      && !!s && !['closed', 'deleted', 'merged'].includes(s);
+  });
+  /** サブタスクの部品に渡す名前の引き方（テンプレートでは矢印関数が書けないので、ここで作る） */
+  readonly nameFn = (uid: string) => this.memberName(uid);
+
   canSetPriority = computed(() => {
     const i = this.issue();
     const r = this.role();
@@ -756,6 +771,11 @@ export class IssueDetail implements OnInit {
       const l = item.link;
       return this.i18n.t('detail.events.link.' + l.action, {
         name, kind: this.i18n.t('links.groups.' + linkGroupOf(l.kind, l.dir)), target: this.linkTarget(l.pid, l.number),
+      });
+    }
+    if (item.type === 'subtask' && item.sub) {
+      return this.i18n.t('detail.events.subtask.' + item.sub.action, {
+        name, title: item.sub.title, n: String(item.sub.number ?? ''),
       });
     }
     if (item.type === 'created') return this.i18n.t('detail.events.created', { name });

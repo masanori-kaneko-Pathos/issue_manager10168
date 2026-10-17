@@ -8,7 +8,7 @@ import {
 import { db } from '../firebase';
 import {
   CauseCategory, Effect, Issue, IssueLink, IssueRelation, IssueType, Level, LinkKind, Member, NotificationType,
-  OPEN_STATUSES, TimelineItem, relationId,
+  OPEN_STATUSES, Subtask, SubtaskStatus, TimelineItem, relationId,
 } from '../models';
 import { Transition, TransitionKey } from './workflow';
 import { ImportValues } from '../import/convert';
@@ -102,6 +102,22 @@ export interface IssueEdits {
   labelIds?: string[];
   occurredOn?: string | null; // null は「空にする」
   impact?: string;
+}
+
+/** サブタスクを足すときの値（状態は未着手から。メモは空から） */
+export interface NewSubtask {
+  title: string;
+  assigneeId: string;
+  dueAt: Date | null;
+  order: number;
+}
+
+/** サブタスクを直すときの値（変えた欄だけ入れる。dueAt の null は「期限を外す」） */
+export interface SubtaskEdits {
+  title?: string;
+  assigneeId?: string;
+  dueAt?: Date | null;
+  memo?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -690,6 +706,86 @@ export class IssueService {
     );
   }
 
+  // ---- サブタスク ----
+
+  private subtaskCol(pid: string, iid: string) {
+    return collection(db, 'projects', pid, 'issues', iid, 'subtasks');
+  }
+
+  /** この課題のサブタスクを見張る（並び順どおり） */
+  watchSubtasks(
+    pid: string, iid: string, onData: (list: Subtask[]) => void, onError: (e: FirestoreError) => void,
+  ): Unsubscribe {
+    return onSnapshot(
+      this.subtaskCol(pid, iid),
+      (s) => onData(s.docs
+        .map((d) => ({ ...(d.data({ serverTimestamps: 'estimate' }) as Omit<Subtask, 'id'>), id: d.id }))
+        .sort((a, b) => a.order - b.order)),
+      onError,
+    );
+  }
+
+  /**
+   * サブタスクを足す。経緯に「足した」を残し、担当者が自分以外なら知らせる（同じ封筒で）。
+   * 宛先が今もメンバーかを読んでから書くので、トランザクションにする
+   */
+  async addSubtask(pid: string, issue: Issue, v: NewSubtask, uid: string, tz: string) {
+    const issueRef = doc(db, 'projects', pid, 'issues', issue.id);
+    const ref = doc(this.subtaskCol(pid, issue.id));
+    await runTransaction(db, async (tx) => {
+      const notes = await this.prepareNotices(tx, pid, issue,
+        [{ to: v.assigneeId, type: 'subtaskAssigned', detail: v.title }]);
+      tx.set(ref, {
+        title: v.title, assigneeId: v.assigneeId, dueAt: v.dueAt ? Timestamp.fromDate(v.dueAt) : null,
+        status: 'todo', memo: '', order: v.order,
+        createdBy: uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), updatedBy: uid,
+      });
+      tx.set(doc(collection(issueRef, 'events')), {
+        type: 'subtask', sub: { action: 'add', title: v.title }, by: uid, tz, at: serverTimestamp(),
+      });
+      notes.forEach((n) => tx.set(n.ref, n.data));
+    });
+  }
+
+  /** サブタスクを直す（変えた欄だけ）。担当者を自分以外に替えたら、新しい担当者に知らせる。経緯には残さない */
+  async updateSubtask(pid: string, issue: Issue, sub: Subtask, edits: SubtaskEdits, uid: string) {
+    const ref = doc(this.subtaskCol(pid, issue.id), sub.id);
+    const update: Record<string, unknown> = { updatedAt: serverTimestamp(), updatedBy: uid };
+    if (edits.title !== undefined) update['title'] = edits.title;
+    if (edits.memo !== undefined) update['memo'] = edits.memo;
+    if (edits.assigneeId !== undefined) update['assigneeId'] = edits.assigneeId;
+    if (edits.dueAt !== undefined) update['dueAt'] = edits.dueAt ? Timestamp.fromDate(edits.dueAt) : null;
+    const to = edits.assigneeId !== undefined && edits.assigneeId !== sub.assigneeId ? edits.assigneeId : null;
+    await runTransaction(db, async (tx) => {
+      const notes = to
+        ? await this.prepareNotices(tx, pid, issue, [{ to, type: 'subtaskAssigned', detail: edits.title ?? sub.title }])
+        : [];
+      tx.update(ref, update);
+      notes.forEach((n) => tx.set(n.ref, n.data));
+    });
+  }
+
+  /** □ と「対応中にする」。読む必要も知らせもないので、1つ書くだけ（サブタスクの担当者もここを通る） */
+  setSubtaskStatus(pid: string, iid: string, sid: string, status: SubtaskStatus, uid: string) {
+    return updateDoc(doc(this.subtaskCol(pid, iid), sid), { status, updatedAt: serverTimestamp(), updatedBy: uid });
+  }
+
+  /** 並べ替え：動かした1件の order だけを書く（前後の真ん中の数は、画面が計算して渡す） */
+  moveSubtask(pid: string, iid: string, sid: string, order: number, uid: string) {
+    return updateDoc(doc(this.subtaskCol(pid, iid), sid), { order, updatedAt: serverTimestamp(), updatedBy: uid });
+  }
+
+  /** サブタスクを消す。経緯に「消した」を残す（消すのと同じ封筒で） */
+  async deleteSubtask(pid: string, iid: string, sub: Subtask, uid: string, tz: string) {
+    const issueRef = doc(db, 'projects', pid, 'issues', iid);
+    const batch = writeBatch(db);
+    batch.delete(doc(this.subtaskCol(pid, iid), sub.id));
+    batch.set(doc(collection(issueRef, 'events')), {
+      type: 'subtask', sub: { action: 'remove', title: sub.title }, by: uid, tz, at: serverTimestamp(),
+    });
+    await batch.commit();
+  }  
+
   /** この課題を元にして作られた課題（再発防止など）を見張る。削除フォルダのものは出さない */
   watchRelatedTo(
     pid: string, iid: string, onData: (issues: Issue[]) => void, onError: (e: FirestoreError) => void,
@@ -714,12 +810,13 @@ export class IssueService {
   /** 完全削除：経緯とコメントを消してから、課題を消す（管理者のみ。削除フォルダの中だけ。元に戻せない） */
   async purgeIssue(pid: string, iid: string) {
     const ref = doc(db, 'projects', pid, 'issues', iid);
-    const [events, comments, links] = await Promise.all([
+    const [events, comments, links, subtasks] = await Promise.all([
       getDocs(collection(ref, 'events')),
       getDocs(collection(ref, 'comments')),
       getDocs(collection(ref, 'links')),
+      getDocs(collection(ref, 'subtasks')),
     ]);
-    const children = [...events.docs, ...comments.docs, ...links.docs].map((d) => d.ref);
+    const children = [...events.docs, ...comments.docs, ...links.docs, ...subtasks.docs].map((d) => d.ref);
     // まとめ書きは1回500件まで。余裕をみて400件ずつ
     for (let i = 0; i < children.length; i += 400) {
       const batch = writeBatch(db);

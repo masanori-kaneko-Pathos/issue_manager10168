@@ -2,7 +2,7 @@ import { initializeApp } from 'firebase-admin/app';
 import { DocumentData, FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { logger } from 'firebase-functions';
-import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
+import { onDocumentCreated, onDocumentUpdated, onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 
@@ -246,6 +246,7 @@ const PUSH_TEXT: Record<'ja' | 'en', Record<string, string>> = {
     unblocked: '#{{n}}「{{title}}」が待っていた課題が、解決済みになりました。進められるか確かめてください',
     merged: '{{name}} さんが、#{{n}}「{{title}}」を別の課題に統合しました',
     projectDeleted: '{{name}} さんが、プロジェクト「{{project}}」を削除しました',
+    subtaskAssigned: '{{name}} さんが、#{{n}}「{{title}}」のサブタスクをあなたの担当にしました',
   },
   en: {
     assigned: '{{name}} assigned you to #{{n}} "{{title}}"',
@@ -263,6 +264,7 @@ const PUSH_TEXT: Record<'ja' | 'en', Record<string, string>> = {
     unblocked: 'The issue that #{{n}} "{{title}}" was waiting for is resolved. Check whether you can move forward',
     merged: '{{name}} merged #{{n}} "{{title}}" into another issue',
     projectDeleted: '{{name}} deleted the project "{{project}}"',
+    subtaskAssigned: '{{name}} assigned you a subtask on #{{n}} "{{title}}"',
   },
 };
 const DAILY_PARTS: Record<'ja' | 'en', Record<string, string>> = {
@@ -454,3 +456,34 @@ export const imDeleteProject = onCall({ region: 'asia-northeast1' }, async (req)
   logger.info('project deleted', { pid, name, by: uid, byName, members: members.size, issues: issueRefs.length });
   return { ok: true };
 });
+
+// ---- サブタスクの数 ----
+
+/**
+ * サブタスクが作られた・変わった・消えたら、課題の subtaskTotal・subtaskDone を数え直す（切り出したものは除く）。
+ * 課題の updatedAt は変えない（衝突も、停滞のリセットも起こさないため）
+ */
+export const imOnSubtaskChanged = onDocumentWritten(
+  { document: 'projects/{pid}/issues/{iid}/subtasks/{sid}', database: 'issuemanager', region: 'asia-northeast1' },
+  async (event) => {
+    const before = event.data?.before.data();
+    const after = event.data?.after.data();
+    // 数に関係する変更（作った・消した・状態・切り出し）の瞬間だけ。タイトルやメモの直し、並べ替えでは何もしない
+    if (before && after && before.status === after.status && !!before.splitTo === !!after.splitTo) return;
+
+    const { pid, iid } = event.params;
+    const issueRef = db.doc(`projects/${pid}/issues/${iid}`);
+    // 数えるのと書くのを1つのトランザクションに。□ を続けて押して関数が同時に動いても、古い数で上書きしない
+    await db.runTransaction(async (tx) => {
+      const issue = await tx.get(issueRef);
+      if (!issue.exists) return; // 完全削除・プロジェクトの削除の途中（親がもう無い）
+      const subs = await tx.get(issueRef.collection('subtasks'));
+      const counted = subs.docs.filter((d) => !d.get('splitTo'));
+      const total = counted.length;
+      const done = counted.filter((d) => d.get('status') === 'done').length;
+      // 変わっていなければ書かない（書くと、課題を見張っている全員の画面に、要らない知らせが飛ぶため）
+      if (issue.get('subtaskTotal') === total && issue.get('subtaskDone') === done) return;
+      tx.update(issueRef, { subtaskTotal: total, subtaskDone: done });
+    });
+  },
+);
