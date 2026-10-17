@@ -1,16 +1,22 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import { NavigationExtras } from '@angular/router';
 import {
-  Timestamp, collection, doc, limit, onSnapshot, orderBy, query, serverTimestamp, updateDoc, writeBatch,
+  QueryDocumentSnapshot, Timestamp, collection, deleteDoc, deleteField, doc, limit, onSnapshot, orderBy, query,
+  serverTimestamp, updateDoc, where, writeBatch,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { AuthService } from '../auth/auth.service';
+import { I18nService } from '../../i18n/i18n';
 import { AppNotification, NotificationType } from '../models';
 
 const DAY = 24 * 60 * 60 * 1000;
 /** 通知が自動で消えるまでの日数（TTL） */
 export const NOTIFY_KEEP_DAYS = 90;
-/** パネルに出す件数（新しい順） */
+/** 見張る件数（新しい順）。ピン止めは別に見張るので、この数に入らなくても落ちない */
 export const NOTIFY_LIST_MAX = 50;
+
+/** 1件・まとめての操作 */
+export type NoticeOp = 'read' | 'unread' | 'pin' | 'unpin' | 'delete';
 
 /** 通知に写しておく「どのプロジェクトの、どの課題の話か」 */
 export interface NoticeAbout {
@@ -21,48 +27,119 @@ export interface NoticeAbout {
   issueTitle: string;
 }
 
-/** 画面内の通知。作る・見張る・既読にするを、ここにまとめる */
+const newestFirst = (a: AppNotification, b: AppNotification) => b.at.toMillis() - a.at.toMillis();
+const toNotice = (d: QueryDocumentSnapshot): AppNotification =>
+  ({ ...(d.data({ serverTimestamps: 'estimate' }) as Omit<AppNotification, 'id'>), id: d.id });
+
+/** 画面内の通知。作る・見張る・既読やピン止め・消す・文面と行き先を、ここにまとめる */
 @Injectable({ providedIn: 'root' })
 export class NotificationService {
   private authService = inject(AuthService);
-  private items = signal<AppNotification[]>([]);
-  /** 新しい順の通知（最大 NOTIFY_LIST_MAX 件） */
-  readonly list = this.items.asReadonly();
+  private i18n = inject(I18nService);
+  private recent = signal<AppNotification[]>([]);
+  private pins = signal<AppNotification[]>([]);
+
+  /** ピン止め（新しい順）→ それ以外（新しい順・最大 NOTIFY_LIST_MAX 件） */
+  readonly list = computed(() => {
+    const pins = [...this.pins()].sort(newestFirst);
+    const pinned = new Set(pins.map((n) => n.id));
+    return [...pins, ...this.recent().filter((n) => !pinned.has(n.id))];
+  });
   /** 未読の件数（ベルの数字） */
-  readonly unread = computed(() => this.items().filter((n) => !n.read).length);
+  readonly unread = computed(() => this.list().filter((n) => !n.read).length);
 
   constructor() {
-    // ログインしたら見張りを始め、ログアウトしたらやめる（受信箱と同じ形）
+    // ログインしたら見張りを始め、ログアウトしたらやめる。新しい順の見張りと、ピン止めの見張りの2本
     effect((onCleanup) => {
       const uid = this.authService.user()?.uid;
       if (!uid) {
-        this.items.set([]);
+        this.recent.set([]);
+        this.pins.set([]);
         return;
       }
-      const stop = onSnapshot(
-        query(collection(db, 'users', uid, 'notifications'), orderBy('at', 'desc'), limit(NOTIFY_LIST_MAX)),
-        (s) => this.items.set(s.docs.map((d) => ({
-          ...(d.data({ serverTimestamps: 'estimate' }) as Omit<AppNotification, 'id'>), id: d.id,
-        }))),
-        (e) => console.error('通知の見張りに失敗', e),
-      );
-      onCleanup(stop);
+      const col = collection(db, 'users', uid, 'notifications');
+      const stopRecent = onSnapshot(query(col, orderBy('at', 'desc'), limit(NOTIFY_LIST_MAX)),
+        (s) => this.recent.set(s.docs.map(toNotice)), (e) => console.error('通知の見張りに失敗', e));
+      const stopPins = onSnapshot(query(col, where('pinned', '==', true)),
+        (s) => this.pins.set(s.docs.map(toNotice)), (e) => console.error('ピン止めの見張りに失敗', e));
+      onCleanup(() => {
+        stopRecent();
+        stopPins();
+      });
     });
   }
 
-  /** 1件を既読にする */
+  private ref(id: string) {
+    return doc(db, 'users', auth.currentUser!.uid, 'notifications', id);
+  }
+
+  /** 操作ごとの書き換え（null は「消す」） */
+  private change(op: NoticeOp): Record<string, unknown> | null {
+    switch (op) {
+      case 'read': return { read: true };
+      case 'unread': return { read: false };
+      // ピン止めは自動で消さない：期限の項目を消す。外したら、その時から90日後に消えるようにする
+      case 'pin': return { pinned: true, expireAt: deleteField() };
+      case 'unpin': return { pinned: false, expireAt: Timestamp.fromMillis(Date.now() + NOTIFY_KEEP_DAYS * DAY) };
+      default: return null;
+    }
+  }
+
   markRead(id: string) {
-    return updateDoc(doc(db, 'users', auth.currentUser!.uid, 'notifications', id), { read: true });
+    return updateDoc(this.ref(id), { read: true });
+  }
+
+  /** 1件の操作（ベルの小窓の ⋮ から） */
+  apply(id: string, op: NoticeOp) {
+    const c = this.change(op);
+    return c ? updateDoc(this.ref(id), c) : deleteDoc(this.ref(id));
+  }
+
+  /** まとめての操作（お知らせのページから）。まとめ書きは500件までなので、400件ずつ */
+  async applyMany(ids: string[], op: NoticeOp) {
+    const c = this.change(op);
+    for (let i = 0; i < ids.length; i += 400) {
+      const batch = writeBatch(db);
+      for (const id of ids.slice(i, i + 400)) {
+        if (c) batch.update(this.ref(id), c);
+        else batch.delete(this.ref(id));
+      }
+      await batch.commit();
+    }
   }
 
   /** 見えている未読を、まとめて既読にする */
   async markAllRead() {
-    const uid = auth.currentUser!.uid;
-    const unread = this.items().filter((n) => !n.read);
-    if (!unread.length) return;
-    const batch = writeBatch(db);
-    unread.forEach((n) => batch.update(doc(db, 'users', uid, 'notifications', n.id), { read: true }));
-    await batch.commit();
+    const ids = this.list().filter((n) => !n.read).map((n) => n.id);
+    if (ids.length) await this.applyMany(ids, 'read');
+  }
+
+  /** 通知の文面（ベルの小窓とお知らせのページで共通） */
+  text(n: AppNotification) {
+    // 朝のまとめは、0件でない区分だけを「・」でつなぐ
+    if (n.type === 'daily' && n.counts) {
+      const c = n.counts;
+      const parts = (['overdue', 'today', 'tomorrow', 'in3', 'inboxOld'] as const)
+        .filter((k) => c[k] > 0)
+        .map((k) => this.i18n.t('notify.daily.' + k, { n: String(c[k]) }))
+        .join(this.i18n.lang() === 'ja' ? '・' : ', ');
+      return this.i18n.t('notify.types.daily', { parts });
+    }
+    return this.i18n.t('notify.types.' + n.type, {
+      name: n.byName, n: String(n.issueNumber ?? ''), title: n.issueTitle, project: n.projectName,
+    });
+  }
+
+  /** 押したときの行き先（プッシュの pushUrl と同じ決まり） */
+  target(n: AppNotification): { commands: unknown[]; extras: NavigationExtras } {
+    if (n.type === 'daily') return { commands: ['/'], extras: { fragment: 'today' } };
+    if (n.iid) return { commands: ['/p', n.pid, 'i', n.iid], extras: {} };
+    if (n.type === 'projectDeleted') return { commands: ['/'], extras: {} };
+    // 引き継いだ課題が見えるよう、自分の担当で絞ったリストへ
+    if (n.type === 'handover') {
+      return { commands: ['/p', n.pid, 'list'], extras: { queryParams: { assignee: auth.currentUser!.uid } } };
+    }
+    return { commands: ['/p', n.pid], extras: {} };
   }
 
   /**
