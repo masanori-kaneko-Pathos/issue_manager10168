@@ -38,3 +38,10 @@ export function availableTransitions(issue: Issue, role: Role, uid: string) {
     .filter((t) => t.from.includes(issue.status))
     .map((t) => ({ t, allowed: canDo(t, issue, role, uid) }));
 }
+
+/** 入力の要らない移動の、逆の移動（元に戻すに使う）。ここにないものは戻せない */
+export const UNDO_OF: Partial<Record<TransitionKey, TransitionKey>> = {
+  start: 'unstart',
+  unstart: 'start',
+  resume: 'hold', // 保留の理由は、元の理由をそのまま使う
+};

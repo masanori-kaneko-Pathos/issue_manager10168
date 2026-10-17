@@ -24,7 +24,8 @@ import { PriorityMark } from '../../shared/priority-mark';
 import { isStale, priorityOf } from '../../core/issue/priority';
 import { dateKey, endOfDayIn, formatDateTime, parseLocalInput, remainingOf, toLocalInput } from '../../core/time/time';
 import { MemberSelect } from '../../shared/member-select';
-import { Transition, availableTransitions } from '../../core/issue/workflow';
+import { Transition, UNDO_OF, availableTransitions } from '../../core/issue/workflow';
+import { UndoService } from '../../core/undo/undo.service';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { MergeDialog } from './merge-dialog';
 import { SubtaskList } from './subtask-list';
@@ -72,6 +73,8 @@ export class IssueDetail implements OnInit {
   private authService = inject(AuthService);
   private clock = inject(Clock);
   protected i18n = inject(I18nService);
+  private undo = inject(UndoService);
+
 
   readonly pid = this.route.snapshot.paramMap.get('pid')!;
   readonly iid = this.route.snapshot.paramMap.get('iid')!;
@@ -658,8 +661,13 @@ export class IssueDetail implements OnInit {
   /** 入力が要らない変更（対応を始める・再開）は、押したらすぐ保存する */
   private async applyNow(t: Transition) {
     this.busy.set(true);
+    const before = this.issue()!;
     try {
-      await this.issueService.changeStatus(this.pid, this.issue()!, t, EMPTY_STATUS_PAYLOAD, this.myUid, this.tz());
+      await this.issueService.changeStatus(this.pid, before, t, EMPTY_STATUS_PAYLOAD, this.myUid, this.tz());
+      if (UNDO_OF[t.key]) {
+        this.undo.offer('undo.moved', { n: String(before.number), to: this.i18n.t('status.' + t.to) },
+          () => this.issueService.undoStatus(this.pid, before, t, this.myUid, this.tz()));
+      }
     } catch (e) {
       if (e instanceof ConflictError) {
         // 画面は見張りで最新になっているので、ボタンもすでに最新の状態に合っている

@@ -62,8 +62,11 @@ import { ProjectNewDialog } from './project-new-dialog';
           <div class="panel" role="dialog" [attr.aria-label]="'notify.title' | t">
             <div class="panel-head">
               <strong>{{ 'notify.title' | t }}</strong>
-              <button type="button" class="link" [disabled]="!notify.unread()" (click)="notify.markAllRead()">
-                {{ 'notify.allRead' | t }}</button>
+              <span class="head-links">
+                <button type="button" class="link" [disabled]="!notify.unread()" (click)="notify.markAllRead()">
+                  {{ 'notify.allRead' | t }}</button>
+                <a routerLink="/notifications" class="link" (click)="bellOpen.set(false)">{{ 'notify.seeAll' | t }}</a>
+              </span>
             </div>
             <ul>
               @for (n of notify.list(); track n.id) {
@@ -90,7 +93,6 @@ import { ProjectNewDialog } from './project-new-dialog';
                 <li class="empty">{{ 'notify.empty' | t }}</li>
               }
             </ul>
-            <a routerLink="/notifications" class="n-all" (click)="bellOpen.set(false)">{{ 'notify.seeAll' | t }}</a>
           </div>
         }
       </div>
@@ -197,9 +199,9 @@ import { ProjectNewDialog } from './project-new-dialog';
     .n-actions button { min-height: 32px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 16px;
       background: var(--surface); color: var(--text); font-size: 12px; cursor: pointer; }
     .n-actions .danger { color: var(--danger-text); }
-    .n-all { display: block; padding: 10px 12px; text-align: center; font-size: 13px; color: var(--primary);
-      text-decoration: none; }
-    .n-all:hover { background: var(--surface-alt); }
+    .head-links { display: flex; align-items: center; gap: 12px; }
+    .panel-head a.link { display: inline-flex; align-items: center; min-height: 36px; font-size: 13px;
+      color: var(--primary); text-decoration: none; }
     @media (max-width: 600px) {
       .panel { position: fixed; left: 12px; right: 12px; top: 58px; width: auto; }
     }

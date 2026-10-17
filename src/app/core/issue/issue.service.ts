@@ -10,7 +10,8 @@ import {
   CauseCategory, Effect, Issue, IssueLink, IssueRelation, IssueType, Level, LinkKind, Member, NotificationType,
   OPEN_STATUSES, Subtask, SubtaskStatus, TimelineItem, relationId,
 } from '../models';
-import { Transition, TransitionKey } from './workflow';
+import { TRANSITIONS, Transition, TransitionKey, UNDO_OF } from './workflow';
+import { UndoConflictError } from '../undo/undo.service';
 import { ImportValues } from '../import/convert';
 
 /** 見張りで届いた文書を課題にする。保存直後の手元の版では、サーバーの時刻が null なので仮の時刻を入れる */
@@ -381,6 +382,19 @@ export class IssueService {
       }
       notes.forEach((n) => tx.set(n.ref, n.data));
     });
+  }
+
+  /**
+   * 入力の要らないステータス変更を、元に戻す。今のステータスが「変えた先」のままのときだけ戻す
+   * （ほかの人がもう動かしていたら、上書きせずに UndoConflictError）。お知らせは出さない（赤R）
+   * before＝変える前の課題（保留の理由を取り戻すため）
+   */
+  async undoStatus(pid: string, before: Issue, t: Transition, uid: string, tz: string) {
+    const back = TRANSITIONS.find((x) => x.key === UNDO_OF[t.key]);
+    const latest = await this.get(pid, before.id);
+    if (!back || !latest || latest.status !== t.to) throw new UndoConflictError();
+    await this.changeStatus(pid, latest, back,
+      { ...EMPTY_STATUS_PAYLOAD, reason: back.needs === 'reason' ? (before.statusReason ?? '') : '' }, uid, tz);
   }
 
   /** コメント：書くのと同時に、担当者と提起者に知らせる（今もメンバーの人だけ） */

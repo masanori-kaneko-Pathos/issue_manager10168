@@ -13,7 +13,8 @@ import { PriorityMark } from '../../shared/priority-mark';
 import { compareIssues, isManualPriority, isStale, priorityOf } from '../../core/issue/priority';
 import { ProjectContext } from './project-context';
 import { endOfDayIn, remainingOf, shortDue } from '../../core/time/time';
-import { Transition, availableTransitions } from '../../core/issue/workflow';
+import { Transition, UNDO_OF, availableTransitions } from '../../core/issue/workflow';
+import { UndoService } from '../../core/undo/undo.service';
 import { HelpTip } from '../../shared/help-tip';
 import { StatusDialog } from '../../shared/status-dialog';
 import { I18nService, TPipe } from '../../i18n/i18n';
@@ -266,6 +267,8 @@ export class ProjectBoard implements OnInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private i18n = inject(I18nService);
+  private undo = inject(UndoService);
+
 
   readonly myUid = auth.currentUser!.uid;
   readonly dueOptions: DueFilter[] = ['today', 'week', 'overdue'];
@@ -449,6 +452,10 @@ export class ProjectBoard implements OnInit {
     }
     try {
       await this.issueService.changeStatus(this.ctx.pid(), issue, t, EMPTY_STATUS_PAYLOAD, this.myUid, this.tz());
+      if (UNDO_OF[t.key]) {
+        this.undo.offer('undo.moved', { n: String(issue.number), to: this.i18n.t('status.' + t.to) },
+          () => this.issueService.undoStatus(this.ctx.pid(), issue, t, this.myUid, this.tz()));
+      }
     } catch (e) {
       if (e instanceof ConflictError) this.showNotMoved(issue, e.latest);
       else console.error(e);

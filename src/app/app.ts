@@ -3,10 +3,11 @@ import { RouterOutlet } from '@angular/router';
 import { computed, inject } from '@angular/core';
 import { AuthService } from './core/auth/auth.service';
 import { AppHeader } from './shared/app-header';
+import { UndoToast } from './shared/undo-toast';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, AppHeader],
+  imports: [RouterOutlet, AppHeader, UndoToast],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })

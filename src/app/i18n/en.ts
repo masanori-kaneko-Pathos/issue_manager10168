@@ -761,6 +761,13 @@ export const en: Dict = {
     splitDescription: '[Original issue] #{{n}} {{title}}\n\n{{memo}}',
     splitGone: 'This subtask has already been split or deleted. Check the original issue.',
   },
+  undo: {
+    action: 'Undo',
+    close: 'Close',
+    done: 'Undone.',
+    conflict: 'Someone else changed it first, so it could not be undone.',
+    moved: 'Moved #{{n}} to "{{to}}".',
+  },  
   links: {
     title: 'Related issues',
     help: 'Links between issues. A link also appears on the other issue. For "waiting for", the assignee is notified when the issue being waited on is resolved.',
