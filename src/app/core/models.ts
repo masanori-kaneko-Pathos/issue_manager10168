@@ -92,7 +92,7 @@ export interface AdminLog {
 /** 通知の種類 */
 export type NotificationType =
   'assigned' | 'comment' | 'dueChanged' | 'resolved' | 'sentBack' | 'closed' | 'rejected' | 'restored' | 'joined'
-  | 'handover' | 'daily' | 'effectCheck' | 'unblocked' | 'merged' | 'projectDeleted';
+  | 'handover' | 'daily' | 'effectCheck' | 'unblocked' | 'merged' | 'projectDeleted' | 'subtaskAssigned';
 
 /**
  * 画面内の通知（users/{uid}/notifications）。本人だけが読める。
@@ -202,6 +202,8 @@ export interface Issue {
   importId?: string;          // 取り込みの1回ごとの印（まとめて取り消すときに使う）
   importedBy?: string;        // 取り込んだ人
   mergedInto?: { iid: string; number: number }; // 統合済みのとき、統合先の課題
+  subtaskTotal?: number;      // サブタスクの数（切り出したものは除く）。関数だけが書く
+  subtaskDone?: number;       // そのうち完了の数。関数だけが書く
 }
 export const CAUSE_CATEGORIES = [
   'requirements', 'design', 'testing', 'operation', 'communication', 'external', 'other',
@@ -213,7 +215,9 @@ export type Effect = 'yes' | 'partial' | 'no';
 export interface TimelineItem {
   id: string;
   kind: 'event' | 'comment';
-  type?: 'created' | 'imported' | 'status' | 'edit' | 'priority' | 'link' | 'merge';
+  type?: 'created' | 'imported' | 'status' | 'edit' | 'priority' | 'link' | 'merge' | 'subtask';
+  /** サブタスクを足した・消した・切り出した（type が subtask のときだけ。状態の切り替えは残さない） */
+  sub?: { action: 'add' | 'remove' | 'split'; title: string; number?: number };
   /** 統合先の経緯に残す「どの課題を統合したか」（type が merge のときだけ） */
   merged?: { iid: string; number: number };
   /** 関連課題を付けた・外した（type が link のときだけ） */
@@ -245,6 +249,27 @@ export interface TimelineItem {
 export function labelsOf(ids: string[] | undefined, all: Label[]): Label[] {
   const set = new Set(ids ?? []);
   return all.filter((l) => set.has(l.id));
+}
+
+/** サブタスクの状態（todo＝未着手、doing＝対応中、done＝完了）。課題のステータスより軽く、理由は要らない */
+export type SubtaskStatus = 'todo' | 'doing' | 'done';
+/** 1つの課題に付けられるサブタスクの数（ルールでは数えられないので、画面で止める） */
+export const MAX_SUBTASKS = 30;
+
+/** サブタスク（projects/{pid}/issues/{iid}/subtasks）。1段階だけ */
+export interface Subtask {
+  id: string;
+  title: string;
+  assigneeId: string;
+  dueAt: Timestamp | null;     // 任意。親の期限より後にはできない（足したとき・変えたときだけ確かめる）
+  status: SubtaskStatus;
+  memo: string;
+  order: number;               // 並び順。間に入れるときは、前後の真ん中の数にする
+  createdBy: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  updatedBy: string;
+  splitTo?: { iid: string; number: number }; // 課題に切り出したときだけ。進捗率から外れる
 }
 
 /** 「回避策適用中」の印を出すか：未完了で、回避策が書いてあり、まだ外していない */

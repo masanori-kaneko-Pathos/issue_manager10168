@@ -47,7 +47,7 @@ service cloud.firestore {
                       'by', 'byName', 'detail', 'at', 'read', 'expireAt'];
           return d.keys().hasOnly(keys) && d.keys().hasAll(keys)
             && d.type in ['assigned', 'comment', 'dueChanged', 'resolved', 'sentBack',
-                          'closed', 'rejected', 'restored', 'joined', 'handover', 'merged']
+                          'closed', 'rejected', 'restored', 'joined', 'handover', 'merged', 'subtaskAssigned']
             && d.pid is string
             && d.projectName is string && d.projectName.size() <= 100
             && (d.iid == null || d.iid is string)
@@ -550,6 +550,71 @@ service cloud.firestore {
             // 完全削除のとき
             || purgeChildAllowed(pid, iid);
         }
+        // サブタスク：課題を編集できる人が、足す・直す・消す・並べ替える。
+        // 状態（□）だけは、そのサブタスクの担当者も変えられる
+        match /subtasks/{sid} {
+          function parentIssue() {
+            return get(/databases/$(database)/documents/projects/$(pid)/issues/$(iid)).data;
+          }
+          // 親の課題を編集できるか（editAllowed と同じ決まり：管理者・提起者・担当者。クローズ・統合・削除は不可）
+          function canEditParent() {
+            let p = parentIssue();
+            return canWrite(pid)
+              && !(p.status in ['closed', 'deleted', 'merged'])
+              && (myRole(pid) == 'admin' || p.reporterId == request.auth.uid || p.assigneeId == request.auth.uid);
+          }
+          // その項目を、今回の保存で決めたか（作るときは、すべて「決めた」扱い）
+          function touched(k) {
+            return request.method == 'create'
+              || request.resource.data.diff(resource.data).affectedKeys().hasAny([k]);
+          }
+          function validSubtask() {
+            let d = request.resource.data;
+            return d.keys().hasOnly(['title', 'assigneeId', 'dueAt', 'status', 'memo', 'order',
+                     'createdBy', 'createdAt', 'updatedAt', 'updatedBy', 'splitTo'])
+              && d.title is string && d.title.size() > 0 && d.title.size() <= 200
+              && d.status in ['todo', 'doing', 'done']
+              && d.memo is string && d.memo.size() <= 2000
+              && d.order is number
+              && d.updatedAt == request.time
+              && d.updatedBy == request.auth.uid
+              // 担当者と期限は、決めたときだけ確かめる（あとで親の期限が早まった・担当者が抜けた、でも □ は押せるように）
+              && (!touched('assigneeId')
+                  || get(/databases/$(database)/documents/projects/$(pid)/members/$(d.assigneeId)).data.role in ['admin', 'member'])
+              && (!touched('dueAt')
+                  || d.get('dueAt', null) == null
+                  || (d.dueAt is timestamp && d.dueAt <= parentIssue().dueAt));
+          }
+
+          allow read: if isMember(pid);
+
+          allow create: if canEditParent()
+            && validSubtask()
+            && request.resource.data.keys().hasAll(['title', 'assigneeId', 'dueAt', 'status', 'memo', 'order'])
+            && !('splitTo' in request.resource.data)
+            && request.resource.data.createdBy == request.auth.uid
+            && request.resource.data.createdAt == request.time;
+
+          allow update: if validSubtask()
+            && request.resource.data.createdBy == resource.data.createdBy
+            && request.resource.data.createdAt == resource.data.createdAt
+            // 切り出しの印は1回だけ。付けるときは、切り出した課題が同じ保存でできていること
+            && (!touched('splitTo')
+                || (!('splitTo' in resource.data)
+                    && request.resource.data.splitTo.keys().hasOnly(['iid', 'number'])
+                    && existsAfter(/databases/$(database)/documents/projects/$(pid)/issues/$(request.resource.data.splitTo.iid))))
+            && (
+              canEditParent()
+              // サブタスクの担当者：状態だけ
+              || (canWrite(pid)
+                && resource.data.assigneeId == request.auth.uid
+                && !(parentIssue().status in ['closed', 'deleted', 'merged'])
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt', 'updatedBy']))
+            );
+
+          allow delete: if canEditParent() || purgeChildAllowed(pid, iid);
+        }
+
 
       }
     }
