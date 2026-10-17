@@ -214,6 +214,12 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
                 <span class="stale" [title]="'stale.title' | t: { n: '' + staleDays() }">{{ 'stale.label' | t }}</span>
               }
               @if (wa(i)) { <span class="wa">{{ 'workaround.label' | t }}</span> }
+              @if (i.subtaskTotal) {
+                <span class="subs" [class.all]="i.subtaskDone === i.subtaskTotal"
+                  [title]="'subtask.progress' | t: { done: '' + (i.subtaskDone ?? 0), total: '' + i.subtaskTotal }"
+                  [attr.aria-label]="'subtask.progress' | t: { done: '' + (i.subtaskDone ?? 0), total: '' + i.subtaskTotal }">
+                  <span aria-hidden="true">☑ {{ i.subtaskDone ?? 0 }}/{{ i.subtaskTotal }}</span></span>
+              }
               <span class="meta">{{ memberName(i.assigneeId) }}</span>
                @if (sort() === 'updated') {
                 <span class="meta" [title]="updatedFull(i)">{{ 'list.updated' | t: { t: updated(i) } }}</span>
@@ -384,7 +390,9 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
     .primary.danger { background: var(--danger); }
     .warn { margin: 0; padding: 8px 10px; border-radius: 8px; font-size: 12px;
       background: var(--warning-bg); color: var(--warning-text); }    
-    `,
+    .subs { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+    .subs.all { color: var(--success-text); font-weight: bold; }
+      `,
 })
 export class TabList implements OnInit {
   protected ctx = inject(ProjectContext);

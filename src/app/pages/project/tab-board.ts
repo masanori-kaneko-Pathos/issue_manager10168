@@ -129,6 +129,12 @@ const EMPTY_PAYLOAD = {
                           @if (ls.length > 2) { <span class="more-labels">+{{ ls.length - 2 }}</span> }
                         </div>
                       }
+                      @if (i.subtaskTotal) {
+                        <span class="subs" [class.all]="i.subtaskDone === i.subtaskTotal"
+                          [title]="'subtask.progress' | t: { done: '' + (i.subtaskDone ?? 0), total: '' + i.subtaskTotal }"
+                          [attr.aria-label]="'subtask.progress' | t: { done: '' + (i.subtaskDone ?? 0), total: '' + i.subtaskTotal }">
+                          <span aria-hidden="true">☑ {{ i.subtaskDone ?? 0 }}/{{ i.subtaskTotal }}</span></span>
+                      }
                       <div class="meta">
                         <span class="avatar" [title]="memberName(i.assigneeId)">
                           @if (memberPhoto(i.assigneeId); as src) {
@@ -248,6 +254,8 @@ const EMPTY_PAYLOAD = {
     }
     .stale { font-size: 11px; padding: 1px 6px; border-radius: 8px; background: var(--warning-bg); color: var(--warning-text); }
     .wa { font-size: 11px; padding: 1px 6px; border-radius: 8px; background: var(--hold-bg); }
+    .subs { align-self: flex-start; font-size: 12px; color: var(--text-muted); }
+    .subs.all { color: var(--success-text); font-weight: bold; }    
     `,
 })
 export class ProjectBoard implements OnInit {
