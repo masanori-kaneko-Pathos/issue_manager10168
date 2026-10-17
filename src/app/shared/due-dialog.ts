@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { auth } from '../core/firebase';
 import { AuthService } from '../core/auth/auth.service';
 import { ConflictError, IssueService, conflictWho } from '../core/issue/issue.service';
+import { UndoService } from '../core/undo/undo.service';
 import { Issue, Member } from '../core/models';
 import { formatDateTime, toLocalInput, zonedTime } from '../core/time/time';
 import { I18nService, TPipe } from '../i18n/i18n';
@@ -92,6 +93,7 @@ export class DueDialog implements OnInit {
   private issueService = inject(IssueService);
   private authService = inject(AuthService);
   private i18n = inject(I18nService);
+  private undo = inject(UndoService);
 
   time = signal('23:59');
   reason = '';
@@ -135,10 +137,15 @@ export class DueDialog implements OnInit {
     this.busy.set(true);
     this.error.set('');
     this.conflict.set(null);
+    const base = this.current();
     try {
       await this.issueService.updateIssue(
-        this.pid(), this.current(), { dueAt: due }, this.reason.trim(), auth.currentUser!.uid, this.tz(),
+        this.pid(), base, { dueAt: due }, this.reason.trim(), auth.currentUser!.uid, this.tz(),
       );
+      // ドラッグの落とし間違いに気づいたとき、すぐ戻せるように
+      this.undo.offer('undo.edited', { field: this.i18n.t('issue.due') }, () => this.issueService.undoEdit(
+        this.pid(), base.id, { dueAt: due }, { dueAt: base.dueAt.toDate() }, this.i18n.t('undo.reason'),
+        auth.currentUser!.uid, this.tz()));
       this.done.emit();
     } catch (e) {
       if (e instanceof ConflictError) {

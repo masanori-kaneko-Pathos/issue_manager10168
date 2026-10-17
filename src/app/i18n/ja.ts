@@ -766,6 +766,8 @@ export const ja = {
     done: '元に戻しました。',
     conflict: 'ほかの人が先に変えたため、元に戻せませんでした。',
     moved: '#{{n}} を「{{to}}」にしました。',
+    edited: '{{field}}を変えました。',
+    reason: '元に戻す',
   },
   links: {
     title: '関連課題',

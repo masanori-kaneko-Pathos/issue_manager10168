@@ -44,6 +44,33 @@ async function assertUnchanged(tx: Transaction, ref: DocumentReference, base: Is
   if (!latest.updatedAt.isEqual(base.updatedAt)) throw new ConflictError(latest);
 }
 
+/** 課題の今の値が、edits で書いた値のままか（元に戻す前に、ほかの人が同じ欄を変えていないかを見る） */
+function matchesEdits(i: Issue, edits: IssueEdits): boolean {
+  return (Object.keys(edits) as (keyof IssueEdits)[]).every((k) => {
+    const v = edits[k];
+    switch (k) {
+      case 'dueAt': return i.dueAt.toMillis() === (v as Date).getTime();
+      case 'labelIds': return [...(i.labelIds ?? [])].sort().join() === [...(v as string[])].sort().join();
+      case 'occurredOn': return (i.occurredOn ?? null) === (v ?? null);
+      case 'impact': return (i.impact ?? '') === v;
+      default: return i[k] === v;
+    }
+  });
+}
+
+/** edits で変えた欄の、変える前の値（元に戻すときに書き戻す値） */
+export function previousOf(i: Issue, edits: IssueEdits): IssueEdits {
+  const prev: IssueEdits = {};
+  for (const k of Object.keys(edits) as (keyof IssueEdits)[]) {
+    if (k === 'dueAt') prev.dueAt = i.dueAt.toDate();
+    else if (k === 'labelIds') prev.labelIds = i.labelIds ?? [];
+    else if (k === 'occurredOn') prev.occurredOn = i.occurredOn ?? null;
+    else if (k === 'impact') prev.impact = i.impact ?? '';
+    else (prev as Record<string, unknown>)[k] = i[k];
+  }
+  return prev;
+}
+
 /** ステータス変更のうち、知らせるものと宛先 */
 const STATUS_NOTICE: Partial<Record<TransitionKey, { type: NotificationType; to: 'assignee' | 'reporter' }>> = {
   resolve: { type: 'resolved', to: 'reporter' },   // 提起者に確認してもらう
@@ -395,6 +422,20 @@ export class IssueService {
     if (!back || !latest || latest.status !== t.to) throw new UndoConflictError();
     await this.changeStatus(pid, latest, back,
       { ...EMPTY_STATUS_PAYLOAD, reason: back.needs === 'reason' ? (before.statusReason ?? '') : '' }, uid, tz);
+  }
+
+  /**
+   * 編集を元に戻す。変えた欄が、今も自分の書いた値のままのときだけ戻す
+   * （ほかの人が同じ欄を変えていたら、上書きせずに UndoConflictError）。お知らせは出さない（赤R）
+   */
+  async undoEdit(
+    pid: string, iid: string, applied: IssueEdits, previous: IssueEdits, reason: string, uid: string, tz: string,
+  ) {
+    const latest = await this.get(pid, iid);
+    if (!latest || ['closed', 'merged', 'deleted'].includes(latest.status) || !matchesEdits(latest, applied)) {
+      throw new UndoConflictError();
+    }
+    await this.updateIssue(pid, latest, previous, reason, uid, tz, false);
   }
 
   /** コメント：書くのと同時に、担当者と提起者に知らせる（今もメンバーの人だけ） */

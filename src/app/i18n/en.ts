@@ -767,6 +767,8 @@ export const en: Dict = {
     done: 'Undone.',
     conflict: 'Someone else changed it first, so it could not be undone.',
     moved: 'Moved #{{n}} to "{{to}}".',
+    edited: 'Changed the {{field}}.',
+    reason: 'Undo',
   },  
   links: {
     title: 'Related issues',

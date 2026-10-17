@@ -8,7 +8,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { Clock } from '../../core/time/clock';
 import { ProjectService } from '../../core/project/project.service';
 import {
-  ConflictError, EMPTY_STATUS_PAYLOAD, IssueEdits, IssueService, conflictWho,
+  ConflictError, EMPTY_STATUS_PAYLOAD, IssueEdits, IssueService, conflictWho, previousOf,
 } from '../../core/issue/issue.service';
 import { enterKey, focusById } from '../../core/dom';
 import { LabelPicker } from '../../shared/label-picker';
@@ -624,6 +624,7 @@ export class IssueDetail implements OnInit {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           await this.issueService.updateIssue(this.pid, base, edits, reason, this.myUid, this.tz());
+          this.offerUndo(base, edits);
           return true;
         } catch (e) {
           if (!(e instanceof ConflictError)) throw e;
@@ -646,6 +647,15 @@ export class IssueDetail implements OnInit {
     } finally {
       this.busy.set(false);
     }
+  }
+
+  /** その場編集のあと「元に戻す」を出す（base＝変える前の課題） */
+  private offerUndo(base: Issue, edits: IssueEdits) {
+    const keys = Object.keys(edits);
+    const field = this.i18n.t('issue.' + (FIELD_LABEL_KEYS[keys[0]] ?? keys[0]));
+    const previous = previousOf(base, edits);
+    this.undo.offer('undo.edited', { field }, () => this.issueService.undoEdit(
+      this.pid, base.id, edits, previous, this.i18n.t('undo.reason'), this.myUid, this.tz()));
   }
 
   /** 回避策のあと「重要度を見直す」：右の重要度へ動かす */
