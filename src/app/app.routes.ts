@@ -44,6 +44,8 @@ export const routes: Routes = [
         // ':id' は 'new' より後に置く（先に置くと、'new' がメモの id として扱われてしまう）
         { path: 'inbox/:id', canActivate: [authGuard], canDeactivate: [unsavedGuard],
           loadComponent: () => import('./pages/inbox/inbox-memo').then((m) => m.InboxMemo) },
+        { path: 'notifications', canActivate: [authGuard],
+          loadComponent: () => import('./pages/notification/notifications').then((m) => m.Notifications) },        
         { path: 'settings', canActivate: [authGuard], canDeactivate: [unsavedGuard],
     loadComponent: () => import('./pages/settings/settings').then((m) => m.Settings) },
   { path: '**', redirectTo: '' },

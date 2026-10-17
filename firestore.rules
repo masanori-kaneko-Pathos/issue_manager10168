@@ -64,9 +64,12 @@ service cloud.firestore {
             && exists(/databases/$(database)/documents/projects/$(d.pid)/members/$(uid));
         }
         allow read, delete: if request.auth != null && request.auth.uid == uid;
+        // 既読・未読、ピン止め。ピン止めしたら expireAt を消し（自動で消えない）、外したら入れ直す
         allow update: if request.auth != null && request.auth.uid == uid
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
-          && request.resource.data.read is bool;
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'pinned', 'expireAt'])
+          && request.resource.data.read is bool
+          && request.resource.data.get('pinned', false) is bool
+          && (!('expireAt' in request.resource.data) || request.resource.data.expireAt is timestamp);
         allow create: if request.auth != null && request.auth.uid != uid && validNotification();
       }  
       // プッシュ通知を受け取る端末（本人だけ。関数は Admin なので、これに関係なく読める）

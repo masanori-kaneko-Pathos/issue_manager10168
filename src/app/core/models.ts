@@ -111,7 +111,8 @@ export interface AppNotification {
   detail: string;              // コメントの書き出しなど。なければ ''
   at: Timestamp;
   read: boolean;
-  expireAt: Timestamp;         // この日時を過ぎると、Firestore が自動で消す（TTL）
+  pinned?: boolean;            // ピン止め（上に固定し、自動では消さない）
+  expireAt?: Timestamp;        // この日時を過ぎると、Firestore が自動で消す（TTL）。ピン止め中は無い
   /** 朝のまとめ（daily）の件数。関数だけが書く */
   counts?: { overdue: number; today: number; tomorrow: number; in3: number; inboxOld: number };
 }

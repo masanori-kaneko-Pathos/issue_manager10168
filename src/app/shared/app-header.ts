@@ -5,7 +5,7 @@ import { auth } from '../core/firebase';
 import { AppNotification, Role } from '../core/models';
 import { ProjectService } from '../core/project/project.service';
 import { InboxService } from '../core/inbox/inbox.service';
-import { NotificationService } from '../core/notification/notification.service';
+import { NoticeOp, NotificationService } from '../core/notification/notification.service';
 import { Clock } from '../core/time/clock';
 import { relativeTime } from '../core/time/time';
 import { I18nService, TPipe } from '../i18n/i18n';
@@ -18,7 +18,7 @@ import { ProjectNewDialog } from './project-new-dialog';
   selector: 'app-header',
   imports: [RouterLink, TPipe, HelpTip, SearchBox, ProjectNewDialog],
   host: {
-    '(document:keydown.escape)': 'open.set(false); addOpen.set(false); bellOpen.set(false)',
+    '(document:keydown.escape)': 'open.set(false); addOpen.set(false); bellOpen.set(false); rowMenu.set(null)',
     '(document:keydown)': 'onKey($event)',
   },
   template: `
@@ -67,18 +67,30 @@ import { ProjectNewDialog } from './project-new-dialog';
             </div>
             <ul>
               @for (n of notify.list(); track n.id) {
-                <li>
+                <li class="n-row">
                   <button type="button" class="n-item" [class.unread]="!n.read" (click)="openNotice(n)">
                     @if (!n.read) { <span class="dot" role="img" [attr.aria-label]="'notify.unread' | t"></span> }
-                    <span class="n-text">{{ noticeText(n) }}</span>
+                    <span class="n-text">@if (n.pinned) {<span class="pin" role="img" [attr.aria-label]="'notify.pinned' | t">📌 </span>}{{ notify.text(n) }}</span>
                     @if (n.detail) { <span class="n-detail">{{ n.detail }}</span> }
                     <span class="n-meta">{{ n.projectName ? n.projectName + ' · ' : '' }}{{ noticeWhen(n) }}</span>
                   </button>
+                  <button type="button" class="n-more" [attr.aria-label]="'notify.actions' | t" [title]="'notify.actions' | t"
+                    [attr.aria-expanded]="rowMenu() === n.id" (click)="rowMenu.set(rowMenu() === n.id ? null : n.id)">⋮</button>
+                  @if (rowMenu() === n.id) {
+                    <div class="n-actions">
+                      <button type="button" (click)="act(n, n.read ? 'unread' : 'read')">
+                        {{ (n.read ? 'notify.markUnread' : 'notify.markRead') | t }}</button>
+                      <button type="button" (click)="act(n, n.pinned ? 'unpin' : 'pin')">
+                        {{ (n.pinned ? 'notify.unpin' : 'notify.pin') | t }}</button>
+                      <button type="button" class="danger" (click)="act(n, 'delete')">{{ 'notify.delete' | t }}</button>
+                    </div>
+                  }
                 </li>
               } @empty {
                 <li class="empty">{{ 'notify.empty' | t }}</li>
               }
             </ul>
+            <a routerLink="/notifications" class="n-all" (click)="bellOpen.set(false)">{{ 'notify.seeAll' | t }}</a>
           </div>
         }
       </div>
@@ -176,6 +188,18 @@ import { ProjectNewDialog } from './project-new-dialog';
       white-space: nowrap; }
     .n-meta { font-size: 11px; color: var(--text-muted); }
     .panel .empty { padding: 16px 12px; color: var(--text-muted); font-size: 13px; }
+    .n-row { position: relative; }
+    .n-row .n-item { padding-right: 40px; }
+    .n-more { position: absolute; top: 6px; right: 4px; width: 32px; height: 32px; border: none; border-radius: 6px;
+      background: none; color: var(--text-muted); font-size: 16px; cursor: pointer; }
+    .n-more:hover { background: var(--surface-muted); }
+    .n-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 12px 10px 26px; border-bottom: 1px solid var(--border); }
+    .n-actions button { min-height: 32px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 16px;
+      background: var(--surface); color: var(--text); font-size: 12px; cursor: pointer; }
+    .n-actions .danger { color: var(--danger-text); }
+    .n-all { display: block; padding: 10px 12px; text-align: center; font-size: 13px; color: var(--primary);
+      text-decoration: none; }
+    .n-all:hover { background: var(--surface-alt); }
     @media (max-width: 600px) {
       .panel { position: fixed; left: 12px; right: 12px; top: 58px; width: auto; }
     }
@@ -192,6 +216,8 @@ export class AppHeader {
   private clock = inject(Clock);
   private i18n = inject(I18nService);
   bellOpen = signal(false);
+  /** ベルの一覧で ⋮ を開いている通知 */
+  rowMenu = signal<string | null>(null);
   private searchBox = viewChild(SearchBox);
   projectNewOpen = signal(false);
 
@@ -279,19 +305,10 @@ export class AppHeader {
     this.bellOpen.set(!this.bellOpen());
   }
 
-  noticeText(n: AppNotification) {
-    // 朝のまとめは、0件でない区分だけを「・」でつなぐ
-    if (n.type === 'daily' && n.counts) {
-      const c = n.counts;
-      const parts = (['overdue', 'today', 'tomorrow', 'in3', 'inboxOld'] as const)
-        .filter((k) => c[k] > 0)
-        .map((k) => this.i18n.t('notify.daily.' + k, { n: String(c[k]) }))
-        .join(this.i18n.lang() === 'ja' ? '・' : ', ');
-      return this.i18n.t('notify.types.daily', { parts });
-    }
-    return this.i18n.t('notify.types.' + n.type, {
-      name: n.byName, n: String(n.issueNumber ?? ''), title: n.issueTitle, project: n.projectName,
-    });
+  /** ⋮ の操作。済んだら ⋮ を閉じる（小窓は開いたまま） */
+  async act(n: AppNotification, op: NoticeOp) {
+    this.rowMenu.set(null);
+    await this.notify.apply(n.id, op).catch((e) => console.error(e));
   }
 
   /** 「5分前」のような表示（時計で進むので、開いたままでも更新される） */
@@ -300,21 +317,12 @@ export class AppHeader {
   }
 
   /** 既読にして、その課題へ（招待の承諾はプロジェクトへ） */
+  /** 既読にして、その行き先へ（行き先の決まりはサービスにある） */
   async openNotice(n: AppNotification) {
     this.bellOpen.set(false);
+    this.rowMenu.set(null);
     if (!n.read) this.notify.markRead(n.id).catch((e) => console.error(e));
-    if (n.type === 'daily') {
-      // 朝のまとめは、ホームの「今日のまとめ」の欄へ
-      await this.router.navigate(['/'], { fragment: 'today' });
-    } else if (n.iid) {
-      await this.router.navigate(['/p', n.pid, 'i', n.iid]);
-    } else if (n.type === 'projectDeleted') {
-      await this.router.navigate(['/']);
-    } else if (n.type === 'handover') {
-      // 引き継いだ課題が見えるよう、自分の担当で絞ったリストへ
-      await this.router.navigate(['/p', n.pid, 'list'], { queryParams: { assignee: auth.currentUser!.uid } });
-    } else {
-      await this.router.navigate(['/p', n.pid]);
-    }
+    const t = this.notify.target(n);
+    await this.router.navigate(t.commands, t.extras);
   }
 }
