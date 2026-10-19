@@ -570,6 +570,13 @@ export const en: Dict = {
     notFound: 'This note was not found. It may have become an issue or been deleted permanently.',
     inTrash: 'This note is in the trash.',
     discarded: 'Moved to the trash.',
+    recent: 'Recent notes',
+    popPlaceholder: 'Your idea in a few words (details from the second line)',
+    popHelp: 'The first line is the title; the rest is details. Press Enter to save to the inbox, Shift+Enter for a new line.',
+    popHelpTouch: 'The first line is the title; the rest is details. Tap "Save to inbox" to save.',
+    memoMenu: 'Note actions',
+    edit: 'Edit',
+    popDelete: 'Delete',
   },
 
   causeEdit: {

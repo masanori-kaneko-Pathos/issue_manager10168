@@ -566,6 +566,13 @@ export const ja = {
     notFound: 'このメモは見つかりません。課題にしたか、完全に削除した可能性があります。',
     inTrash: 'このメモはゴミ箱にあります。',
     discarded: 'ゴミ箱に移しました。',
+    recent: '最近のメモ',
+    popPlaceholder: '思いついたことを一言で（2行目からは詳しいこと）',
+    popHelp: '1行目がタイトル、2行目から詳しいことになります。Enter で受信箱に入れ、Shift＋Enter で改行します。',
+    popHelpTouch: '1行目がタイトル、2行目から詳しいことになります。「受信箱に入れる」で保存します。',
+    memoMenu: 'このメモの操作',
+    edit: '編集',
+    popDelete: '削除',
   },
 
   causeEdit: {

@@ -13,22 +13,27 @@ import { HelpTip } from './help-tip';
 import { SearchService } from '../core/search/search.service'
 import { SearchBox } from './search-box';
 import { ProjectNewDialog } from './project-new-dialog';
+import { InboxPop } from './inbox-pop';
 
 @Component({
   selector: 'app-header',
-  imports: [RouterLink, TPipe, HelpTip, SearchBox, ProjectNewDialog],
+  imports: [RouterLink, TPipe, HelpTip, SearchBox, ProjectNewDialog, InboxPop],
   host: {
-    '(document:keydown.escape)': 'open.set(false); addOpen.set(false); bellOpen.set(false); rowMenu.set(null)',
+    '(document:keydown.escape)':
+      'open.set(false); addOpen.set(false); bellOpen.set(false); rowMenu.set(null); penOpen.set(false)',
     '(document:keydown)': 'onKey($event)',
   },
   template: `
     <header class="app-header">
       <a routerLink="/" class="brand">{{ 'app.title' | t }}</a>
       <app-search-box />
-      <a routerLink="/inbox/new" class="pen" [attr.aria-label]="'inbox.pen' | t" [title]="'inbox.pen' | t">
-        <span class="pen-icon" aria-hidden="true">✎</span>
-        @if (inbox.count()) { <span class="badge">{{ inbox.count() }}</span> }
-      </a>
+      <div class="pen-wrap">
+        <button type="button" class="pen" [attr.aria-expanded]="penOpen()" [attr.aria-label]="'inbox.pen' | t"
+          [title]="'inbox.pen' | t" (click)="togglePen()">
+          <span class="pen-icon" aria-hidden="true">✎</span>
+        </button>
+        @if (penOpen()) { <app-inbox-pop (close)="penOpen.set(false)" /> }
+      </div>
       <div class="add">
         <button type="button" class="add-btn" [attr.aria-expanded]="addOpen()"
           [attr.aria-label]="'menu.add' | t" [title]="'menu.add' | t" (click)="toggleAdd()">＋</button>
@@ -210,6 +215,8 @@ import { ProjectNewDialog } from './project-new-dialog';
     .head-links { display: flex; align-items: center; gap: 12px; }
     .panel-head a.link { display: inline-flex; align-items: center; min-height: 36px; font-size: 13px;
       color: var(--primary); text-decoration: none; }
+    .pen-wrap { position: relative; }
+    .pen { border: none; padding: 0; cursor: pointer; }
     @media (max-width: 600px) {
       .panel { position: fixed; left: 12px; right: 12px; top: 58px; width: auto; }
     }
@@ -226,6 +233,15 @@ export class AppHeader {
   private clock = inject(Clock);
   private i18n = inject(I18nService);
   bellOpen = signal(false);
+  /** ペンの吹き出し */
+  penOpen = signal(false);
+
+  togglePen() {
+    this.open.set(false);
+    this.addOpen.set(false);
+    this.bellOpen.set(false);
+    this.penOpen.set(!this.penOpen());
+  }
   /** ベルの一覧で ⋮ を開いている通知 */
   rowMenu = signal<string | null>(null);
   /** 行の ⋮ のメニューを上に開くか（小窓の下のほうでは、下に開くと切れるため） */
@@ -267,6 +283,7 @@ export class AppHeader {
   }
 
   toggleAccount() {
+    this.penOpen.set(false);
     this.addOpen.set(false);
     this.bellOpen.set(false);
     this.open.set(!this.open());
@@ -279,6 +296,7 @@ export class AppHeader {
       return;
     }
     this.open.set(false);
+    this.penOpen.set(false);
     this.bellOpen.set(false);
     const pid = this.currentPid();
     let role: Role | null = null;
@@ -320,11 +338,13 @@ export class AppHeader {
     this.open.set(false);
     this.addOpen.set(false);
     this.bellOpen.set(false);
+    this.penOpen.set(false);
     this.searchBox()?.focusFromKey();
   }
 
   toggleBell() {
     this.open.set(false);
+    this.penOpen.set(false);
     this.addOpen.set(false);
     this.bellOpen.set(!this.bellOpen());
   }

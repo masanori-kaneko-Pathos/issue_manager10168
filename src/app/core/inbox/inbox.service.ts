@@ -26,6 +26,8 @@ export class InboxService {
   loaded = signal(false);
   /** 画面の上に数秒出す知らせ（翻訳キー） */
   flash = signal<string | null>(null);
+  /** ペンの吹き出しの書きかけ（閉じても、アプリを開いている間は残す。キャンセルか保存で空にする） */
+  draft = signal('');
   private flashTimer: ReturnType<typeof setTimeout> | undefined;
 
   /** 未整理のメモ（新しい順） */
