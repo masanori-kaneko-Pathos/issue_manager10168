@@ -4,6 +4,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Clock } from '../../core/time/clock';
 import { IS_TOUCH, enterKey } from '../../core/dom';
 import { InboxService } from '../../core/inbox/inbox.service';
+import { UndoService } from '../../core/undo/undo.service';
 import { relativeTime } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 
@@ -88,6 +89,7 @@ export class InboxMemo {
   private router = inject(Router);
   private clock = inject(Clock);
   private i18n = inject(I18nService);
+  private undo = inject(UndoService);
 
   private readonly id = this.route.snapshot.paramMap.get('id')!;
   readonly touch = IS_TOUCH;
@@ -162,7 +164,8 @@ export class InboxMemo {
     await this.run(async () => {
       await this.inbox.discard(this.id);
       this.reset(); // 書きかけは捨てる（「保存していない変更」の確認を出さずに移るため）
-      this.inbox.showFlash('inbox.discarded');
+      const id = this.id;
+      this.undo.offer('inbox.discarded', undefined, () => this.inbox.restore(id));
       this.router.navigate(['/inbox']);
     });
   }

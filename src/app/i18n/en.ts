@@ -769,6 +769,7 @@ export const en: Dict = {
     moved: 'Moved #{{n}} to "{{to}}".',
     edited: 'Changed the {{field}}.',
     reason: 'Undo',
+    unlinked: 'Removed the link to #{{n}}.',
   },  
   links: {
     title: 'Related issues',

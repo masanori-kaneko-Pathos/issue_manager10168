@@ -753,9 +753,20 @@ export class IssueDetail implements OnInit {
   async unlink(r: IssueRelation) {
     this.busy.set(true);
     this.linkError.set('');
+    const here = this.issue()!.number;
+    const other = this.linkedIssue(r)?.number ?? null;
     try {
-      await this.issueService.removeLink(this.pid, this.iid, this.issue()!.number, r,
-        this.linkedIssue(r)?.number ?? null, this.myUid, this.tz());
+      await this.issueService.removeLink(this.pid, this.iid, here, r, other, this.myUid, this.tz());
+      // 相手の番号がわかるときだけ戻せる（読めない課題は、付け直す相手を確かめられないため）
+      if (other !== null) {
+        this.undo.offer('undo.unlinked', { n: String(other) }, () => r.dir === 'out'
+          // こちらから付けていたもの：こちらから付け直す
+          ? this.issueService.addLink(this.pid, this.iid, here, r.kind, { pid: r.pid, iid: r.iid, number: other },
+            this.myUid, this.tz())
+          // 相手から付けられていたもの：相手側から付け直す（向きを外す前と同じにするため）
+          : this.issueService.addLink(r.pid, r.iid, other, r.kind, { pid: this.pid, iid: this.iid, number: here },
+            this.myUid, this.tz()));
+      }
     } catch (e) {
       console.error(e);
       this.linkError.set('common.saveError');

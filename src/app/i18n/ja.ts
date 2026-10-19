@@ -768,6 +768,7 @@ export const ja = {
     moved: '#{{n}} を「{{to}}」にしました。',
     edited: '{{field}}を変えました。',
     reason: '元に戻す',
+    unlinked: '#{{n}} との関連を外しました。',
   },
   links: {
     title: '関連課題',
