@@ -831,6 +831,7 @@ export const ja = {
     listHelpAdmin: 'メンバーからの、対応待ちの依頼です。押すと課題が開き、そこで対応するか見送るかを選べます。',
     listHelpMember: 'あなたが出した、対応待ちの依頼です。押すと課題が開き、そこで取り下げることもできます。',
     listEmpty: '対応待ちの依頼はありません。',
+    homeChip: '依頼 {{n}}',
   },
   links: {
     title: '関連課題',

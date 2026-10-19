@@ -17,6 +17,7 @@ import { compareIssues, isManualPriority, priorityOf } from '../../core/issue/pr
 import { DueBucket, dueBucket, remainingOf, shortDue } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { DeleteProjectDialog } from '../project/delete-project-dialog';
+import { RequestService } from '../../core/request/request.service';
 
 @Component({
   selector: 'app-home',
@@ -159,6 +160,10 @@ import { DeleteProjectDialog } from '../project/delete-project-dialog';
           @for (p of activeProjects(); track p.id) {
             <li>
               <a class="name" [routerLink]="['/p', p.id]">{{ p.name }}</a>
+              @if (reqCount()[p.id]; as n) {
+                <a class="req-chip" [routerLink]="['/p', p.id, 'requests']" [title]="'request.waiting' | t">
+                  {{ 'request.homeChip' | t: { n: '' + n } }}</a>
+              }
               <span class="role">{{ 'roles.' + p.role | t }}</span>
             </li>
           } @empty {
@@ -273,6 +278,8 @@ import { DeleteProjectDialog } from '../project/delete-project-dialog';
     .menu button.danger:hover { background: var(--danger-bg); }
     .menu.up { top: auto; bottom: calc(100% + 4px); }
     .sub-head { font-size: 13px; color: var(--text-muted); margin: 16px 0 0; }  
+    .req-chip { font-size: 12px; padding: 2px 10px; border-radius: 12px; text-decoration: none; white-space: nowrap;
+      background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
     `,
 })
 export class Projects implements OnInit {
@@ -292,6 +299,11 @@ export class Projects implements OnInit {
   /** プロジェクトごとの、自分が担当の課題（pid → 課題） */
   private mineByProject = signal<Record<string, (Issue & { projectId: string })[]>>({});
   private stopInvitations: Unsubscribe | null = null;
+  private requests = inject(RequestService);
+  /** 管理者のプロジェクトごとの、対応待ちの依頼の見張り（pid → やめる関数） */
+  private reqStops = new Map<string, Unsubscribe>();
+  /** プロジェクトごとの、対応待ちの依頼の数 */
+  reqCount = signal<Record<string, number>>({});
 
   constructor() {
 
@@ -302,6 +314,7 @@ export class Projects implements OnInit {
     // ホームを離れたら、見張りをやめる
     inject(DestroyRef).onDestroy(() => {
       this.mineStops.forEach((stop) => stop());
+      this.reqStops.forEach((stop) => stop());
       this.stopInvitations?.();
     });
   }
@@ -433,6 +446,7 @@ export class Projects implements OnInit {
     try {
       this.projects.set(await this.projectService.listMyProjects(auth.currentUser!.uid));
       this.syncMine();
+      this.syncRequests();
     } catch (e) {
       console.error(e);
       this.error.set('common.loadError');
@@ -474,6 +488,26 @@ export class Projects implements OnInit {
           if (e.code === 'permission-denied') this.load();
         },
       ));
+    }
+  }
+
+  /** 自分が管理者のプロジェクト（アーカイブ中は除く）だけ、依頼を見張る。増えたら始め、外れたらやめる */
+  private syncRequests() {
+    const pids = new Set(this.projects().filter((p) => p.role === 'admin' && !p.archived).map((p) => p.id));
+    for (const [pid, stop] of [...this.reqStops]) {
+      if (pids.has(pid)) continue;
+      stop();
+      this.reqStops.delete(pid);
+      this.reqCount.update((m) => {
+        const { [pid]: _gone, ...rest } = m;
+        return rest;
+      });
+    }
+    for (const pid of pids) {
+      if (this.reqStops.has(pid)) continue;
+      this.reqStops.set(pid, this.requests.watchOpen(pid,
+        (list) => this.reqCount.update((m) => ({ ...m, [pid]: list.length })),
+        (e) => console.error('依頼の見張りに失敗', pid, e)));
     }
   }
 

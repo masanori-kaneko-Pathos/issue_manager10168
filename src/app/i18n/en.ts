@@ -832,6 +832,7 @@ export const en: Dict = {
     listHelpAdmin: 'Pending requests from members. Open one to act on it or decline it on the issue.',
     listHelpMember: 'Your pending requests. Open one to withdraw it on the issue.',
     listEmpty: 'No pending requests.',
+    homeChip: '{{n}} requests',
   },
   links: {
     title: 'Related issues',
