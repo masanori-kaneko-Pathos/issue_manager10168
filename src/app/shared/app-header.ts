@@ -78,14 +78,16 @@ import { ProjectNewDialog } from './project-new-dialog';
                     <span class="n-meta">{{ n.projectName ? n.projectName + ' · ' : '' }}{{ noticeWhen(n) }}</span>
                   </button>
                   <button type="button" class="n-more" [attr.aria-label]="'notify.actions' | t" [title]="'notify.actions' | t"
-                    [attr.aria-expanded]="rowMenu() === n.id" (click)="rowMenu.set(rowMenu() === n.id ? null : n.id)">⋮</button>
+                    [attr.aria-expanded]="rowMenu() === n.id" (click)="toggleRowMenu(n.id, $event)">⋮</button>
                   @if (rowMenu() === n.id) {
-                    <div class="n-actions">
-                      <button type="button" (click)="act(n, n.read ? 'unread' : 'read')">
+                    <div class="n-backdrop" (click)="rowMenu.set(null)"></div>
+                    <div class="n-menu" role="menu" [class.up]="rowMenuUp()">
+                      <button type="button" role="menuitem" (click)="act(n, n.read ? 'unread' : 'read')">
                         {{ (n.read ? 'notify.markUnread' : 'notify.markRead') | t }}</button>
-                      <button type="button" (click)="act(n, n.pinned ? 'unpin' : 'pin')">
+                      <button type="button" role="menuitem" (click)="act(n, n.pinned ? 'unpin' : 'pin')">
                         {{ (n.pinned ? 'notify.unpin' : 'notify.pin') | t }}</button>
-                      <button type="button" class="danger" (click)="act(n, 'delete')">{{ 'notify.delete' | t }}</button>
+                      <button type="button" role="menuitem" class="danger" (click)="act(n, 'delete')">
+                        {{ 'notify.delete' | t }}</button>
                     </div>
                   }
                 </li>
@@ -195,10 +197,16 @@ import { ProjectNewDialog } from './project-new-dialog';
     .n-more { position: absolute; top: 6px; right: 4px; width: 32px; height: 32px; border: none; border-radius: 6px;
       background: none; color: var(--text-muted); font-size: 16px; cursor: pointer; }
     .n-more:hover { background: var(--surface-muted); }
-    .n-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 12px 10px 26px; border-bottom: 1px solid var(--border); }
-    .n-actions button { min-height: 32px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 16px;
-      background: var(--surface); color: var(--text); font-size: 12px; cursor: pointer; }
-    .n-actions .danger { color: var(--danger-text); }
+    .n-backdrop { position: fixed; inset: 0; z-index: 2; }
+    .n-menu { position: absolute; right: 8px; top: 40px; z-index: 3; min-width: 160px; padding: 6px 0;
+      display: flex; flex-direction: column; background: var(--surface); border-radius: 10px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2); }
+    /* 小窓の下のほうの行では、下に開くと切れるので上に開く */
+    .n-menu.up { top: auto; bottom: calc(100% - 6px); }
+    .n-menu button { text-align: left; padding: 0 16px; min-height: 40px; background: none; border: none;
+      color: var(--text); font-size: 13px; cursor: pointer; }
+    .n-menu button:hover { background: var(--surface-alt); }
+    .n-menu .danger { color: var(--danger-text); }
     .head-links { display: flex; align-items: center; gap: 12px; }
     .panel-head a.link { display: inline-flex; align-items: center; min-height: 36px; font-size: 13px;
       color: var(--primary); text-decoration: none; }
@@ -220,6 +228,20 @@ export class AppHeader {
   bellOpen = signal(false);
   /** ベルの一覧で ⋮ を開いている通知 */
   rowMenu = signal<string | null>(null);
+  /** 行の ⋮ のメニューを上に開くか（小窓の下のほうでは、下に開くと切れるため） */
+  rowMenuUp = signal(false);
+
+  toggleRowMenu(id: string, e: MouseEvent) {
+    if (this.rowMenu() === id) {
+      this.rowMenu.set(null);
+      return;
+    }
+    const btn = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const panel = (e.currentTarget as HTMLElement).closest('.panel')?.getBoundingClientRect();
+    // ボタンの下に、メニュー（約130px）が入る空きがあるか
+    this.rowMenuUp.set(!!panel && panel.bottom - btn.bottom < 140);
+    this.rowMenu.set(id);
+  }
   private searchBox = viewChild(SearchBox);
   projectNewOpen = signal(false);
 
