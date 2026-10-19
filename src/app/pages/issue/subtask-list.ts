@@ -105,13 +105,17 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     @if (canEdit()) {
       @if (full()) {
         <p class="help">{{ 'subtask.max' | t: { n: '' + max } }}</p>
-      } @else {
+      } @else if (adding()) {
         <div class="add">
-          <input [(ngModel)]="newTitle" maxlength="200" [placeholder]="'subtask.add' | t"
-            [attr.aria-label]="'subtask.name' | t" [disabled]="busy()" (keydown)="onAddKey($event)" />
-          <button type="button" class="add-btn" [disabled]="busy() || !newTitle.trim()" (click)="add()">
-            {{ 'subtask.addBtn' | t }}</button>
+          <input id="st-add" [(ngModel)]="newTitle" maxlength="200" [placeholder]="'subtask.add' | t"
+            [attr.aria-label]="'subtask.name' | t" [disabled]="busy()" (keydown)="onAddKey($event)"
+            (blur)="onAddBlur()" />
+          <!-- 押した瞬間に欄から外れて閉じないよう、mousedown の既定の動きを止める -->
+          <button type="button" class="add-btn" [disabled]="busy() || !newTitle.trim()"
+            (mousedown)="$event.preventDefault()" (click)="add()">{{ 'subtask.addBtn' | t }}</button>
         </div>
+      } @else {
+        <button type="button" class="open-add" (click)="openAdd()">{{ 'subtask.openAdd' | t }}</button>
       }
     }
     @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
@@ -165,6 +169,8 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .primary:disabled { background: var(--disabled); }
     .cdk-drag-preview { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2); }
     .cdk-drag-placeholder { opacity: 0.3; }
+    .open-add { margin-top: 6px; min-height: 36px; padding: 0 4px; border: none; background: none;
+      color: var(--primary); font-size: 14px; cursor: pointer; }
   `,
 })
 export class SubtaskList implements OnInit {
@@ -193,6 +199,8 @@ export class SubtaskList implements OnInit {
   busy = signal(false);
   error = signal('');
   newTitle = '';
+  /** 追加の欄を開いているか（ふだんは「＋ サブタスクを追加」のボタンだけ） */
+  adding = signal(false);
   // 行の編集中の値（1行ずつしか開かないので、入れ物は共通）
   dTitle = '';
   dAssignee = signal('');
@@ -237,8 +245,24 @@ export class SubtaskList implements OnInit {
       this.pid(), this.issue().id, s.id, s.status === 'doing' ? 'todo' : 'doing', this.myUid));
   }
 
+  openAdd() {
+    this.adding.set(true);
+    setTimeout(() => document.getElementById('st-add')?.focus());
+  }
+
+  /** Enter で足す（続けて足せるよう、欄は開いたまま）。Esc で閉じる */
   onAddKey(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      this.newTitle = '';
+      this.adding.set(false);
+      return;
+    }
     enterKey(e, () => this.add());
+  }
+
+  /** 何も打たずに外を押したら閉じる（打ちかけなら、消さずに開いたまま） */
+  onAddBlur() {
+    if (!this.newTitle.trim()) this.adding.set(false);
   }
 
   /** タイトルだけで足す。担当者は親の担当者（いなければ自分）、期限は空、並びは一番下 */
@@ -252,6 +276,7 @@ export class SubtaskList implements OnInit {
       await this.issueService.addSubtask(this.pid(), i, { title, assigneeId, dueAt: null, order },
         this.myUid, this.tz());
       this.newTitle = '';
+      setTimeout(() => document.getElementById('st-add')?.focus());
     });
   }
 
@@ -315,7 +340,7 @@ export class SubtaskList implements OnInit {
     const after = rest[e.currentIndex]?.order;
     const order = before === undefined ? (after ?? 0) - 1
       : after === undefined ? before + 1
-      : (before + after) / 2;
+        : (before + after) / 2;
     // 見張りの知らせを待たずに並びを変えておく（指を離した瞬間に元の位置へ跳ね返らないように）
     this.list.set([...rest.slice(0, e.currentIndex), { ...e.item.data, order }, ...rest.slice(e.currentIndex)]);
     return this.run(() => this.issueService.moveSubtask(this.pid(), this.issue().id, e.item.data.id, order, this.myUid));
