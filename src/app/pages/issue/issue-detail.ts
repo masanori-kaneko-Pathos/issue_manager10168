@@ -14,7 +14,7 @@ import { enterKey, focusById } from '../../core/dom';
 import { LabelPicker } from '../../shared/label-picker';
 import {
   CAUSE_CATEGORIES, CauseCategory, DEFAULT_SETTINGS, Issue, IssueRelation, Label, Level, Member, Project, Role,
-  TimelineItem, labelsOf, OPEN_STATUSES, hasWorkaround, ISSUE_TYPES, watchersOf
+  TimelineItem, labelsOf, OPEN_STATUSES, hasWorkaround, ISSUE_TYPES, watchersOf, IssueRequest, RequestKind
 } from '../../core/models';
 import { LinkDialog } from './link-dialog';
 import { StatusDialog } from '../../shared/status-dialog';
@@ -30,6 +30,9 @@ import { I18nService, TPipe } from '../../i18n/i18n';
 import { MergeDialog } from './merge-dialog';
 import { SubtaskList } from './subtask-list';
 import { CommentBox } from './comment-box';
+import { RequestDialog } from './request-dialog';
+import { DeleteDialog } from './delete-dialog';
+import { RequestService } from '../../core/request/request.service';
 import { commentSegments } from '../../core/issue/comment';
 
 
@@ -57,7 +60,7 @@ function sameField(k: keyof IssueEdits, a: Issue, b: Issue): boolean {
 @Component({
   selector: 'app-issue-detail',
   imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, StatusDialog, PriorityMark, LinkDialog,
-    MergeDialog, LabelPicker, MemberSelect, SubtaskList, CommentBox],
+    MergeDialog, LabelPicker, MemberSelect, SubtaskList, CommentBox, RequestDialog, DeleteDialog],
   host: {
     '(document:keydown.escape)':
       'menuOpen.set(false); statusMenu.set(false); prioMenu.set(false); typeMenu.set(false); closeField()',
@@ -93,12 +96,8 @@ export class IssueDetail implements OnInit {
   prioConflict = signal<{ latest: Issue; blocked: boolean } | null>(null);
   /** 入力の要らないステータス変更で衝突したときの、最新の課題 */
   actionConflict = signal<Issue | null>(null);
-  // 削除
-  delPanel = signal(false);
-  delReason = '';
-  /** 削除のパネルを開いた時点の課題（衝突のあとは最新） */
-  private delBase = signal<Issue | null>(null);
-  delConflict = signal<Issue | null>(null);
+  // 削除（窓で。開いた時点の課題は base に入れる）
+  delOpen = signal(false);
   // 原因・対策（対応中・保留のときの下書き）
   readonly causeCategories = CAUSE_CATEGORIES;
   causePanel = signal(false);
@@ -241,7 +240,7 @@ export class IssueDetail implements OnInit {
   /** サブタスクの部品に渡す名前の引き方（テンプレートでは矢印関数が書けないので、ここで作る） */
   readonly nameFn = (uid: string) => this.memberName(uid);
 
-    // ---- ウォッチ ----
+  // ---- ウォッチ ----
   /** ウォッチできるか：メンバーなら閲覧者も（アーカイブ中・削除フォルダの中は不可） */
   canWatch = computed(() => !!this.role() && !this.projectArchived() && this.issue()?.status !== 'deleted');
   private watcherIds = computed(() => {
@@ -253,6 +252,84 @@ export class IssueDetail implements OnInit {
   /** ウォッチしている人の名前（ボタンにマウスを乗せたときに出す） */
   watcherNames = computed(() => this.watcherIds().map((u) => this.memberName(u)).join('、'));
   watchError = signal('');
+  // ---- 依頼 ----
+  private requests = inject(RequestService);
+  /** この課題の、対応待ちの依頼 */
+  openRequests = signal<IssueRequest[]>([]);
+  /** 依頼の窓（メンバー） */
+  requestKind = signal<RequestKind | null>(null);
+  /** 管理者が承認のために開いた依頼（窓で確定したら、対応済みにする） */
+  handling = signal<IssueRequest | null>(null);
+  /** 見送りの一言を書いている依頼 */
+  declineFor = signal<IssueRequest | null>(null);
+  declineNote = '';
+  requestError = signal('');
+
+  /** その種類の依頼が、もう対応待ちで出ているか（赤AC：同じ依頼は1つだけ） */
+  requested(kind: RequestKind) {
+    return this.openRequests().some((r) => r.kind === kind);
+  }
+
+  /** 依頼を出せるか：メンバーだけ（管理者は自分でできる・閲覧者は課題を変えられない） */
+  canRequest(kind: RequestKind) {
+    const i = this.issue();
+    if (!i || this.role() !== 'member' || this.projectArchived() || this.requested(kind)) return false;
+    if (kind === 'delete') return i.status !== 'deleted';
+    if (kind === 'merge') return this.showMerge();
+    return i.status === 'closed';
+  }
+
+  onRequestSent() {
+    this.requestKind.set(null);
+    this.showFlash('request.sent');
+  }
+
+  async cancelRequest(rq: IssueRequest) {
+    this.requestError.set('');
+    try {
+      await this.requests.cancel(this.pid, rq.id);
+    } catch (e) {
+      console.error(e);
+      this.requestError.set('common.saveError');
+    }
+  }
+
+  /** 承認：いつもの窓を、依頼の中身を入れて開く（赤AB）。確定したら finishHandling で対応済みにする */
+  approve(rq: IssueRequest) {
+    this.handling.set(rq);
+    if (rq.kind === 'delete') {
+      this.openDelete();
+    } else if (rq.kind === 'merge') {
+      this.openMerge();
+    } else {
+      const t = this.transitions().find((a) => a.t.key === 'reopen')?.t;
+      if (t) this.click(t);
+    }
+  }
+
+  /** 窓で確定したあと、その依頼を対応済みにする（失敗しても、操作そのものは済んでいるので止めない） */
+  private async finishHandling(kind: RequestKind) {
+    const h = this.handling();
+    this.handling.set(null);
+    if (h?.kind !== kind) return;
+    await this.requests.markDone(this.pid, h).catch((e) => console.warn('依頼を対応済みにできませんでした', e));
+  }
+
+  async confirmDecline(rq: IssueRequest) {
+    this.requestError.set('');
+    try {
+      await this.requests.decline(this.pid, rq, this.declineNote.trim());
+      this.declineFor.set(null);
+    } catch (e) {
+      console.error(e);
+      this.requestError.set('common.saveError');
+    }
+  }
+
+  onMergeDone() {
+    this.mergeOpen.set(false);
+    this.finishHandling('merge');
+  }
 
   async toggleWatch() {
     const i = this.issue();
@@ -411,6 +488,7 @@ export class IssueDetail implements OnInit {
         this.relations.set(rels);
         this.syncLinked(rels);
       }, (e) => console.error(e)),
+      this.requests.watchOpenFor(this.pid, this.iid, (list) => this.openRequests.set(list), (e) => console.error(e)),
     );
   }
 
@@ -609,7 +687,7 @@ export class IssueDetail implements OnInit {
     } else if (f === 'labels') {
       const next = this.draftLabels();
       if ([...next].sort().join() !== [...(base.labelIds ?? [])].sort().join()) edits = { labelIds: next };
-    }else if (f === 'assignee') {
+    } else if (f === 'assignee') {
       if (this.draftAssignee() !== base.assigneeId) edits = { assigneeId: this.draftAssignee() };
     } else if (f === 'due') {
       const d = this.draftDue();
@@ -719,7 +797,7 @@ export class IssueDetail implements OnInit {
 
   async onStatusDone() {
     this.active.set(null);
-
+    await this.finishHandling('reopen');
   }
 
   // ---- 関連課題 ----
@@ -1028,35 +1106,17 @@ export class IssueDetail implements OnInit {
   }
 
   openDelete() {
-    this.delBase.set(this.issue());
-    this.delConflict.set(null);
-    this.delReason = '';
     this.error.set('');
-    this.delPanel.set(true);
+    this.base.set(this.issue());
+    this.delOpen.set(true);
   }
 
-  /** 削除したら、リストへ戻って「元に戻す」を出す */
-  async confirmDelete() {
-    const base = this.delBase()!;
-    this.busy.set(true);
-    this.error.set('');
-    this.delConflict.set(null);
-    try {
-      await this.issueService.deleteIssue(this.pid, base, this.delReason.trim(), this.myUid, this.tz());
-      this.router.navigate(['/p', this.pid, 'list'], { state: { deleted: { iid: this.iid, number: base.number } } });
-    } catch (e) {
-      if (e instanceof ConflictError) {
-        this.delBase.set(e.latest);
-        this.delConflict.set(e.latest);
-      } else {
-        console.error(e);
-        this.error.set('common.saveError');
-      }
-    } finally {
-      this.busy.set(false);
-    }
+  /** 削除できたら、依頼から開いていれば対応済みにして、リストへ戻って「元に戻す」を出す */
+  async onDeleted(number: number) {
+    this.delOpen.set(false);
+    await this.finishHandling('delete');
+    this.router.navigate(['/p', this.pid, 'list'], { state: { deleted: { iid: this.iid, number } } });
   }
-
   async restore() {
     this.busy.set(true);
     this.error.set('');

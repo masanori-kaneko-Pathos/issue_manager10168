@@ -32,18 +32,30 @@
                 (click)="menuOpen.set(false)">{{ 'detailMenu.recur' | t }}</a>
             }
             @if (showMerge() && !projectArchived()) {
-              <div class="item-row">
-                <button type="button" role="menuitem" [disabled]="!canMerge()"
-                  (click)="menuOpen.set(false); openMerge()">{{ 'merge.open' | t }}</button>
-                @if (!canMerge()) { <app-help-tip kind="denied" align="right" [keys]="['merge.denied']" /> }
-              </div>
+              @if (role() === 'member') {
+                <button type="button" role="menuitem" [disabled]="!canRequest('merge')"
+                  (click)="menuOpen.set(false); requestKind.set('merge')">
+                  {{ (requested('merge') ? 'request.pending.merge' : 'request.title.merge') | t }}</button>
+              } @else {
+                <div class="item-row">
+                  <button type="button" role="menuitem" [disabled]="!canMerge()"
+                    (click)="menuOpen.set(false); openMerge()">{{ 'merge.open' | t }}</button>
+                  @if (!canMerge()) { <app-help-tip kind="denied" align="right" [keys]="['merge.denied']" /> }
+                </div>
+              }
             }
             @if (i.status !== 'deleted' && !projectArchived()) {
-              <div class="item-row">
-                <button type="button" role="menuitem" class="danger-item" [disabled]="!canDelete()"
-                  (click)="menuOpen.set(false); openDelete()">{{ 'delete.open' | t }}</button>
-                @if (!canDelete()) { <app-help-tip kind="denied" align="right" [keys]="['delete.denied']" /> }
-              </div>
+              @if (role() === 'member') {
+                <button type="button" role="menuitem" [disabled]="!canRequest('delete')"
+                  (click)="menuOpen.set(false); requestKind.set('delete')">
+                  {{ (requested('delete') ? 'request.pending.delete' : 'request.title.delete') | t }}</button>
+              } @else {
+                <div class="item-row">
+                  <button type="button" role="menuitem" class="danger-item" [disabled]="!canDelete()"
+                    (click)="menuOpen.set(false); openDelete()">{{ 'delete.open' | t }}</button>
+                  @if (!canDelete()) { <app-help-tip kind="denied" align="right" [keys]="['delete.denied']" /> }
+                </div>
+              }
             }
           </div>
         }
@@ -110,6 +122,11 @@
                   <button type="button" role="menuitem" [disabled]="!a.allowed || busy()"
                     (click)="statusMenu.set(false); click(a.t)">{{ 'workflow.' + a.t.key | t }}</button>
                 }
+                @if (role() === 'member' && i.status === 'closed' && !projectArchived()) {
+                  <button type="button" role="menuitem" [disabled]="!canRequest('reopen')"
+                    (click)="statusMenu.set(false); requestKind.set('reopen')">
+                    {{ (requested('reopen') ? 'request.pending.reopen' : 'request.title.reopen') | t }}</button>
+                }                
                 @if (deniedReasons().length || showRejectHelp()) {
                   <div class="menu-help">
                     @if (deniedReasons().length) { <app-help-tip kind="denied" [keys]="deniedReasons()" /> }
@@ -255,6 +272,39 @@
             <a [routerLink]="['/p', pid, 'i', m.iid]">#{{ m.number }}</a></strong></p>
           @if (i.statusReason) { <p class="pre">{{ i.statusReason }}</p> }
         </div>
+      }
+      @if (!projectArchived()) {
+        @for (rq of openRequests(); track rq.id) {
+          <div class="req" role="status">
+            <p><strong>{{ 'request.box.' + rq.kind | t: { name: rq.byName } }}</strong>
+              @if (rq.kind === 'merge' && rq.targetIid) {
+                → <a [routerLink]="['/p', pid, 'i', rq.targetIid]">#{{ rq.targetNumber }}</a>
+              }</p>
+            <p class="pre">{{ rq.reason }}</p>
+            @if (role() === 'admin') {
+              @if (declineFor()?.id === rq.id) {
+                <textarea [(ngModel)]="declineNote" rows="2" maxlength="1000"
+                  [placeholder]="'request.notePlaceholder' | t"></textarea>
+                <div class="row">
+                  <button type="button" class="link" (click)="declineFor.set(null)">{{ 'workflow.cancel' | t }}</button>
+                  <button type="button" class="primary" (click)="confirmDecline(rq)">{{ 'request.decline' | t }}</button>
+                </div>
+              } @else {
+                <div class="row">
+                  <button type="button" class="link" (click)="declineNote = ''; declineFor.set(rq)">
+                    {{ 'request.decline' | t }}</button>
+                    <button type="button" class="primary" [class.danger]="rq.kind === 'delete'" (click)="approve(rq)">
+                    {{ 'request.approve.' + rq.kind | t }}</button>
+                </div>
+              }
+            } @else if (rq.by === myUid) {
+              <div class="row">
+                <button type="button" class="link" (click)="cancelRequest(rq)">{{ 'request.cancel' | t }}</button>
+              </div>
+            }
+          </div>
+        }
+        @if (requestError(); as k) { <p class="error" role="alert">{{ k | t }}</p> }
       }
 
       <div class="layout">
@@ -607,36 +657,29 @@
               </div>
             }
 
-            @if (delPanel()) {
-              <section class="panel">
-                <h2>{{ 'delete.title' | t }}</h2>
-                <p class="help">{{ 'delete.note' | t }}</p>
-                <label class="field">{{ 'delete.reason' | t }}
-                  <textarea [(ngModel)]="delReason" rows="2" [placeholder]="'delete.reasonHint' | t"></textarea>
-                </label>
-                @if (delConflict(); as c) {
-                  @let w = who(c);
-                  <div class="conflict" role="alert">
-                    <p>{{ w.key | t: w.params }}</p>
-                    <p>{{ 'conflict.retry' | t }}</p>
-                  </div>
-                }
-                @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
-                <div class="row">
-                  <button type="button" class="link" (click)="delPanel.set(false)">{{ 'workflow.cancel' | t }}</button>
-                  <button type="button" class="primary danger" [disabled]="busy() || !delReason.trim()"
-                    (click)="confirmDelete()">{{ 'delete.confirm' | t }}</button>
-                </div>
-              </section>
+            @if (delOpen()) {
+              <app-delete-dialog [pid]="pid" [issue]="base()!" [members]="members()"
+                [presetReason]="handling()?.kind === 'delete' ? handling()!.reason : ''"
+                (done)="onDeleted($event)" (cancel)="delOpen.set(false); handling.set(null)" />
             }
 
             @if (mergeOpen()) {
-              <app-merge-dialog [pid]="pid" [issue]="base()!" (done)="mergeOpen.set(false)" (cancel)="mergeOpen.set(false)" />
+              <app-merge-dialog [pid]="pid" [issue]="base()!"
+                [presetTarget]="handling()?.kind === 'merge' && handling()!.targetIid
+                  ? { iid: handling()!.targetIid!, number: handling()!.targetNumber! } : null"
+                [presetReason]="handling()?.kind === 'merge' ? handling()!.reason : ''"
+                (done)="onMergeDone()" (cancel)="mergeOpen.set(false); handling.set(null)" />
             }
 
             @if (active(); as t) {
               <app-status-dialog [issue]="base()!" [transition]="t" [pid]="pid" [members]="members()"
-                (done)="onStatusDone()" (cancel)="active.set(null)" />
+                [presetReason]="handling()?.kind === 'reopen' ? handling()!.reason : ''"
+                (done)="onStatusDone()" (cancel)="active.set(null); handling.set(null)" />
+            }
+
+            @if (requestKind(); as k) {
+              <app-request-dialog [pid]="pid" [issue]="i" [kind]="k" [members]="members()"
+                (done)="onRequestSent()" (cancel)="requestKind.set(null)" />
             }
           } <!-- ここまで、削除フォルダにない課題だけ -->
 

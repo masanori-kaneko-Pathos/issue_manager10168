@@ -188,6 +188,10 @@ a.add-link { display: inline-flex; align-items: center; text-decoration: none; }
 .imp button:hover:not(:disabled) .dot { border-color: var(--primary); }
 .ro-note { margin: 8px 0; padding: 8px 12px; border-radius: 8px; font-size: 13px;
   background: var(--surface-alt); border: 1px solid var(--border-strong); }
+.req { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; padding: 12px; border-radius: 8px;
+  background: var(--warning-bg); border: 1px solid var(--warning-border); }
+.req p { margin: 0; }
+.req textarea { font-size: 16px; padding: 8px 10px; }
 @media (min-width: 861px) {
   .side .inline-edit input, .side .inline-edit textarea, .side select { font-size: 14px; padding: 6px 8px; }
 }

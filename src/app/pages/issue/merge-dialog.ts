@@ -66,7 +66,8 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: bold; }
     input, textarea { font-size: 16px; padding: 8px 12px; font-weight: normal; }
     input { min-height: 44px; }
-    .results { display: flex; flex-direction: column; max-height: 240px; overflow: auto; }
+    /* 窓の高さが足りなくなっても、候補の一覧だけ押しつぶされないように（flex: none＝縮めない） */
+    .results { flex: none; display: flex; flex-direction: column; max-height: min(45vh, 360px); overflow: auto; }
     .row { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 4px 8px; border: none;
       border-bottom: 1px solid var(--border); background: none; text-align: left; font-size: 14px; cursor: pointer; }
     .row:hover { background: var(--surface-alt); }
@@ -79,7 +80,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .error { color: var(--danger-text); margin: 0; }
     .end { display: flex; justify-content: flex-end; gap: 8px; }
     .link { background: none; border: none; color: var(--primary); min-height: 44px; cursor: pointer; }
-    .primary { min-height: 44px; padding: 0 20px; background: var(--danger); color: var(--on-primary); border: none;
+    .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
       border-radius: 8px; font-size: 14px; }
     .primary:disabled { background: var(--disabled); }
   `,
@@ -88,6 +89,9 @@ export class MergeDialog implements OnInit {
   pid = input.required<string>();
   /** 統合元（開いた時点の課題） */
   issue = input.required<Issue>();
+  /** 依頼から開いたときに、最初から選んでおく統合先と理由（赤AB：承認＝いつもの窓を、中身を入れて開く） */
+  presetTarget = input<{ iid: string; number: number } | null>(null);
+  presetReason = input('');
   done = output<void>();
   cancel = output<void>();
 
@@ -120,7 +124,13 @@ export class MergeDialog implements OnInit {
   }
 
   ngOnInit() {
-    this.stop = this.issueService.watchOpen(this.pid(), (list) => this.open.set(list), (e) => {
+    this.reason = this.presetReason();
+    this.stop = this.issueService.watchOpen(this.pid(), (list) => {
+      this.open.set(list);
+      // 依頼の統合先が、まだ未クローズで残っていれば選んでおく（クローズ済みなら、選び直してもらう）
+      const p = this.presetTarget();
+      if (p && !this.target()) this.target.set(list.find((i) => i.id === p.iid) ?? null);
+    }, (e) => {
       console.error(e);
       this.error.set('common.loadError');
     });

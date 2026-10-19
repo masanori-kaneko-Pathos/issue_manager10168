@@ -48,7 +48,7 @@ service cloud.firestore {
           return d.keys().hasOnly(keys) && d.keys().hasAll(keys)
             && d.type in ['assigned', 'comment', 'dueChanged', 'resolved', 'sentBack',
                           'closed', 'rejected', 'restored', 'joined', 'handover', 'merged', 'subtaskAssigned',
-                          'mention', 'watchResolved']
+                          'mention', 'watchResolved', 'request', 'requestDone', 'requestDeclined']
             && d.pid is string
             && d.projectName is string && d.projectName.size() <= 100
             && (d.iid == null || d.iid is string)
@@ -440,6 +440,46 @@ service cloud.firestore {
             // 取り込み：メンバーも記録を残す（自分の取り込みだけ）
             || (canWrite(pid) && request.resource.data.type == 'import'
                 && request.resource.data.target == request.auth.uid));
+      }
+
+      // 依頼（削除・統合・再開）：メンバーが管理者に頼む。管理者が「対応済み・見送り」にし、
+      // 依頼した本人は取り下げられる。記録として残すので、だれも消せない
+      match /requests/{rid} {
+        function validRequest() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['kind', 'iid', 'number', 'title', 'targetIid', 'targetNumber',
+                   'reason', 'by', 'byName', 'at', 'status'])
+            && d.kind in ['delete', 'merge', 'reopen']
+            && d.iid is string
+            && exists(/databases/$(database)/documents/projects/$(pid)/issues/$(d.iid))
+            && d.number is int
+            && d.title is string && d.title.size() <= 200
+            // 統合のときだけ、統合先が要る
+            && (d.kind != 'merge' || (d.targetIid is string && d.targetNumber is int))
+            && d.reason is string && d.reason.size() > 0 && d.reason.size() <= 1000
+            && d.by == request.auth.uid
+            && d.byName is string && d.byName.size() <= 100
+            && d.at == request.time
+            && d.status == 'open';
+        }
+        allow read: if isMember(pid);
+        // 頼めるのはメンバーだけ（管理者は自分でできる。閲覧者は課題を変えられないので頼まない）
+        allow create: if canWrite(pid) && myRole(pid) == 'member' && validRequest();
+        allow update: if
+          // 管理者：対応済み・見送りにする（対応した人と日時を残す。見送りの一言は任意）
+          (isAdmin(pid) && resource.data.status == 'open'
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['status', 'handledBy', 'handledAt', 'note'])
+            && request.resource.data.status in ['done', 'declined']
+            && request.resource.data.handledBy == request.auth.uid
+            && request.resource.data.handledAt == request.time
+            && request.resource.data.get('note', '') is string
+            && request.resource.data.get('note', '').size() <= 1000)
+          // 依頼した本人：取り下げる
+          || (signedIn() && resource.data.by == request.auth.uid && resource.data.status == 'open'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+            && request.resource.data.status == 'cancelled');
+        allow delete: if false;
       }
 
       match /issues/{iid} {

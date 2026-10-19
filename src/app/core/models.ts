@@ -93,7 +93,7 @@ export interface AdminLog {
 export type NotificationType =
   'assigned' | 'comment' | 'dueChanged' | 'resolved' | 'sentBack' | 'closed' | 'rejected' | 'restored' | 'joined'
   | 'handover' | 'daily' | 'effectCheck' | 'unblocked' | 'merged' | 'projectDeleted' | 'subtaskAssigned'
-  | 'mention' | 'watchResolved';
+  | 'mention' | 'watchResolved' | 'request' | 'requestDone' | 'requestDeclined';
 
 /**
  * 画面内の通知（users/{uid}/notifications）。本人だけが読める。
@@ -296,4 +296,31 @@ export function watchersOf(i: Pick<Issue, 'reporterId' | 'assigneeId' | 'watcher
 /** 自動でウォッチされる人か（提起者・担当者） */
 export function isAutoWatcher(i: Pick<Issue, 'reporterId' | 'assigneeId'>, uid: string): boolean {
   return i.reporterId === uid || i.assigneeId === uid;
+}
+
+/** 依頼の種類（メンバーが管理者に頼める、管理者だけの操作） */
+export type RequestKind = 'delete' | 'merge' | 'reopen';
+/** open＝対応待ち、done＝対応済み、declined＝見送り、cancelled＝取り下げ */
+export type RequestStatus = 'open' | 'done' | 'declined' | 'cancelled';
+
+/**
+ * 依頼（projects/{pid}/requests）。課題の番号と題名は写しを持つ（一覧で課題を読み直さずに出すため）。
+ * 消さずに残す（だれが・いつ・何を頼み、どうなったかの記録）
+ */
+export interface IssueRequest {
+  id: string;
+  kind: RequestKind;
+  iid: string;
+  number: number;
+  title: string;
+  targetIid: string | null;     // 統合のときの統合先
+  targetNumber: number | null;
+  reason: string;
+  by: string;
+  byName: string;
+  at: Timestamp;
+  status: RequestStatus;
+  handledBy?: string;
+  handledAt?: Timestamp;
+  note?: string;                // 見送るときの一言（任意）
 }

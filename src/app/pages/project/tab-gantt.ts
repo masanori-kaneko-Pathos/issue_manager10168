@@ -1,6 +1,8 @@
 import { Component, ElementRef, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
+import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth/auth.service';
+import { DueDialog } from '../../shared/due-dialog';
 import { Clock } from '../../core/time/clock';
 import { Issue, Level } from '../../core/models';
 import { priorityOf } from '../../core/issue/priority';
@@ -29,7 +31,7 @@ type Row = { kind: 'group'; key: string; label: string; n: number } | ({ kind: '
  */
 @Component({
   selector: 'app-tab-gantt',
-  imports: [RouterLink, TPipe],
+  imports: [RouterLink, TPipe, DueDialog],
   template: `
     @if (!enabled()) {
       <p class="help">{{ 'gantt.off' | t }}</p>
@@ -77,11 +79,21 @@ type Row = { kind: 'group'; key: string; label: string; n: number } | ({ kind: '
                   </a>
                   <div class="lane" [style.background]="weekendBg()">
                     @if (barOf(r); as b) {
-                      <a class="bar" [attr.data-p]="isActive(r.issue) ? prio(r.issue) : null"
-                        [class.overdue]="overdue(r.issue)" [style.left.px]="b.left" [style.width.px]="b.width"
-                        [routerLink]="['/p', ctx.pid(), 'i', r.issue.id]" [title]="tip(r)">
+                      <div class="bar" role="link" tabindex="0" [attr.data-p]="isActive(r.issue) ? prio(r.issue) : null"
+                        [class.overdue]="overdue(r.issue)" [class.moving]="drag()?.id === r.issue.id"
+                        [style.left.px]="b.left" [style.width.px]="b.width" [title]="tip(r)"
+                        (click)="open(r.issue)" (keydown.enter)="open(r.issue)">
                         <span class="bar-t">{{ ctx.nameOf(r.issue.assigneeId) }}</span>
-                      </a>
+                        @if (canMove(r.issue)) {
+                          <span class="grip" [attr.aria-label]="'gantt.dragDue' | t" [title]="'gantt.dragDue' | t"
+                            (pointerdown)="startDrag($event, r)" (pointermove)="moveDrag($event)"
+                            (pointerup)="endDrag()" (pointercancel)="drag.set(null)"
+                            (click)="$event.stopPropagation()"></span>
+                        }
+                      </div>
+                      @if (drag()?.id === r.issue.id) {
+                        <span class="drag-label" [style.left.px]="b.left + b.width + 6">→ {{ dragLabel() }}</span>
+                      }
                     }
                   </div>
                 </div>
@@ -93,6 +105,10 @@ type Row = { kind: 'group'; key: string; label: string; n: number } | ({ kind: '
         </div>
       }
     }
+    @if (pending(); as p) {
+      <app-due-dialog [issue]="p.issue" [date]="p.date" [pid]="ctx.pid()" [members]="ctx.members()"
+        (done)="pending.set(null)" (cancel)="pending.set(null)" />
+    }      
   `,
   styles: `
     .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 4px; }
@@ -129,6 +145,12 @@ type Row = { kind: 'group'; key: string; label: string; n: number } | ({ kind: '
     .bar.overdue { background: var(--danger-bg); color: var(--danger-text); }
     .done .bar, .done .cell { opacity: 0.55; }
     .today { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--danger); z-index: 1; pointer-events: none; }
+    .bar { cursor: pointer; }
+    .bar.moving { outline: 2px solid var(--primary); }
+    .grip { position: absolute; top: 0; right: 0; bottom: 0; width: 10px; cursor: ew-resize; touch-action: none;
+      background: linear-gradient(to right, transparent, rgba(0, 0, 0, 0.18)); }
+    .drag-label { position: absolute; top: 8px; z-index: 3; padding: 0 6px; border-radius: 4px; font-size: 11px;
+      line-height: 20px; background: var(--text); color: var(--surface); white-space: nowrap; pointer-events: none; }    
     @media (max-width: 600px) { .chart { --left: 130px; } }
   `,
 })
@@ -138,6 +160,20 @@ export class TabGantt {
   private clock = inject(Clock);
   private i18n = inject(I18nService);
   private scroller = viewChild<ElementRef<HTMLElement>>('scroller');
+  private router = inject(Router);
+  private readonly myUid = auth.currentUser!.uid;
+  /** つまみを引いている最中（x＝引き始めた位置、end＝今の期限の日） */
+  drag = signal<{ id: string; start: number; origEnd: number; end: number; x: number } | null>(null);
+  /** 離したあと、モーダルで確かめ中の変更（カレンダーと同じモーダル） */
+  pending = signal<{ issue: Issue; date: string } | null>(null);
+  /** 引き終わった直後のクリックで、詳細に移らないための目印 */
+  private justDragged = false;
+  dragLabel = computed(() => {
+    const d = this.drag();
+    if (!d) return '';
+    const dt = dateOf(d.end);
+    return `${dt.getUTCMonth() + 1}/${dt.getUTCDate()}`;
+  });
 
   scale = signal<Scale>('day');
   byAssignee = signal(false);
@@ -225,11 +261,56 @@ export class TabGantt {
     if (el) el.scrollLeft = Math.max(0, this.todayLeft() - el.clientWidth / 3);
   }
 
+  // ---- 期限のドラッグ（右端のつまみ） ----
+
+  /** 引けるのは、管理者・提起者・担当者で、クローズ前（ルールの editAllowed・カレンダーと同じ） */
+  canMove(i: Issue) {
+    if (i.status === 'closed' || this.ctx.archived()) return false;
+    const r = this.ctx.role();
+    return r === 'admin' || (r === 'member' && (i.reporterId === this.myUid || i.assigneeId === this.myUid));
+  }
+
+  /** 引き始め。指やマウスがつまみの外に出ても追えるよう、つまみに「つかんだ」と知らせる */
+  startDrag(e: PointerEvent, r: Span) {
+    e.preventDefault();
+    e.stopPropagation();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    this.drag.set({ id: r.issue.id, start: r.start, origEnd: r.end, end: r.end, x: e.clientX });
+  }
+
+  /** 動かした距離を、日の数に直す（開始日より前にはしない＝棒は最短で1日） */
+  moveDrag(e: PointerEvent) {
+    const d = this.drag();
+    if (!d) return;
+    const end = Math.max(d.start, d.origEnd + Math.round((e.clientX - d.x) / this.px()));
+    if (end !== d.end) this.drag.set({ ...d, end });
+  }
+
+  /** 離したら、日が変わっていればモーダルで確かめる（理由を書いて確定。元に戻すもモーダルが出す） */
+  endDrag() {
+    const d = this.drag();
+    if (!d) return;
+    this.drag.set(null);
+    this.justDragged = true;
+    setTimeout(() => (this.justDragged = false));
+    const issue = this.ctx.openIssues().find((i) => i.id === d.id);
+    if (issue && d.end !== d.origEnd) {
+      this.pending.set({ issue, date: dateOf(d.end).toISOString().slice(0, 10) });
+    }
+  }
+
+  open(i: Issue) {
+    if (this.justDragged) return;
+    this.router.navigate(['/p', this.ctx.pid(), 'i', i.id]);
+  }  
+
   /** 棒の位置と幅（範囲の外にはみ出した分は切る。全部が外なら出さない） */
   barOf(r: Span) {
     const { from, to } = this.range();
+    const d = this.drag();
+    const end = d?.id === r.issue.id ? d.end : r.end;
     const s = Math.max(r.start, from);
-    const e = Math.min(r.end, to);
+    const e = Math.min(end, to);
     if (e < s) return null;
     return { left: (s - from) * this.px(), width: (e - s + 1) * this.px() };
   }

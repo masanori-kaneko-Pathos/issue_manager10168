@@ -139,6 +139,8 @@ export class StatusDialog implements OnInit {
   members = input<Member[]>([]);
   transition = input.required<Transition>();
   pid = input.required<string>();
+  /** 依頼から開いたときに、最初から入れておく理由（再開の依頼） */
+  presetReason = input('');
   done = output<void>();
   cancel = output<void>();
 
@@ -172,6 +174,7 @@ export class StatusDialog implements OnInit {
   private tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
 
   ngOnInit() {
+    this.reason = this.presetReason();
     // 対応中に書いた原因・対策があれば、最初から入れておく
     const i = this.issue();
     this.cause = i.cause ?? '';

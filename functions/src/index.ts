@@ -249,6 +249,9 @@ const PUSH_TEXT: Record<'ja' | 'en', Record<string, string>> = {
     subtaskAssigned: '{{name}} さんが、#{{n}}「{{title}}」のサブタスクをあなたの担当にしました',
     mention: '{{name}} さんが、#{{n}}「{{title}}」のコメントであなたをメンションしました',
     watchResolved: '{{name}} さんが、#{{n}}「{{title}}」を解決済みにしました',
+    request: '{{name}} さんから、#{{n}}「{{title}}」について依頼が届きました',
+    requestDone: '{{name}} さんが、#{{n}}「{{title}}」の依頼に対応しました',
+    requestDeclined: '{{name}} さんが、#{{n}}「{{title}}」の依頼を見送りました',
   },
   en: {
     assigned: '{{name}} assigned you to #{{n}} "{{title}}"',
@@ -269,6 +272,9 @@ const PUSH_TEXT: Record<'ja' | 'en', Record<string, string>> = {
     subtaskAssigned: '{{name}} assigned you a subtask on #{{n}} "{{title}}"',
     mention: '{{name}} mentioned you in a comment on #{{n}} "{{title}}"',
     watchResolved: '{{name}} resolved #{{n}} "{{title}}"',
+    request: '{{name}} sent a request about #{{n}} "{{title}}"',
+    requestDone: '{{name}} acted on your request about #{{n}} "{{title}}"',
+    requestDeclined: '{{name}} declined your request about #{{n}} "{{title}}"',
   },
 };
 const DAILY_PARTS: Record<'ja' | 'en', Record<string, string>> = {
