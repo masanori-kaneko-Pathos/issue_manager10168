@@ -405,6 +405,12 @@ export const en: Dict = {
     empty: 'No issues',
     move: 'Change status',
     viewerCannotMove: 'Viewers cannot move cards to change status.',
+    by: 'Group columns by',
+    views: { status: 'Status', due: 'Due date', assignee: 'Assignee' },
+    viewOnly: 'Cards cannot be moved in this view (switch to Status to move them).',
+    dueCols: { overdue: 'Overdue', today: 'Today', tomorrow: 'Tomorrow', week: 'Within a week', later: 'Later' },
+    overdueN: '{{n}} overdue',
+    dueDropHint: 'Drop a card on a column to change its due date (with a reason).',
   },
   projectSettings: {
     adminOnly: 'Only admins can use this page.',
@@ -449,6 +455,7 @@ export const en: Dict = {
   },
   dueDialog: {
     title: 'Change due date',
+    date: 'Date',
     time: 'Time',
     pastWarning: 'This date is in the past. The issue will be treated as overdue right away (shown in red, with higher priority). Make sure this is intended, such as fixing a typo.',
     confirmPast: 'Confirm as overdue',

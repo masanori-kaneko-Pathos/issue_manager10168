@@ -1,6 +1,9 @@
-import { Component, DestroyRef, ElementRef, OnInit, computed, inject, signal, viewChild } from '@angular/core';
+import {
+  Component, DestroyRef, ElementRef, OnInit, afterEveryRender, computed, inject, signal, viewChild,
+} from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { CdkDrag, CdkDragDrop, CdkDropList, CdkDropListGroup } from '@angular/cdk/drag-drop';
+import { CdkDrag, CdkDragDrop, CdkDragMove, CdkDropList, CdkDropListGroup } from '@angular/cdk/drag-drop';
 import { Unsubscribe } from 'firebase/firestore';
 import { CdkScrollable } from '@angular/cdk/scrolling';
 import { auth } from '../../core/firebase';
@@ -12,7 +15,8 @@ import { LabelChip } from '../../shared/label-chip';
 import { PriorityMark } from '../../shared/priority-mark';
 import { compareIssues, isManualPriority, isStale, priorityOf } from '../../core/issue/priority';
 import { ProjectContext } from './project-context';
-import { endOfDayIn, remainingOf, shortDue } from '../../core/time/time';
+import { dateKey, dueBucket, endOfDayIn, remainingOf, shortDue } from '../../core/time/time';
+import { DueDialog } from '../../shared/due-dialog';
 import { Transition, UNDO_OF, availableTransitions } from '../../core/issue/workflow';
 import { UndoService } from '../../core/undo/undo.service';
 import { HelpTip } from '../../shared/help-tip';
@@ -21,6 +25,12 @@ import { I18nService, TPipe } from '../../i18n/i18n';
 
 type ColKey = 'open' | 'in_progress' | 'resolved' | 'done' | 'on_hold';
 type DueFilter = 'today' | 'week' | 'overdue';
+/** 列の分け方（カタログ【5】）。ドラッグはステータス別のときだけ（赤AJ） */
+type ViewBy = 'status' | 'due' | 'assignee';
+type DueCol = 'overdue' | 'today' | 'tomorrow' | 'week' | 'later';
+/** 期限別・担当者別の列（見るだけ） */
+interface AltCol { key: string; label: string; issues: Issue[]; overdue: number; }
+const DAY = 24 * 60 * 60 * 1000;
 
 /** 列 → その列に置いたときのステータス */
 const COL_STATUS: Record<ColKey, IssueStatus> = {
@@ -44,21 +54,34 @@ const EMPTY_PAYLOAD = {
 
 @Component({
   selector: 'app-tab-board',
-  imports: [CdkDropListGroup, CdkDropList, CdkDrag, 
-    CdkScrollable, RouterLink, TPipe, HelpTip, StatusDialog, LabelChip, PriorityMark],
+  imports: [CdkDropListGroup, CdkDropList, CdkDrag, NgTemplateOutlet,
+    CdkScrollable, RouterLink, TPipe, HelpTip, StatusDialog, LabelChip, PriorityMark, DueDialog],
   template: `
     <div class="quick">
+      <div class="chips" role="group" [attr.aria-label]="'board.by' | t">
+        @for (v of views; track v) {
+          <button type="button" [class.on]="by() === v" [attr.aria-pressed]="by() === v"
+            (click)="setBy(v)">{{ 'board.views.' + v | t }}</button>
+        }
+      </div>
       <div class="chips">
         <button type="button" [class.on]="!mine()" (click)="setMine(false)">{{ 'board.all' | t }}</button>
         <button type="button" [class.on]="mine()" (click)="setMine(true)">{{ 'board.mine' | t }}</button>
       </div>
-      <div class="chips">
-        <button type="button" [class.on]="!due()" (click)="setDue(null)">{{ 'board.dueAll' | t }}</button>
-        @for (d of dueOptions; track d) {
-          <button type="button" [class.on]="due() === d" (click)="setDue(d)">{{ 'board.due.' + d | t }}</button>
-        }
-      </div>
-      @if (ctx.role() === 'viewer') {
+      <!-- 「期限」の表示では、列そのものが期限で分かれているので出さない -->
+      @if (by() !== 'due') {
+        <div class="chips">
+          <button type="button" [class.on]="!due()" (click)="setDue(null)">{{ 'board.dueAll' | t }}</button>
+          @for (d of dueOptions; track d) {
+            <button type="button" [class.on]="due() === d" (click)="setDue(d)">{{ 'board.due.' + d | t }}</button>
+          }
+        </div>
+      }
+      @if (by() === 'assignee') {
+        <span class="view-note">{{ 'board.viewOnly' | t }}</span>
+      } @else if (by() === 'due') {
+        <span class="view-note">{{ 'board.dueDropHint' | t }}</span>
+      } @else if (ctx.role() === 'viewer') {
         <app-help-tip kind="denied" align="right" [keys]="['board.viewerCannotMove']" />
       }
     </div>
@@ -72,108 +95,155 @@ const EMPTY_PAYLOAD = {
     } @else {
       @if (isMobile()) {
         <div class="col-tabs">
-          @for (c of mobileCols; track c) {
-            <button type="button" [class.on]="mobileCol() === c" [attr.data-col]="c" (click)="scrollToCol(c)">
-              {{ 'board.cols.' + c | t }} <span class="count">{{ byCol()[c].length }}</span>
+          @for (c of tabCols(); track c.key) {
+            <button type="button" [class.on]="mobileCol() === c.key" [attr.data-col]="c.key" (click)="scrollToCol(c.key)">
+              {{ c.label }} <span class="count">{{ c.n }}</span>
             </button>
           }
         </div>
       }
 
-      <div class="board" #boardEl cdkDropListGroup cdkScrollable [class.dragging]="!!dragging()"
-        (scroll)="onBoardScroll()">
-        @for (c of visibleCols(); track c) {
-          @let collapsed = c === 'on_hold' && !holdOpen() && !isMobile();
-          <section class="col" [attr.data-col]="c" [class.collapsed]="collapsed"
-            [class.allowed]="!!dragging() && canDropInto(c)" [class.blocked]="!!dragging() && !canDropInto(c)"
-            cdkDropList [cdkDropListData]="c" [cdkDropListEnterPredicate]="predicates[c]"
-            (cdkDropListDropped)="onDrop($event)">
-            <header class="col-head" [class.clickable]="c === 'on_hold' && !isMobile()"
-              (click)="c === 'on_hold' && !isMobile() && holdOpen.set(!holdOpen())">
-              <span class="col-name">{{ 'board.cols.' + c | t }}</span>
-              <span class="count">{{ byCol()[c].length }}</span>
-              @if (c === 'open' && ctx.canCreate()) {
-                <a class="head-add" [routerLink]="['/p', ctx.pid(), 'new']"
-                  [attr.aria-label]="'project.newIssue' | t" [title]="'project.newIssue' | t">＋</a>
-              }
-              @if (c === 'done' && !collapsed) { <span class="note">{{ 'board.doneNote' | t }}</span> }
-            </header>
+      <!-- PC：上にも横スクロールのバー（本体と連動）。列が画面に収まっているときは出さない -->
+      @if (!isMobile()) {
+        <div class="top-scroll" #topScroll [class.off]="!overflowing()" (scroll)="onTopScroll()" aria-hidden="true">
+          <div [style.width.px]="scrollWidth()"></div>
+        </div>
+      }
 
-            @if (!collapsed) {
+      @if (by() === 'status') {
+        <div class="board" #boardEl cdkDropListGroup cdkScrollable [class.dragging]="!!dragging()"
+          (scroll)="onBoardScroll()">
+          @for (c of visibleCols(); track c) {
+            @let collapsed = c === 'on_hold' && !holdOpen() && !isMobile();
+            <section class="col" [attr.data-col]="c" [class.collapsed]="collapsed" [cdkDropListAutoScrollDisabled]="true"
+              [class.allowed]="!!dragging() && canDropInto(c)" [class.blocked]="!!dragging() && !canDropInto(c)"
+              cdkDropList [cdkDropListData]="c" [cdkDropListEnterPredicate]="predicates[c]"
+              (cdkDropListDropped)="onDrop($event)">
+              <header class="col-head" [class.clickable]="c === 'on_hold' && !isMobile()"
+                (click)="c === 'on_hold' && !isMobile() && holdOpen.set(!holdOpen())">
+                <span class="col-name">{{ 'board.cols.' + c | t }}</span>
+                <span class="count">{{ byCol()[c].length }}</span>
+                @if (c === 'open' && ctx.canCreate()) {
+                  <a class="head-add" [routerLink]="['/p', ctx.pid(), 'new']"
+                    [attr.aria-label]="'project.newIssue' | t" [title]="'project.newIssue' | t">＋</a>
+                }
+                @if (c === 'on_hold' && !isMobile()) { <span class="fold" aria-hidden="true">{{ collapsed ? '▸' : '▾' }}</span> }
+                @if (c === 'done' && !collapsed) { <span class="note">{{ 'board.doneNote' | t }}</span> }
+              </header>
+              @if (!collapsed) {
+                <div class="cards">
+                  @for (i of byCol()[c]; track i.id) {
+                    <article class="card" cdkDrag [cdkDragData]="i" [cdkDragDisabled]="!canDrag(i)" (cdkDragMoved)="onDragMoved($event)"
+                      [cdkDragStartDelay]="{ touch: 300, mouse: 0 }"
+                      (cdkDragStarted)="onDragStart(i)" (cdkDragEnded)="onDragEnd()"
+                      [attr.data-p]="isActive(i) ? prio(i) : null" [class.closed]="i.status === 'closed'">
+                      <ng-container [ngTemplateOutlet]="cardBody" [ngTemplateOutletContext]="{ $implicit: i }" />
+                    </article>
+                  } @empty {
+                    <p class="empty">{{ 'board.empty' | t }}</p>
+                  }
+                </div>
+              }
+            </section>
+          }
+        </div>
+      } @else {
+        <!-- 期限別：期限の列へドラッグできる（落とすと期限の変更の窓）。担当者別：見るだけ -->
+        <div class="board" #boardEl cdkDropListGroup cdkScrollable [class.dragging]="!!dragging()" (scroll)="onBoardScroll()">
+          @for (c of altCols(); track c.key) {
+            <section class="col" [attr.data-col]="c.key" [cdkDropListAutoScrollDisabled]="true"
+              cdkDropList [cdkDropListData]="c.key" [cdkDropListDisabled]="by() !== 'due'"
+              [cdkDropListSortingDisabled]="true" [cdkDropListEnterPredicate]="dueEnter"
+              [class.allowed]="!!dragging() && c.key !== 'overdue'" [class.blocked]="!!dragging() && c.key === 'overdue'"
+              (cdkDropListDropped)="onDueDrop($event)">
+              <header class="col-head">
+                <span class="col-name">{{ c.label }}</span>
+                <span class="count">{{ c.issues.length }}</span>
+                @if (c.overdue) { <span class="od">{{ 'board.overdueN' | t: { n: '' + c.overdue } }}</span> }
+              </header>
               <div class="cards">
-                @for (i of byCol()[c]; track i.id) {
-                  <article class="card" cdkDrag [cdkDragData]="i" [cdkDragDisabled]="!canDrag(i)"
-                    [cdkDragStartDelay]="{ touch: 300, mouse: 0 }"
-                    (cdkDragStarted)="onDragStart(i)" (cdkDragEnded)="onDragEnd()"
-                    [attr.data-p]="isActive(i) ? prio(i) : null" [class.closed]="i.status === 'closed'">
-                    @if (isOverdue(i)) { <div class="band">{{ 'board.overdue' | t }}</div> }
-                    <div class="body">
-                      <div class="top">
-                        <span class="id">
-                          @if (isActive(i)) { <app-priority-mark [level]="prio(i)" [manual]="manual(i)" /> }
-                          <span class="num">#{{ i.number }}</span>
-                          @if (stale(i)) {
-                            <span class="stale" [title]="'stale.title' | t: { n: '' + staleDays() }">{{ 'stale.label' | t }}</span>
-                          }
-                          @if (wa(i)) { <span class="wa">{{ 'workaround.label' | t }}</span> }
-                        </span>
-                        @if (isMobile() && moves(i).length) {
-                          <button type="button" class="more" [attr.aria-label]="'board.move' | t"
-                            (click)="menuFor.set(menuFor() === i.id ? null : i.id)">⋯</button>
-                        }
-                      </div>
-                      <a class="title" [routerLink]="['/p', ctx.pid(), 'i', i.id]">{{ i.title }}</a>
-                                            @let ls = cardLabels(i);
-                      @if (ls.length) {
-                        <div class="labels">
-                          @for (l of ls.slice(0, 2); track l.id) { <app-label-chip [label]="l" /> }
-                          @if (ls.length > 2) { <span class="more-labels">+{{ ls.length - 2 }}</span> }
-                        </div>
-                      }
-                      @if (i.subtaskTotal) {
-                        <span class="subs" [class.all]="i.subtaskDone === i.subtaskTotal"
-                          [title]="'subtask.progress' | t: { done: '' + (i.subtaskDone ?? 0), total: '' + i.subtaskTotal }"
-                          [attr.aria-label]="'subtask.progress' | t: { done: '' + (i.subtaskDone ?? 0), total: '' + i.subtaskTotal }">
-                          <span aria-hidden="true">☑ {{ i.subtaskDone ?? 0 }}/{{ i.subtaskTotal }}</span></span>
-                      }
-                      <div class="meta">
-                        <span class="avatar" [title]="memberName(i.assigneeId)">
-                          @if (memberPhoto(i.assigneeId); as src) {
-                            <img [src]="src" alt="" referrerpolicy="no-referrer" />
-                          } @else {
-                            {{ memberName(i.assigneeId).slice(0, 1) }}
-                          }
-                        </span>
-                        @if (isActive(i) && isOverdue(i)) {
-                          <span class="due overdue" [title]="remaining(i)">{{ dueLabel(i) }}</span>
-                        } @else if (isActive(i)) {
-                          <span class="due">{{ dueLabel(i) }}・{{ remaining(i) }}</span>
-                        } @else {
-                          <span class="due">{{ dueLabel(i) }}</span>
-                        }
-                      </div>
-                      @if (menuFor() === i.id) {
-                        <div class="moves">
-                          @for (a of moves(i); track a.t.key) {
-                            <button type="button" (click)="menuFor.set(null); start(i, a.t)">{{ 'workflow.' + a.t.key | t }}</button>
-                          }
-                        </div>
-                      }
-                    </div>
+                @for (i of c.issues; track i.id) {
+                  @let movable = by() === 'due' && canMoveDue(i);
+                  <article class="card" [class.static]="!movable" [attr.data-p]="prio(i)" (cdkDragMoved)="onDragMoved($event)"
+                    cdkDrag [cdkDragData]="i" [cdkDragDisabled]="!movable" [cdkDragStartDelay]="{ touch: 300, mouse: 0 }"
+                    (cdkDragStarted)="onDragStart(i)" (cdkDragEnded)="onDragEnd()">
+                    <ng-container [ngTemplateOutlet]="cardBody" [ngTemplateOutletContext]="{ $implicit: i }" />
                   </article>
                 } @empty {
                   <p class="empty">{{ 'board.empty' | t }}</p>
                 }
               </div>
+            </section>
+          }
+        </div>
+      }
+    }
+
+    <!-- カードの中身（3つの表示で共通） -->
+    <ng-template #cardBody let-i>
+      @if (isOverdue(i)) { <div class="band">{{ 'board.overdue' | t }}</div> }
+      <div class="body">
+        <div class="top">
+          <span class="id">
+            @if (isActive(i)) { <app-priority-mark [level]="prio(i)" [manual]="manual(i)" /> }
+            <span class="num">#{{ i.number }}</span>
+            @if (stale(i)) {
+              <span class="stale" [title]="'stale.title' | t: { n: '' + staleDays() }">{{ 'stale.label' | t }}</span>
             }
-          </section>
+            @if (wa(i)) { <span class="wa">{{ 'workaround.label' | t }}</span> }
+          </span>
+          @if (isMobile() && by() === 'status' && moves(i).length) {
+            <button type="button" class="more" [attr.aria-label]="'board.move' | t"
+              (click)="menuFor.set(menuFor() === i.id ? null : i.id)">⋯</button>
+          }
+        </div>
+        <a class="title" [routerLink]="['/p', ctx.pid(), 'i', i.id]">{{ i.title }}</a>
+        @let ls = cardLabels(i);
+        @if (ls.length) {
+          <div class="labels">
+            @for (l of ls.slice(0, 2); track l.id) { <app-label-chip [label]="l" /> }
+            @if (ls.length > 2) { <span class="more-labels">+{{ ls.length - 2 }}</span> }
+          </div>
+        }
+        @if (i.subtaskTotal) {
+          <span class="subs" [class.all]="i.subtaskDone === i.subtaskTotal"
+            [title]="'subtask.progress' | t: { done: '' + (i.subtaskDone ?? 0), total: '' + i.subtaskTotal }"
+            [attr.aria-label]="'subtask.progress' | t: { done: '' + (i.subtaskDone ?? 0), total: '' + i.subtaskTotal }">
+            <span aria-hidden="true">☑ {{ i.subtaskDone ?? 0 }}/{{ i.subtaskTotal }}</span></span>
+        }
+        <div class="meta">
+          <span class="avatar" [title]="memberName(i.assigneeId)">
+            @if (memberPhoto(i.assigneeId); as src) {
+              <img [src]="src" alt="" referrerpolicy="no-referrer" />
+            } @else {
+              {{ memberName(i.assigneeId).slice(0, 1) }}
+            }
+          </span>
+          @if (isActive(i) && isOverdue(i)) {
+            <span class="due overdue" [title]="remaining(i)">{{ dueLabel(i) }}</span>
+          } @else if (isActive(i)) {
+            <span class="due">{{ dueLabel(i) }}・{{ remaining(i) }}</span>
+          } @else {
+            <span class="due">{{ dueLabel(i) }}</span>
+          }
+        </div>
+        @if (menuFor() === i.id && by() === 'status') {
+          <div class="moves">
+            @for (a of moves(i); track a.t.key) {
+              <button type="button" (click)="menuFor.set(null); start(i, a.t)">{{ 'workflow.' + a.t.key | t }}</button>
+            }
+          </div>
         }
       </div>
-    }
+    </ng-template>
 
     @if (pending(); as p) {
       <app-status-dialog [issue]="p.issue" [transition]="p.t" [pid]="ctx.pid()" [members]="ctx.members()"
         (done)="onDialogDone()" (cancel)="pending.set(null)" />
+    }
+    @if (pendingDue(); as p) {
+      <app-due-dialog [issue]="p.issue" [date]="p.date" [pickDate]="p.pick" [pid]="ctx.pid()" [members]="ctx.members()"
+        (done)="pendingDue.set(null)" (cancel)="pendingDue.set(null)" />
     }
   `,
   styles: `
@@ -192,13 +262,13 @@ const EMPTY_PAYLOAD = {
     .col[data-col='resolved'] { border-top-color: var(--success); }
     .col[data-col='done'] { border-top-color: var(--text-muted); }
     .col[data-col='on_hold'] { border-top-color: var(--warning); }
-    .col.collapsed { flex: 0 0 48px; min-width: 48px; }
+    .col.collapsed { flex: 0 0 96px; min-width: 96px; }
     .col.allowed { outline: 2px dashed var(--primary); outline-offset: -2px; }
     .col.blocked { opacity: 0.45; }
 
     .col-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; font-weight: bold; font-size: 14px; }
     .col-head.clickable { cursor: pointer; }
-    .collapsed .col-head { writing-mode: vertical-rl; padding: 10px 0; align-self: center; }
+    .collapsed .col-head { justify-content: center; gap: 4px; padding: 8px 6px; white-space: nowrap; }
     .count { font-size: 12px; font-weight: normal; padding: 0 8px; border-radius: 10px; background: var(--surface); }
     .note { font-size: 11px; font-weight: normal; color: var(--text-subtle); flex-basis: 100%; }
 
@@ -238,6 +308,10 @@ const EMPTY_PAYLOAD = {
     .cdk-drag-placeholder { opacity: 0.3; }
     .cdk-drag-animating { transition: transform 200ms ease; }
 
+    .top-scroll { overflow-x: auto; overflow-y: hidden; height: 14px; margin-bottom: 4px; }
+    .top-scroll > div { height: 1px; }
+    .top-scroll.off { visibility: hidden; height: 0; margin: 0; }
+
     /* スマホ：1列ずつ */
     .col-tabs { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 8px; }
     .col-tabs button { flex: none; min-height: 40px; padding: 0 12px; border: 1px solid var(--border-strong);
@@ -257,6 +331,7 @@ const EMPTY_PAYLOAD = {
     .wa { font-size: 11px; padding: 1px 6px; border-radius: 8px; background: var(--hold-bg); }
     .subs { align-self: flex-start; font-size: 12px; color: var(--text-muted); }
     .subs.all { color: var(--success-text); font-weight: bold; }    
+    .fold { font-size: 12px; color: var(--text-muted); }
     `,
 })
 export class ProjectBoard implements OnInit {
@@ -291,9 +366,16 @@ export class ProjectBoard implements OnInit {
   });
   loading = computed(() => this.ctx.issuesLoading() || this.closedLoading());
   holdOpen = signal(false);
-  mobileCol = signal<ColKey>('open');
+  /** スマホで今見ている列（ステータス・期限・担当者の、どの列の名前でも入る） */
+  mobileCol = signal<string>('open');
+  readonly views: ViewBy[] = ['status', 'due', 'assignee'];
+  by = signal<ViewBy>('status');
   dragging = signal<Issue | null>(null);
   pending = signal<{ issue: Issue; t: Transition } | null>(null);
+  /** 期限のかんばんで落としたあと、窓で確かめ中の変更（pick があれば、窓で日付も選ぶ） */
+  pendingDue = signal<{ issue: Issue; date: string; pick: { min: string; max: string | null } | null } | null>(null);
+  /** 期限切れの列には落とせない（わざわざ過去にする場面がないため。どうしても過去にするなら、詳細から） */
+  readonly dueEnter = (_drag: CdkDrag<Issue>, drop: CdkDropList<string>) => drop.data !== 'overdue';
   menuFor = signal<string | null>(null);
   mine = signal(false);
   due = signal<DueFilter | null>(null);
@@ -311,6 +393,13 @@ export class ProjectBoard implements OnInit {
     this.isMobile() ? this.mobileCols : ['open', 'in_progress', 'resolved', 'done', 'on_hold']);
 
   private boardEl = viewChild<ElementRef<HTMLElement>>('boardEl');
+  private topScroll = viewChild<ElementRef<HTMLElement>>('topScroll');
+  /** 本体の横の長さ（上のバーの中身を、同じ長さにするため） */
+  scrollWidth = signal(0);
+  /** 列が画面からはみ出しているか（はみ出していなければ、上のバーは出さない） */
+  overflowing = signal(false);
+  /** 片方を動かしたとき、もう片方の「動いた」の知らせで動かし返さないための目印 */
+  private syncing = false;
 
   /** すばやい絞り込みをかけた課題 */
   filtered = computed(() => {
@@ -321,7 +410,7 @@ export class ProjectBoard implements OnInit {
     if (due) {
       const limit = due === 'today' ? endOfDayIn(0, this.tz()).getTime()
         : due === 'week' ? now + 7 * 24 * 60 * 60 * 1000
-        : now;
+          : now;
       list = list.filter((i) => this.isActive(i) && i.dueAt.toMillis() <= limit);
     }
     return list;
@@ -343,6 +432,74 @@ export class ProjectBoard implements OnInit {
     return map;
   });
 
+  /** 期限別・担当者別の列。どちらも未完了の課題だけ。並びはやる順（優先度 → 期限） */
+  altCols = computed<AltCol[]>(() => {
+    const now = this.clock.now();
+    const list = this.filtered().filter((i) => this.isActive(i));
+    const sorted = (xs: Issue[]) => xs.sort((a, b) => compareIssues(a, b, now));
+    if (this.by() === 'due') {
+      const keys: DueCol[] = ['overdue', 'today', 'tomorrow', 'week', 'later'];
+      return keys.map((key) => ({
+        key, label: this.i18n.t('board.dueCols.' + key),
+        issues: sorted(list.filter((i) => this.dueCol(i, now) === key)), overdue: 0,
+      }));
+    }
+    // 担当者別：担当者にできるメンバー（自分が先頭、あとは名前順）。件数の多い順にはしない（ランキングにしない）。
+    // 抜けた人が担当のままの課題も、取りこぼさないよう列にする
+    const me = this.myUid;
+    const members = this.ctx.members().filter((m) => m.role !== 'viewer')
+      .sort((a, b) => Number(b.uid === me) - Number(a.uid === me) || a.displayName.localeCompare(b.displayName))
+      .map((m) => m.uid);
+    const ids = [...new Set([...members, ...list.map((i) => i.assigneeId)])];
+    return ids.map((uid) => {
+      const issues = sorted(list.filter((i) => i.assigneeId === uid));
+      return {
+        key: uid,
+        label: this.memberName(uid) + (uid === me ? this.i18n.t('issueNew.you') : ''),
+        issues, overdue: issues.filter((i) => this.isOverdue(i)).length,
+      };
+    });
+  });
+
+  /** スマホの列の切り替えボタン（今の分け方の列） */
+  tabCols = computed(() => this.by() === 'status'
+    ? this.mobileCols.map((c) => ({ key: c as string, label: this.i18n.t('board.cols.' + c), n: this.byCol()[c].length }))
+    : this.altCols().map((c) => ({ key: c.key, label: c.label, n: c.issues.length })));
+
+  /** 期限の列：見る人のタイムゾーンの暦で、今日・明日。それ以降は、7日以内かどうか */
+  private dueCol(i: Issue, now: number): DueCol {
+    const b = dueBucket(i.dueAt.toMillis(), now, this.tz());
+    if (b === 'overdue' || b === 'today' || b === 'tomorrow') return b;
+    return i.dueAt.toMillis() - now <= 7 * DAY ? 'week' : 'later';
+  }
+  
+  /** 期限を変えられるか：管理者・提起者・担当者で、クローズ前（ルールの editAllowed・カレンダーと同じ） */
+  canMoveDue(i: Issue) {
+    if (i.status === 'closed' || this.ctx.archived()) return false;
+    const r = this.ctx.role();
+    return r === 'admin' || (r === 'member' && (i.reporterId === this.myUid || i.assigneeId === this.myUid));
+  }
+
+  /**
+   * 期限の列に落としたら、窓で理由を書いて確定する（元に戻すも窓が出す）。
+   * 今日・明日は日が決まる。1週間以内・それより先は、窓で日を選ぶ（最初の値と、選べる範囲を渡す）
+   */
+  onDueDrop(e: CdkDragDrop<string, string, Issue>) {
+    this.dragging.set(null);
+    if (e.previousContainer === e.container) return;
+    const tz = this.tz();
+    const day = (n: number) => dateKey(endOfDayIn(n, tz), tz);
+    const col = e.container.data as DueCol;
+    const plan: Partial<Record<DueCol, { date: string; pick: { min: string; max: string | null } | null }>> = {
+      today: { date: day(0), pick: null },
+      tomorrow: { date: day(1), pick: null },
+      week: { date: day(7), pick: { min: day(2), max: day(7) } },
+      later: { date: day(14), pick: { min: day(8), max: null } },
+    };
+    const p = plan[col];
+    if (p) this.pendingDue.set({ issue: e.item.data, ...p });
+  }
+
   /** ドラッグ中のカードを、その列に落とせるか（CDKに渡す判定） */
   readonly predicates: Record<ColKey, (drag: CdkDrag<Issue>) => boolean> = {
     open: (d) => this.canMove(d.data, 'open'),
@@ -353,12 +510,23 @@ export class ProjectBoard implements OnInit {
   };
 
   constructor() {
+    // 画面を描き直すたびに、本体の横の長さを測り直す（カードの増減・表示の切り替え・窓の大きさの変化に追いつくため）。
+    // 値が変わったときだけ入れるので、描き直しが続けて起きることはない
+    afterEveryRender(() => {
+      const el = this.boardEl()?.nativeElement;
+      if (!el) return;
+      const w = el.scrollWidth;
+      const over = w > el.clientWidth + 1;
+      if (w !== this.scrollWidth()) this.scrollWidth.set(w);
+      if (over !== this.overflowing()) this.overflowing.set(over);
+    });
     const onChange = (e: MediaQueryListEvent) => this.isMobile.set(e.matches);
     this.mq.addEventListener('change', onChange);
     inject(DestroyRef).onDestroy(() => {
       this.mq.removeEventListener('change', onChange);
       this.stopClosed?.();
       clearTimeout(this.noticeTimer);
+      cancelAnimationFrame(this.raf);
     });
   }
 
@@ -367,9 +535,12 @@ export class ProjectBoard implements OnInit {
     this.mine.set(p.get('mine') === '1');
     const d = p.get('due');
     this.due.set(d === 'today' || d === 'week' || d === 'overdue' ? d : null);
+    const b = p.get('by');
+    this.by.set(b === 'due' || b === 'assignee' ? b : 'status');
+    this.mobileCol.set(this.tabCols()[0]?.key ?? 'open');
     this.watchClosed();
   }
-  
+
 
   /** 直近7日のクローズを見張る（未クローズは置き場の見張りから） */
   private watchClosed() {
@@ -395,12 +566,22 @@ export class ProjectBoard implements OnInit {
     this.due.set(d === null || this.due() === d ? null : d);
     this.updateUrl();
   }
+  /** 列の分け方を変える（スマホでは、最初の列に戻る） */
+  setBy(v: ViewBy) {
+    this.by.set(v);
+    // 期限の絞り込みは、「期限」の表示では見えなくなるので外す（見えない条件で絞られたままにしない）
+    if (v === 'due') this.due.set(null);
+    this.menuFor.set(null);
+    this.mobileCol.set(this.tabCols()[0]?.key ?? 'open');
+    this.boardEl()?.nativeElement.scrollTo({ left: 0 });
+    this.updateUrl();
+  }
   private updateUrl() {
     this.router.navigate([], {
       relativeTo: this.route,
       replaceUrl: true,
       queryParamsHandling: 'merge',
-      queryParams: { mine: this.mine() ? '1' : null, due: this.due() },
+      queryParams: { mine: this.mine() ? '1' : null, due: this.due(), by: this.by() === 'status' ? null : this.by() },
     });
   }
 
@@ -429,12 +610,45 @@ export class ProjectBoard implements OnInit {
   onDragStart(i: Issue) {
     this.frozen.set(this.issues()); // この時点の並びで止める
     this.dragging.set(i);
+    this.raf = requestAnimationFrame(this.autoScroll);
   }
 
   onDragEnd() {
     this.dragging.set(null);
     this.frozen.set(null); // 止めていた間に届いた変更を、ここで反映する
+    cancelAnimationFrame(this.raf);
+    this.pointer = null;
   }
+
+  // ---- ドラッグ中の自動スクロール ----
+  /** ドラッグ中の、指（マウス）の位置 */
+  private pointer: { x: number; y: number } | null = null;
+  private raf = 0;
+
+  onDragMoved(e: CdkDragMove<Issue>) {
+    this.pointer = e.pointerPosition;
+  }
+
+  /**
+   * 端に近いほど速く流す。かんばんの箱の外へ出ても、止めずに最高速で流し続ける
+   * （CDK の自動スクロールは、箱の外へ出ると止まるため、自分たちで流す）。縦は、画面の上下の端でページを流す
+   */
+  private autoScroll = () => {
+    const el = this.boardEl()?.nativeElement;
+    const p = this.pointer;
+    if (el && p) {
+      const zone = 80;   // 端からこの幅に入ったら流し始める
+      const max = 18;    // 1回（約1/60秒）に流す最大の幅
+      const speed = (d: number) => Math.min(1, d / zone) * max;
+      const r = el.getBoundingClientRect();
+      if (p.x > r.right - zone) el.scrollLeft += speed(p.x - (r.right - zone));
+      else if (p.x < r.left + zone) el.scrollLeft -= speed(r.left + zone - p.x);
+      const h = window.innerHeight;
+      if (p.y > h - zone) window.scrollBy(0, speed(p.y - (h - zone)));
+      else if (p.y < zone) window.scrollBy(0, -speed(zone - p.y));
+    }
+    this.raf = requestAnimationFrame(this.autoScroll);
+  };
   onDrop(e: CdkDragDrop<ColKey, ColKey, Issue>) {
     this.dragging.set(null);
     if (e.previousContainer === e.container) return;
@@ -508,10 +722,16 @@ export class ProjectBoard implements OnInit {
   memberPhoto(uid: string) {
     return this.ctx.members().find((m) => m.uid === uid)?.photoURL ?? null;
   }
-    // ---- スマホ：なでて列を移る ----
+  // ---- スマホ：なでて列を移る ----
   /** 画面の真ん中に一番近い列を、今の列にする */
   onBoardScroll() {
     const el = this.boardEl()?.nativeElement;
+    const top = this.topScroll()?.nativeElement;
+    if (el && top && !this.syncing && Math.abs(top.scrollLeft - el.scrollLeft) >= 1) {
+      this.syncing = true;
+      top.scrollLeft = el.scrollLeft;
+      requestAnimationFrame(() => (this.syncing = false));
+    }
     if (!el || !this.isMobile()) return;
     const center = el.scrollLeft + el.clientWidth / 2;
     let best = 0;
@@ -523,12 +743,24 @@ export class ProjectBoard implements OnInit {
         best = i;
       }
     });
-    const key = this.mobileCols[best];
+    const key = this.tabCols()[best]?.key;
     if (key && key !== this.mobileCol()) this.mobileCol.set(key);
   }
 
+  /** 上のバーを動かしたら、本体もついてくる */
+  onTopScroll() {
+    const el = this.boardEl()?.nativeElement;
+    const top = this.topScroll()?.nativeElement;
+    // ドラッグ中は、本体の自動スクロールに任せる（上のバーが1拍前の位置へ引き戻さないように）。
+    // 位置がもうそろっていれば、何もしない
+    if (!el || !top || this.syncing || this.dragging() || Math.abs(el.scrollLeft - top.scrollLeft) < 1) return;
+    this.syncing = true;
+    el.scrollLeft = top.scrollLeft;
+    requestAnimationFrame(() => (this.syncing = false));
+  }
+
   /** 列名のボタンを押したら、その列までスクロールする */
-  scrollToCol(c: ColKey) {
+  scrollToCol(c: string) {
     this.mobileCol.set(c);
     this.boardEl()?.nativeElement
       .querySelector<HTMLElement>(`.col[data-col="${c}"]`)

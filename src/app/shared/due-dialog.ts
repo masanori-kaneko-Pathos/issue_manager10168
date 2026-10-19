@@ -23,7 +23,11 @@ import { I18nService, TPipe } from '../i18n/i18n';
         <span aria-hidden="true">→</span>
         <strong>{{ toLabel() }}</strong>
       </div>
-
+      @if (pickDate(); as p) {
+        <label class="field">{{ 'dueDialog.date' | t }}
+          <input type="date" [ngModel]="day()" (ngModelChange)="day.set($event)" [min]="p.min" [attr.max]="p.max" />
+        </label>
+      }
       <label class="field">{{ 'dueDialog.time' | t }}
         <input type="time" [ngModel]="time()" (ngModelChange)="time.set($event)" />
       </label>
@@ -47,7 +51,7 @@ import { I18nService, TPipe } from '../i18n/i18n';
       <div class="row">
         <button type="button" class="link" (click)="cancel.emit()">{{ 'workflow.cancel' | t }}</button>
         <button type="button" class="primary" [class.past]="isPast()"
-          [disabled]="busy() || !reason.trim() || !newDue() || !!conflict()?.blocked" (click)="confirm()">
+          [disabled]="busy() || !reason.trim() || !newDue() || !dayOk() || !!conflict()?.blocked" (click)="confirm()">
           {{ (isPast() ? 'dueDialog.confirmPast' : 'workflow.confirm') | t }}</button>
       </div>
     </section>
@@ -87,6 +91,19 @@ export class DueDialog implements OnInit {
   /** 落とした日（'YYYY-MM-DD'、見ている人のタイムゾーンでの日付） */
   date = input.required<string>();
   pid = input.required<string>();
+  /**
+   * 日付も窓で選ぶとき（かんばんの「1週間以内」「それより先」に落としたとき）。min・max は 'YYYY-MM-DD'。
+   * null なら今までどおり、落とした日で決まり、時刻だけ選ぶ
+   */
+  pickDate = input<{ min: string; max: string | null } | null>(null);
+  /** 選んでいる日（'YYYY-MM-DD'） */
+  day = signal('');
+  /** 選んだ日が、選べる範囲の中か */
+  dayOk = computed(() => {
+    const p = this.pickDate();
+    const d = this.day();
+    return !p || (!!d && d >= p.min && (!p.max || d <= p.max));
+  });
   done = output<void>();
   cancel = output<void>();
 
@@ -109,9 +126,9 @@ export class DueDialog implements OnInit {
 
   /** 落とした日 ＋ 時刻 を、見ている人のタイムゾーンの時刻として、1つの瞬間にする */
   newDue = computed(() => {
-    const [y, m, d] = this.date().split('-').map(Number);
+    const dm = this.day().match(/^(\d{4})-(\d{2})-(\d{2})$/);
     const t = this.time().match(/^(\d{2}):(\d{2})$/);
-    return t ? zonedTime(y, m, d, +t[1], +t[2], this.tz()) : null;
+    return dm && t ? zonedTime(+dm[1], +dm[2], +dm[3], +t[1], +t[2], this.tz()) : null;
   });
 
   /** 過去の日時か（止めずに、注意を出すだけ） */
@@ -127,6 +144,7 @@ export class DueDialog implements OnInit {
   });
 
   ngOnInit() {
+    this.day.set(this.date());
     // 元の期限の時刻（見ている人のタイムゾーンでの時:分）を、最初から入れておく
     this.time.set(toLocalInput(this.issue().dueAt.toDate(), this.tz()).slice(11));
   }

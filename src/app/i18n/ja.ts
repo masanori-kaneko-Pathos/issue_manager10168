@@ -402,6 +402,12 @@ export const ja = {
     empty: '課題はありません',
     move: 'ステータスを変える',
     viewerCannotMove: '閲覧者は、カードを動かしてステータスを変えることはできません。',
+    by: '列の分け方',
+    views: { status: 'ステータス', due: '期限', assignee: '担当者' },
+    viewOnly: 'この表示ではカードを動かせません（ステータスの表示で動かせます）。',
+    dueCols: { overdue: '期限切れ', today: '今日', tomorrow: '明日', week: '1週間以内', later: 'それより先' },
+    overdueN: '期限切れ {{n}}',
+    dueDropHint: 'カードを列に落とすと、期限を変えられます（理由を書いて確定）。',
   },
   projectSettings: {
     adminOnly: 'この画面は、管理者だけが使えます。',
@@ -446,6 +452,7 @@ export const ja = {
   },
   dueDialog: {
     title: '期限の変更',
+    date: '日付',
     time: '時刻',
     pastWarning: '過去の日時です。この課題はすぐに期限切れとして扱われます（赤く表示され、優先度も上がります）。入力ミスの修正など、意図した変更か確かめてください。',
     confirmPast: '期限切れとして確定',
