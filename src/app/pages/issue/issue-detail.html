@@ -10,6 +10,15 @@
     }
     @if (issue(); as i) {
       <div class="more-wrap">
+        @if (canWatch()) {
+          <button type="button" class="watch" [class.on]="watching()" [attr.aria-pressed]="watching()"
+            [title]="watcherNames()" (click)="toggleWatch()">
+            <span aria-hidden="true">👁</span>
+            <span class="watch-label">{{ (watching() ? 'watch.on' : 'watch.off') | t }}</span>
+            <span class="watch-n">{{ watchCount() }}</span>
+          </button>
+          <app-help-tip align="right" [keys]="['watch.help']" />
+        }
         <button type="button" class="more" [attr.aria-label]="'detailMenu.open' | t" [title]="'detailMenu.open' | t"
           [attr.aria-expanded]="menuOpen()" (click)="menuOpen.set(!menuOpen())">⋮</button>
         @if (menuOpen()) {
@@ -42,6 +51,7 @@
     }
   </header>
   <main>
+    @if (watchError(); as k) { <p class="error" role="alert">{{ k | t }}</p> }
     @if (loading()) {
       <p>{{ 'common.loading' | t }}</p>
     } @else if (!issue()) {

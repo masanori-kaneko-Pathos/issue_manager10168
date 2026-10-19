@@ -771,6 +771,11 @@ export const en: Dict = {
     reason: 'Undo',
     unlinked: 'Removed the link to #{{n}}.',
   },  
+  watch: {
+    on: 'Watching',
+    off: 'Watch',
+    help: 'Watch to get comments and when this issue is resolved, sent back, closed, or rejected. The reporter and assignee watch automatically (they can stop).',
+  },
   links: {
     title: 'Related issues',
     help: 'Links between issues. A link also appears on the other issue. For "waiting for", the assignee is notified when the issue being waited on is resolved.',
@@ -893,6 +898,8 @@ export const en: Dict = {
       merged: '{{name}} merged #{{n}} "{{title}}" into another issue',
       projectDeleted: '{{name}} deleted the project "{{project}}"',
       subtaskAssigned: '{{name}} assigned you a subtask on #{{n}} "{{title}}"',    
+      mention: '{{name}} mentioned you in a comment on #{{n}} "{{title}}"',
+      watchResolved: '{{name}} resolved #{{n}} "{{title}}"',
     },
     daily: {
       overdue: '{{n}} overdue',

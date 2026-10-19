@@ -14,7 +14,7 @@ import { enterKey, focusById } from '../../core/dom';
 import { LabelPicker } from '../../shared/label-picker';
 import {
   CAUSE_CATEGORIES, CauseCategory, DEFAULT_SETTINGS, Issue, IssueRelation, Label, Level, Member, Project, Role,
-  TimelineItem, labelsOf, OPEN_STATUSES, hasWorkaround, ISSUE_TYPES
+  TimelineItem, labelsOf, OPEN_STATUSES, hasWorkaround, ISSUE_TYPES, watchersOf
 } from '../../core/models';
 import { LinkDialog } from './link-dialog';
 import { StatusDialog } from '../../shared/status-dialog';
@@ -239,6 +239,31 @@ export class IssueDetail implements OnInit {
   });
   /** サブタスクの部品に渡す名前の引き方（テンプレートでは矢印関数が書けないので、ここで作る） */
   readonly nameFn = (uid: string) => this.memberName(uid);
+
+    // ---- ウォッチ ----
+  /** ウォッチできるか：メンバーなら閲覧者も（アーカイブ中・削除フォルダの中は不可） */
+  canWatch = computed(() => !!this.role() && !this.projectArchived() && this.issue()?.status !== 'deleted');
+  private watcherIds = computed(() => {
+    const i = this.issue();
+    return i ? watchersOf(i) : [];
+  });
+  watching = computed(() => this.watcherIds().includes(this.myUid));
+  watchCount = computed(() => this.watcherIds().length);
+  /** ウォッチしている人の名前（ボタンにマウスを乗せたときに出す） */
+  watcherNames = computed(() => this.watcherIds().map((u) => this.memberName(u)).join('、'));
+  watchError = signal('');
+
+  async toggleWatch() {
+    const i = this.issue();
+    if (!i) return;
+    this.watchError.set('');
+    try {
+      await this.issueService.setWatch(this.pid, i, this.myUid, !this.watching());
+    } catch (e) {
+      console.error(e);
+      this.watchError.set('common.saveError');
+    }
+  }
 
   canSetPriority = computed(() => {
     const i = this.issue();

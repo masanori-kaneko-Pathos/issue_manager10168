@@ -3,12 +3,12 @@ import { NoticeAbout, NotificationService } from '../notification/notification.s
 import {
   DocumentReference, FirestoreError, QueryDocumentSnapshot, Timestamp, Transaction, Unsubscribe, collection,
   doc, getDoc, getDocs, onSnapshot, orderBy, or, query, runTransaction, serverTimestamp, where,
-  addDoc, updateDoc, deleteField, deleteDoc, writeBatch,
+  addDoc, updateDoc, deleteField, deleteDoc, writeBatch, arrayRemove, arrayUnion,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
   CauseCategory, Effect, Issue, IssueLink, IssueRelation, IssueType, Level, LinkKind, Member, NotificationType,
-  OPEN_STATUSES, Subtask, SubtaskStatus, TimelineItem, relationId,
+  OPEN_STATUSES, Subtask, SubtaskStatus, TimelineItem, isAutoWatcher, relationId, watchersOf,
 } from '../models';
 import { TRANSITIONS, Transition, TransitionKey, UNDO_OF } from './workflow';
 import { UndoConflictError } from '../undo/undo.service';
@@ -392,9 +392,14 @@ export class IssueService {
     await runTransaction(db, async (tx) => {
       await assertUnchanged(tx, ref, issue);
       const notes = rule
-        ? await this.prepareNotices(tx, pid, issue, [{
-          to: rule.to === 'assignee' ? issue.assigneeId : issue.reporterId, type: rule.type, detail: p.reason,
-        }])
+        ? await this.prepareNotices(tx, pid, issue, [
+          // 決まった相手を先に（同じ人には、こちらの1通だけになる）
+          { to: rule.to === 'assignee' ? issue.assigneeId : issue.reporterId, type: rule.type, detail: p.reason },
+          // ウォッチしている人にも（赤U）。解決の確認依頼は提起者だけなので、ほかの人には「解決済みにしました」
+          ...watchersOf(issue).map((to): NoticeWant => ({
+            to, type: rule.type === 'resolved' ? 'watchResolved' : rule.type, detail: p.reason,
+          })),
+        ])
         : [];
       tx.update(ref, update);
       tx.set(doc(collection(ref, 'events')), {
@@ -438,8 +443,11 @@ export class IssueService {
     await this.updateIssue(pid, latest, previous, reason, uid, tz, false);
   }
 
-  /** コメント：書くのと同時に、担当者と提起者に知らせる（今もメンバーの人だけ） */
-  addComment(pid: string, iid: string, body: string, uid: string, tz: string) {
+  /**
+   * コメント：書くのと同時に、メンションした人と、ウォッチしている人に知らせる（今もメンバーの人だけ）。
+   * 両方に当たる人には、メンションの1通だけ（先に並べたほうが残る）
+   */
+  addComment(pid: string, iid: string, body: string, uid: string, tz: string, mentions: string[] = []) {
     const issueRef = doc(db, 'projects', pid, 'issues', iid);
     return runTransaction(db, async (tx) => {
       const s = await tx.get(issueRef);
@@ -447,13 +455,27 @@ export class IssueService {
       const i = s.data() as Omit<Issue, 'id'>;
       const detail = body.slice(0, 80);
       const notes = await this.prepareNotices(tx, pid, { id: iid, number: i.number, title: i.title }, [
-        { to: i.assigneeId, type: 'comment', detail },
-        { to: i.reporterId, type: 'comment', detail },
+        ...mentions.map((to): NoticeWant => ({ to, type: 'mention', detail })),
+        ...watchersOf(i).map((to): NoticeWant => ({ to, type: 'comment', detail })),
       ]);
-      tx.set(doc(collection(issueRef, 'comments')), { body, by: uid, tz, at: serverTimestamp() });
+      tx.set(doc(collection(issueRef, 'comments')), {
+        body, by: uid, tz, at: serverTimestamp(), ...(mentions.length ? { mentions } : {}),
+      });
       notes.forEach((n) => tx.set(n.ref, n.data));
     });
   }
+
+  /**
+   * ウォッチを付ける・外す（自分だけ）。提起者・担当者（自動）は muted で外し・戻す、
+   * それ以外の人は watchers で付ける・外す。updatedAt は変えない（ルールの専用の入口を通る）
+   */
+  setWatch(pid: string, issue: Issue, uid: string, on: boolean) {
+    const auto = isAutoWatcher(issue, uid);
+    return updateDoc(doc(db, 'projects', pid, 'issues', issue.id), on
+      ? { muted: arrayRemove(uid), ...(auto ? {} : { watchers: arrayUnion(uid) }) }
+      : { watchers: arrayRemove(uid), ...(auto ? { muted: arrayUnion(uid) } : {}) });
+  }
+  
   /** コメントを直す（本人のみ。ルールで確認） */
   updateComment(pid: string, iid: string, cid: string, body: string) {
     return updateDoc(doc(db, 'projects', pid, 'issues', iid, 'comments', cid), {

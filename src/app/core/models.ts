@@ -92,7 +92,8 @@ export interface AdminLog {
 /** 通知の種類 */
 export type NotificationType =
   'assigned' | 'comment' | 'dueChanged' | 'resolved' | 'sentBack' | 'closed' | 'rejected' | 'restored' | 'joined'
-  | 'handover' | 'daily' | 'effectCheck' | 'unblocked' | 'merged' | 'projectDeleted' | 'subtaskAssigned';
+  | 'handover' | 'daily' | 'effectCheck' | 'unblocked' | 'merged' | 'projectDeleted' | 'subtaskAssigned'
+  | 'mention' | 'watchResolved';
 
 /**
  * 画面内の通知（users/{uid}/notifications）。本人だけが読める。
@@ -206,6 +207,8 @@ export interface Issue {
   subtaskTotal?: number;      // サブタスクの数（切り出したものは除く）。関数だけが書く
   subtaskDone?: number;       // そのうち完了の数。関数だけが書く
   subtaskAssignees?: string[]; // 未完了のサブタスクの担当者（ホームの見張り用）。関数だけが書く
+  watchers?: string[];        // 自分でウォッチを付けた人（提起者・担当者は自動なので、ここには入れない）
+  muted?: string[];           // 自動のウォッチ（提起者・担当者）を、自分で外した人
 }
 export const CAUSE_CATEGORIES = [
   'requirements', 'design', 'testing', 'operation', 'communication', 'external', 'other',
@@ -237,6 +240,7 @@ export interface TimelineItem {
   to?: IssueStatus;
   reason?: string;
   body?: string;
+  mentions?: string[];    // コメントでメンションした人（uid）。本文の「@名前」は見た目だけ
   by: string;
   tz?: string;  // 書いた人のタイムゾーン
   editedAt?: Timestamp;   // コメントを直した日時
@@ -278,4 +282,18 @@ export interface Subtask {
 export function hasWorkaround(i: Issue): boolean {
   return !!i.workaround?.trim() && !i.workaroundEnded
     && (i.status === 'open' || i.status === 'in_progress' || i.status === 'on_hold');
+}
+
+/**
+ * 実際にウォッチしている人：提起者・担当者（自動）＋ 自分で付けた人 − 自動を外した人（赤T）。
+ * 保存はしない（登録・取り込み・担当の変更のたびに書き直さずに済むように、毎回ここで計算する）
+ */
+export function watchersOf(i: Pick<Issue, 'reporterId' | 'assigneeId' | 'watchers' | 'muted'>): string[] {
+  const muted = new Set(i.muted ?? []);
+  return [...new Set([i.reporterId, i.assigneeId, ...(i.watchers ?? [])])].filter((u) => !!u && !muted.has(u));
+}
+
+/** 自動でウォッチされる人か（提起者・担当者） */
+export function isAutoWatcher(i: Pick<Issue, 'reporterId' | 'assigneeId'>, uid: string): boolean {
+  return i.reporterId === uid || i.assigneeId === uid;
 }

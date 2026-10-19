@@ -47,7 +47,8 @@ service cloud.firestore {
                       'by', 'byName', 'detail', 'at', 'read', 'expireAt'];
           return d.keys().hasOnly(keys) && d.keys().hasAll(keys)
             && d.type in ['assigned', 'comment', 'dueChanged', 'resolved', 'sentBack',
-                          'closed', 'rejected', 'restored', 'joined', 'handover', 'merged', 'subtaskAssigned']
+                          'closed', 'rejected', 'restored', 'joined', 'handover', 'merged', 'subtaskAssigned',
+                          'mention', 'watchResolved']
             && d.pid is string
             && d.projectName is string && d.projectName.size() <= 100
             && (d.iid == null || d.iid is string)
@@ -442,6 +443,14 @@ service cloud.firestore {
       }
 
       match /issues/{iid} {
+        // その配列で、増えた人・減った人が「自分だけ」か（ウォッチの付け外しで、ほかの人を足したり外したりできないように）
+        function onlySelfChanged(k) {
+          let before = resource.data.get(k, []).toSet();
+          let after = request.resource.data.get(k, []);
+          return after is list && after.size() <= 100
+            && after.toSet().difference(before).hasOnly([request.auth.uid])
+            && before.difference(after.toSet()).hasOnly([request.auth.uid]);
+        }
         allow read: if isMember(pid);
         allow create: if canWrite(pid)
           && issueShapeOk(pid)
@@ -462,6 +471,13 @@ service cloud.firestore {
             || mergeAllowed(pid, iid)
             || restoreAllowed(pid)
           );
+        // ウォッチの付け外し：メンバー（閲覧者も）が、自分の uid だけを足す・外す。
+        // updatedAt は変えない（停滞のリセットにも、衝突の判定にもしない）。アーカイブ中は不可
+        allow update: if isMember(pid)
+          && get(projectPath(pid)).data.archived == false
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['watchers', 'muted'])
+          && onlySelfChanged('watchers')
+          && onlySelfChanged('muted');
 
         // 完全削除：管理者が、削除フォルダの中の課題だけ（アーカイブ中は不可）。元に戻せない
         allow delete: if isAdmin(pid)
@@ -480,7 +496,9 @@ service cloud.firestore {
           allow create: if isMember(pid)
             && get(projectPath(pid)).data.archived == false
             && get(/databases/$(database)/documents/projects/$(pid)/issues/$(iid)).data.status != 'deleted'
-            && request.resource.data.keys().hasOnly(['body', 'by', 'tz', 'at'])
+            && request.resource.data.keys().hasOnly(['body', 'by', 'tz', 'at', 'mentions'])
+            && (!('mentions' in request.resource.data)
+                || (request.resource.data.mentions is list && request.resource.data.mentions.size() <= 20))
             && request.resource.data.by == request.auth.uid
             && request.resource.data.body is string
             && request.resource.data.body.size() > 0
