@@ -36,6 +36,8 @@ export const routes: Routes = [
         // 削除フォルダ（タブには出さず、「⋮」メニューから開く）
         { path: 'trash',
           loadComponent: () => import('./pages/project/trash').then((m) => m.Trash) },
+        { path: 'requests',
+          loadComponent: () => import('./pages/project/requests').then((m) => m.Requests) },
         { path: 'import',
           loadComponent: () => import('./pages/project/import').then((m) => m.ImportPage) },
         ] },

@@ -42,7 +42,8 @@ import { DeleteProjectDialog } from './delete-project-dialog';
           [attr.aria-label]="'project.menu' | t"
           [title]="'project.menu' | t"
           (click)="menuOpen.set(!menuOpen())"
-        >⋮</button>
+        >⋮@if (ctx.role() === 'admin' && ctx.myRequests().length) {<span class="dot" role="img"
+          [attr.aria-label]="'request.waiting' | t"></span>}</button>
 
         @if (menuOpen()) {
           <div class="backdrop" (click)="menuOpen.set(false)"></div>
@@ -50,6 +51,11 @@ import { DeleteProjectDialog } from './delete-project-dialog';
           <div class="menu" role="menu">
             <a role="menuitem" [routerLink]="['/p', ctx.pid(), 'trash']" (click)="menuOpen.set(false)">
               {{ 'trash.title' | t }}</a>
+
+            @if (ctx.role() !== 'viewer') {
+              <a role="menuitem" [routerLink]="['/p', ctx.pid(), 'requests']" (click)="menuOpen.set(false)">
+                {{ 'request.menu' | t: { n: '' + ctx.myRequests().length } }}</a>
+            }
 
             @if (ctx.role() !== 'viewer' && !ctx.project()!.archived) {
               <a role="menuitem" [routerLink]="['/p', ctx.pid(), 'import']" (click)="menuOpen.set(false)">
@@ -184,6 +190,9 @@ import { DeleteProjectDialog } from './delete-project-dialog';
     .delete-btn { min-height: 40px; padding: 0 16px; border: 1px solid var(--danger); border-radius: 8px;
       background: var(--surface); color: var(--danger-text); font-weight: bold; cursor: pointer; }
     .delete-btn:hover:not(:disabled) { background: var(--danger-bg); }
+    .more-btn { position: relative; }
+    .dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%;
+      background: var(--danger); }    
   `,
 })
 export class ProjectHome {

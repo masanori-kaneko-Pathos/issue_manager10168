@@ -5,6 +5,8 @@ import { auth } from '../../core/firebase';
 import { Issue, Label, Member, Project, ProjectSettings, Role } from '../../core/models';
 import { ProjectService } from '../../core/project/project.service';
 import { IssueService } from '../../core/issue/issue.service';
+import { RequestService } from '../../core/request/request.service';
+import { IssueRequest } from '../../core/models';
 import { I18nService } from '../../i18n/i18n';
 
 /** プロジェクト画面の中で共有する情報。入れ物（project-home）ごとに1つ作られる */
@@ -12,6 +14,14 @@ import { I18nService } from '../../i18n/i18n';
 export class ProjectContext {
   private ps = inject(ProjectService);
   private issueService = inject(IssueService);
+  private requests = inject(RequestService);
+  private stopRequests: Unsubscribe | null = null;
+  /** このプロジェクトの、対応待ちの依頼（⋮ の件数と、依頼の一覧のページで使う） */
+  openRequests = signal<IssueRequest[]>([]);
+  /** 自分が見る依頼：管理者は全員の、それ以外は自分が出したものだけ */
+  myRequests = computed(() => this.role() === 'admin'
+    ? this.openRequests()
+    : this.openRequests().filter((r) => r.by === auth.currentUser!.uid));
   private router = inject(Router);
   private i18n = inject(I18nService);
   /** 自分から抜けている最中（見張りが「外された」と勘違いしないための印） */
@@ -68,7 +78,11 @@ export class ProjectContext {
       if (this.pid() !== pid) return;
       // メンバーは最初の1回が届くまで待つ（担当者の名前が「—」のまま画面が出ないように）
       await this.watchMembers(pid);
-      if (this.pid() === pid && !this.removed()) this.watchIssues(pid);
+      if (this.pid() === pid && !this.removed()) {
+        this.watchIssues(pid);
+        this.stopRequests = this.requests.watchOpen(pid, (list) => this.openRequests.set(list),
+          (e) => this.onWatchError(e));
+      }
     } catch (e) {
       console.error(e);
       this.notFound.set(true);
@@ -95,9 +109,12 @@ export class ProjectContext {
     this.stopIssues?.();
     this.stopMembers?.();
     this.stopProject?.();
+    this.stopRequests?.();
     this.stopIssues = null;
     this.stopMembers = null;
     this.stopProject = null;
+    this.stopRequests = null;
+    this.openRequests.set([]);
   }
 
   /** プロジェクトを見張る。最初の1回が届いたら、待っている load() に知らせる */
