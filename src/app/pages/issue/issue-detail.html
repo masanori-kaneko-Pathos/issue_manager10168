@@ -10,20 +10,19 @@
     }
     @if (issue(); as i) {
       <div class="more-wrap">
-        @if (canWatch()) {
-          <button type="button" class="watch" [class.on]="watching()" [attr.aria-pressed]="watching()"
-            [title]="watcherNames()" (click)="toggleWatch()">
-            <span aria-hidden="true">👁</span>
-            <span class="watch-label">{{ (watching() ? 'watch.on' : 'watch.off') | t }}</span>
-            <span class="watch-n">{{ watchCount() }}</span>
-          </button>
-          <app-help-tip align="right" [keys]="['watch.help']" />
-        }
         <button type="button" class="more" [attr.aria-label]="'detailMenu.open' | t" [title]="'detailMenu.open' | t"
           [attr.aria-expanded]="menuOpen()" (click)="menuOpen.set(!menuOpen())">⋮</button>
         @if (menuOpen()) {
           <div class="backdrop" (click)="menuOpen.set(false)"></div>
           <div class="menu" role="menu">
+            @if (canWatch()) {
+              <div class="item-row">
+                <button type="button" role="menuitem" [title]="watcherNames()" (click)="menuOpen.set(false); toggleWatch()">
+                  {{ (watching() ? 'watch.stop' : 'watch.start') | t: { n: '' + watchCount() } }}</button>
+                <app-help-tip align="right" [keys]="['watch.help']" />
+              </div>
+              <div class="sep" role="separator"></div>
+            }
             <button type="button" role="menuitem" (click)="copyLink()">{{ 'detailMenu.copyLink' | t }}</button>
             @if (canCreate() && (i.status === 'resolved' || i.status === 'closed')) {
               <a role="menuitem" [routerLink]="['/p', pid, 'new']" [queryParams]="{ from: i.id }"

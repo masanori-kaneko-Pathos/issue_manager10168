@@ -742,7 +742,8 @@ export const en: Dict = {
   subtask: {
     title: 'Subtasks',
     progress: '{{done}} / {{total}} done',
-    add: '+ Add a subtask (Enter)',
+    add: 'Subtask name (Enter to add, Esc to close)',
+    openAdd: '+ Add a subtask',
     addBtn: 'Add',
     name: 'Subtask name',
     memo: 'Note (optional)',
@@ -778,8 +779,10 @@ export const en: Dict = {
     unlinked: 'Removed the link to #{{n}}.',
   },  
   watch: {
-    on: 'Watching',
-    off: 'Watch',
+    start: 'Watch ({{n}} watching)',
+    stop: 'Stop watching ({{n}} watching)',
+    started: 'You are now watching. Comments and status changes will be sent to you.',
+    stopped: 'You stopped watching.',
     help: 'Watch to get comments and when this issue is resolved, sent back, closed, or rejected. The reporter and assignee watch automatically (they can stop).',
   },
   gantt: {

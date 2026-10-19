@@ -336,7 +336,9 @@ export class IssueDetail implements OnInit {
     if (!i) return;
     this.watchError.set('');
     try {
-      await this.issueService.setWatch(this.pid, i, this.myUid, !this.watching());
+      const on = !this.watching();
+      await this.issueService.setWatch(this.pid, i, this.myUid, on);
+      this.showFlash(on ? 'watch.started' : 'watch.stopped');
     } catch (e) {
       console.error(e);
       this.watchError.set('common.saveError');
