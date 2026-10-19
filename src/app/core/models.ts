@@ -89,6 +89,22 @@ export interface AdminLog {
   at: Timestamp;
 }
 
+/** 毎朝のまとめの形（due＝期限別、priority＝優先度別、assignee＝担当者別） */
+export type DailyGroup = 'due' | 'priority' | 'assignee';
+export const DAILY_GROUPS: DailyGroup[] = ['due', 'priority', 'assignee'];
+/** プロジェクトごとの朝の通知の時刻。0時からの分（0〜1430、10分刻み）か、'off'（受け取らない） */
+export type DailyTime = number | 'off';
+/** 決めていないプロジェクトの時刻（10:00） */
+export const DEFAULT_DAILY_TIME = 600;
+/** 時刻の刻み（分）。関数は、この間隔で起きる */
+export const DAILY_TIME_STEP = 10;
+
+/** 正しい時刻か（0〜1430 の10の倍数か 'off'）。ルールで中を確かめられないので、読むときにここで確かめる */
+export function validDailyTime(v: unknown): DailyTime | null {
+  if (v === 'off') return 'off';
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 24 * 60 && v % DAILY_TIME_STEP === 0 ? v : null;
+}
+
 /** 通知の種類 */
 export type NotificationType =
   'assigned' | 'comment' | 'dueChanged' | 'resolved' | 'sentBack' | 'closed' | 'rejected' | 'restored' | 'joined'
@@ -114,8 +130,10 @@ export interface AppNotification {
   read: boolean;
   pinned?: boolean;            // ピン止め（上に固定し、自動では消さない）
   expireAt?: Timestamp;        // この日時を過ぎると、Firestore が自動で消す（TTL）。ピン止め中は無い
-  /** 朝のまとめ（daily）の件数。関数だけが書く */
-  counts?: { overdue: number; today: number; tomorrow: number; in3: number; inboxOld: number };
+  /** 朝のまとめ（daily）の件数。関数だけが書く。どの数が入るかは group で決まる（0件の区分は入らない） */
+  counts?: Record<string, number>;
+  /** 朝のまとめの形（送った時点の形）。古いお知らせには無い（＝期限別） */
+  group?: DailyGroup;
 }
 
 export const DEFAULT_SETTINGS: ProjectSettings = {

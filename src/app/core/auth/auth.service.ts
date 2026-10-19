@@ -11,7 +11,9 @@ import {
 import { auth, db } from '../firebase';
 import { I18nService } from '../../i18n/i18n';
 import { ReminderBucket } from '../time/time';
+import { DailyGroup } from '../models';
 import { PushService } from '../notification/push.service';
+
 
 export interface UserProfile {
   displayName: string;
@@ -20,6 +22,8 @@ export interface UserProfile {
   language: 'ja' | 'en';
   defaultView?: 'list' | 'board';
   dueReminders?: ReminderBucket[];  // 期限前の通知で数える区分
+  dailyGroup?: DailyGroup;          // 毎朝のまとめの形（無ければ期限別）
+  dailyTime?: number;               // 毎朝のまとめの時刻（0時からの分・10分刻み。無ければ 10:00）
 }
 
 @Injectable({ providedIn: 'root' })
@@ -109,7 +113,8 @@ export class AuthService {
 
   /** プロフィールの更新。表示名は、所属する全プロジェクトのメンバー情報の写しも書き換える */
   async updateProfile(
-    changes: Partial<Pick<UserProfile, 'displayName' | 'timeZone' | 'language' | 'defaultView' | 'dueReminders'>>,
+    changes: Partial<Pick<UserProfile,
+    'displayName' | 'timeZone' | 'language' | 'defaultView' | 'dueReminders' | 'dailyGroup' | 'dailyTime'>>,
   ) {
     const u = auth.currentUser!;
     await updateDoc(doc(db, 'users', u.uid), changes);

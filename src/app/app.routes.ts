@@ -31,8 +31,8 @@ export const routes: Routes = [
           loadComponent: () => import('./pages/project/tab-dashboard').then((m) => m.TabDashboard) },
         { path: 'members',
           loadComponent: () => import('./pages/project/tab-members').then((m) => m.ProjectMembers) },
-        { path: 'settings', canDeactivate: [unsavedGuard],
-          loadComponent: () => import('./pages/project/tab-settings').then((m) => m.ProjectSettings) },
+          { path: 'settings', canDeactivate: [unsavedGuard],
+            loadComponent: () => import('./pages/project/tab-settings').then((m) => m.ProjectSettings) },
         // 削除フォルダ（タブには出さず、「⋮」メニューから開く）
         { path: 'trash',
           loadComponent: () => import('./pages/project/trash').then((m) => m.Trash) },
@@ -51,7 +51,9 @@ export const routes: Routes = [
           redirectTo: ({ params }) => inject(Router).createUrlTree(['/inbox'], { queryParams: { m: params['id'] } }) },
         { path: 'notifications', canActivate: [authGuard],
           loadComponent: () => import('./pages/notification/notifications').then((m) => m.Notifications) },        
-        { path: 'settings', canActivate: [authGuard], canDeactivate: [unsavedGuard],
-    loadComponent: () => import('./pages/settings/settings').then((m) => m.Settings) },
-  { path: '**', redirectTo: '' },
+          { path: 'settings/notifications', canActivate: [authGuard],
+            loadComponent: () => import('./pages/settings/notify-settings').then((m) => m.NotifySettings) },
+          { path: 'settings', canActivate: [authGuard], canDeactivate: [unsavedGuard],
+            loadComponent: () => import('./pages/settings/settings').then((m) => m.Settings) },
+          { path: '**', redirectTo: '' },
 ];

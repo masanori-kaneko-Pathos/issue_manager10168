@@ -10,7 +10,10 @@ import { HelpTip } from '../../shared/help-tip';
 import { LabelChip } from '../../shared/label-chip';
 import { I18nService, TPipe } from '../../i18n/i18n';
 
-/** 数で決める設定と、その範囲（ルールの validSettings と同じにすること） */
+/**
+ * 数で決める設定と、その範囲（ルールの validSettings と同じにすること）。
+ * notifyHour は画面に出さない（通知の時刻は本人が決める）が、ルールが今も求めるので、値は残して確かめる
+ */
 type NumKey = 'notifyHour' | 'staleDays' | 'effectCheckDays' | 'highPriorityLimit';
 const RANGES: Record<NumKey, [number, number]> = {
   notifyHour: [0, 23], staleDays: [1, 90], effectCheckDays: [1, 90], highPriorityLimit: [1, 100],
@@ -60,13 +63,6 @@ const RANGES: Record<NumKey, [number, number]> = {
       <section>
         <h2>{{ 'projectSettings.rules' | t }}</h2>
         <div class="nums">
-          <label class="num">
-            <span class="name">{{ 'projectSettings.notifyHour' | t }}</span>
-            <select [ngModel]="settings().notifyHour" (ngModelChange)="setNum('notifyHour', $event)">
-              @for (h of hours; track h) { <option [ngValue]="h">{{ h }}:00</option> }
-            </select>
-            <span class="help">{{ 'projectSettings.notifyHourHelp' | t }}</span>
-          </label>
           @for (k of dayKeys; track k) {
             <label class="num">
               <span class="name">{{ 'projectSettings.' + k | t }}</span>
@@ -159,7 +155,7 @@ export class ProjectSettings implements OnInit {
   /** 画面で編集中の設定と、保存済みの設定 */
   settings = signal<SettingsData>(DEFAULT_SETTINGS);
   private savedSettings = signal<SettingsData>(DEFAULT_SETTINGS);
-  readonly hours = Array.from({ length: 24 }, (_, i) => i);
+
   readonly dayKeys: NumKey[] = ['staleDays', 'effectCheckDays', 'highPriorityLimit'];
   newName = '';
   busy = signal(false);

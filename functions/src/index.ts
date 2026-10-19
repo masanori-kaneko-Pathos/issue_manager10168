@@ -18,11 +18,26 @@ const INBOX_OLD_DAYS = 7;
 /** 未完了のステータス（まとめで数えるもの。削除・クローズ・却下・解決済みは数えない） */
 const ACTIVE = ['open', 'in_progress', 'on_hold'];
 const DEFAULT_TZ = 'Asia/Tokyo';
-const DEFAULT_NOTIFY_HOUR = 10;
+/** 毎朝のまとめの時刻の初期値（0時からの分。アプリの DEFAULT_DAILY_TIME と同じ） */
+const DEFAULT_DAILY_TIME = 600;
 const DEFAULT_REMINDERS = ['today', 'tomorrow', 'in3'];
 const DEFAULT_EFFECT_DAYS = 7;
 
 type Bucket = 'overdue' | 'today' | 'tomorrow' | 'in3';
+
+type Level = 'high' | 'mid' | 'low';
+/** 毎朝のまとめの形（due＝期限別、priority＝優先度別、assignee＝担当者別） */
+type DailyGroup = 'due' | 'priority' | 'assignee';
+
+/** 保存されている形を読む。ない・知らない値なら期限別（今までの形） */
+function dailyGroupOf(v: unknown): DailyGroup {
+  return v === 'priority' || v === 'assignee' ? v : 'due';
+}
+
+/** 0〜1430 の10の倍数なら、その時刻。違えば null（ルールでも確かめているが、古いデータに備える） */
+function validTime(v: unknown): number | null {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1440 && v % 10 === 0 ? v : null;
+}
 
 // ---- 時刻の道具（アプリの time.ts と同じ決まり） ----
 
@@ -32,9 +47,16 @@ function dateKey(d: Date, tz: string): string {
     .format(d);
 }
 
-/** 瞬間の、timeZone での「時」（0〜23） */
-function hourIn(d: Date, tz: string): number {
-  return Number(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: '2-digit', hourCycle: 'h23' }).format(d));
+/**
+ * 瞬間の、timeZone での時刻を、0時からの分で、10分刻みに切り下げたもの（例：9:07 → 540）。
+ * 関数は10分ごとに起きるので、起きるのが少し遅れても、同じ枠に入る
+ */
+function slotIn(d: Date, tz: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    .formatToParts(d);
+  const h = Number(parts.find((p) => p.type === 'hour')?.value ?? 0);
+  const m = Number(parts.find((p) => p.type === 'minute')?.value ?? 0);
+  return h * 60 + Math.floor(m / 10) * 10;
 }
 
 /** 'YYYY-MM-DD' どうしの日数の差 */
@@ -65,18 +87,45 @@ function safeTz(tz: unknown): string {
   }
 }
 
+// ---- 優先度 ----
+// ※ src/app/core/issue/priority.ts の urgencyOf・priorityOf と同じ決まりにすること（片方を変えたら、もう片方も変える）
+
+const HOUR = 60 * 60 * 1000;
+
+/** 緊急度：期限までの残り時間から決める */
+function urgencyOf(dueMs: number, nowMs: number): Level {
+  const left = dueMs - nowMs;
+  if (left <= 24 * HOUR) return 'high'; // 24時間以内、または期限切れ
+  if (left <= 72 * HOUR) return 'mid';  // 3日以内
+  return 'low';
+}
+
+/** [重要度][緊急度] → 優先度 */
+const PRIORITY_TABLE: Record<Level, Record<Level, Level>> = {
+  high: { high: 'high', mid: 'high', low: 'mid' },
+  mid:  { high: 'high', mid: 'mid',  low: 'low' },
+  low:  { high: 'mid',  mid: 'low',  low: 'low' },
+};
+
+/** 優先度：手動で変えていればその値、なければ重要度と緊急度から */
+function priorityOf(i: DocumentData, nowMs: number): Level {
+  if (i.priorityOverride) return i.priorityOverride as Level;
+  const imp = (PRIORITY_TABLE[i.importance as Level] ? i.importance : 'mid') as Level;
+  return PRIORITY_TABLE[imp][urgencyOf(i.dueAt.toMillis(), nowMs)];
+}
+
 // ---- 朝のまとめ ----
 
 interface Target {
   uid: string;
   tz: string;
-  hour: number;          // その人の現地の「時」（文書IDに使う）
   reminders: string[];   // 期限前の通知で数える区分
-  pids: string[];        // 今が通知時刻になったプロジェクト
+  group: DailyGroup;     // まとめの形
+  pids: string[];        // その人が所属する、アーカイブ中でないプロジェクト（全部まとめて1通）
 }
 
 /**
- * 朝のまとめ：今、現地時間がプロジェクトの通知時刻になった人に、1人1通書く。
+ * 朝のまとめ：今、現地時間が本人の決めた時刻になった人に、全プロジェクト分を1日1通書く。
  * Functions はルールを通らないので、「アーカイブ中は飛ばす」「未完了だけ数える」「メンバーにだけ送る」を、ここで確かめる
  */
 async function sendMorningSummaries(now: Date) {
@@ -102,12 +151,12 @@ async function sendMorningSummaries(now: Date) {
   for (const u of users) {
     if (!u.exists) continue;
     const tz = safeTz(u.get('timeZone'));
-    const hour = hourIn(now, tz);
-    const pids = (projectsOf.get(u.id) ?? []).filter(
-      (pid) => (projects.get(pid)?.settings?.notifyHour ?? DEFAULT_NOTIFY_HOUR) === hour);
-    if (pids.length) {
-      targets.push({ uid: u.id, tz, hour, reminders: u.get('dueReminders') ?? DEFAULT_REMINDERS, pids });
-    }
+    // 本人が決めた時刻（10分刻み）になった人だけ
+    if ((validTime(u.get('dailyTime')) ?? DEFAULT_DAILY_TIME) !== slotIn(now, tz)) continue;
+    targets.push({
+      uid: u.id, tz, reminders: u.get('dueReminders') ?? DEFAULT_REMINDERS,
+      group: dailyGroupOf(u.get('dailyGroup')), pids: projectsOf.get(u.id) ?? [],
+    });
   }
   if (!targets.length) return;
 
@@ -135,29 +184,57 @@ async function sendMorningSummaries(now: Date) {
 
 /** 1人分のまとめを数えて書く。書いたら true（何もない・もう書いてあるなら false） */
 async function writeSummary(t: Target, openByPid: Map<string, DocumentData[]>, now: Date): Promise<boolean> {
-  const counts = { overdue: 0, today: 0, tomorrow: 0, in3: 0, inboxOld: 0 };
-  for (const pid of t.pids) {
-    for (const i of openByPid.get(pid) ?? []) {
-      if (i.assigneeId !== t.uid || !i.dueAt) continue;
-      const b = dueBucket(i.dueAt.toMillis(), now.getTime(), t.tz);
-      // 期限切れはいつも数える。期限前は、その人が選んだ区分だけ
-      if (b && (b === 'overdue' || t.reminders.includes(b))) counts[b]++;
+  // 形ごとに、入る数が違う（0件の区分は入れない）
+  const counts: Record<string, number> = {};
+  const add = (k: string, n = 1) => { counts[k] = (counts[k] ?? 0) + n; };
+  const nowMs = now.getTime();
+  if (t.group === 'assignee') {
+    // 担当者別：時刻になったプロジェクト全体の未完了が、何人に散っているか（名前と件数は並べない＝ランキングにしない）
+    const people = new Set<string>();
+    const late = new Set<string>();
+    for (const pid of t.pids) {
+      for (const i of openByPid.get(pid) ?? []) {
+        if (!i.assigneeId || !i.dueAt) continue;
+        add('active');
+        people.add(i.assigneeId);
+        if (i.dueAt.toMillis() < nowMs) {
+          add('overdueAll');
+          late.add(i.assigneeId);
+        }
+      }
+    }
+    if (counts.active) counts.people = people.size;
+    if (counts.overdueAll) counts.overduePeople = late.size;
+  } else {
+    for (const pid of t.pids) {
+      for (const i of openByPid.get(pid) ?? []) {
+        if (i.assigneeId !== t.uid || !i.dueAt) continue;
+        if (t.group === 'priority') {
+          // 優先度別：自分の未完了すべて
+          add(priorityOf(i, nowMs));
+        } else {
+          // 期限別：期限切れはいつも数える。期限前は、その人が選んだ区分だけ
+          const b = dueBucket(i.dueAt.toMillis(), nowMs, t.tz);
+          if (b && (b === 'overdue' || t.reminders.includes(b))) add(b);
+        }
+      }
     }
   }
-  // 受信箱：7日以上たった、ゴミ箱に入れていないメモ
+  // 受信箱：7日以上たった、ゴミ箱に入れていないメモ（どの形でも付ける）
   const old = await db.collection(`users/${t.uid}/inbox`)
-    .where('createdAt', '<=', Timestamp.fromMillis(now.getTime() - INBOX_OLD_DAYS * DAY)).get();
-  counts.inboxOld = old.docs.filter((d) => !d.get('discardedAt')).length;
+    .where('createdAt', '<=', Timestamp.fromMillis(nowMs - INBOX_OLD_DAYS * DAY)).get();
+  const oldN = old.docs.filter((d) => !d.get('discardedAt')).length;
+  if (oldN) counts.inboxOld = oldN;
 
   // 何もなければ送らない（「0件です」の通知は雑音になる）
   if (!Object.values(counts).some((n) => n > 0)) return false;
 
-  // 文書IDを「日付と時」で決める → 同じ時刻に2回動いても、2回目は「もうある」で止まる
-  const ref = db.doc(`users/${t.uid}/notifications/daily-${dateKey(now, t.tz)}-${t.hour}`);
+  // 文書IDを「日付」で決める → 1日1通。同じ日に2回動いても（時刻を変えた日も）、2回目は「もうある」で止まる
+  const ref = db.doc(`users/${t.uid}/notifications/daily-${dateKey(now, t.tz)}`);
   try {
     await ref.create({
       type: 'daily', pid: '', projectName: '', iid: null, issueNumber: null, issueTitle: '',
-      by: '', byName: '', detail: '', counts,
+      by: '', byName: '', detail: '', counts, group: t.group,
       at: FieldValue.serverTimestamp(), read: false,
       expireAt: Timestamp.fromMillis(now.getTime() + NOTIFY_KEEP_DAYS * DAY),
     });
@@ -191,7 +268,7 @@ async function sendEffectChecks(
       const to: string[] = members.some((m) => m.uid === i.reporterId) ? [i.reporterId] : admins;
       for (const uid of to) {
         const t = targetOf.get(uid);
-        // 今が通知時刻になった人で、このプロジェクトの時刻が今のときだけ
+        // 今が、その人の毎朝のまとめの時刻のときだけ
         if (!t || !t.pids.includes(pid)) continue;
         const resolvedDay = dateKey(i.resolvedAt.toDate(), t.tz);
         if (daysBetween(resolvedDay, dateKey(now, t.tz)) < days) continue;
@@ -215,9 +292,9 @@ async function sendEffectChecks(
   logger.info('effect checks', { written });
 }
 
-/** 毎時0分に起きて、通知時刻になった人の分を作る */
+/** 10分ごとに起きて、毎朝のまとめの時刻になった人の分を作る（名前は以前のまま。変えると作り直しになるため） */
 export const imHourly = onSchedule(
-  { schedule: '0 * * * *', timeZone: 'Asia/Tokyo', region: 'asia-northeast1' },
+  { schedule: '*/10 * * * *', timeZone: 'Asia/Tokyo', region: 'asia-northeast1' },
   async () => {
     await sendMorningSummaries(new Date());
   },
@@ -279,10 +356,24 @@ const PUSH_TEXT: Record<'ja' | 'en', Record<string, string>> = {
 };
 const DAILY_PARTS: Record<'ja' | 'en', Record<string, string>> = {
   ja: { overdue: '期限切れ {{n}}件', today: '今日まで {{n}}件', tomorrow: '明日まで {{n}}件',
-    in3: '2〜3日後まで {{n}}件', inboxOld: '受信箱（7日以上）{{n}}件' },
+    in3: '2〜3日後まで {{n}}件', inboxOld: '受信箱（7日以上）{{n}}件',
+    high: '優先度「高」{{n}}件', mid: '「中」{{n}}件', low: '「低」{{n}}件',
+    active: '未完了 {{n}}件（{{p}}人）', overdueAll: '期限切れ {{n}}件（{{p}}人）' },
   en: { overdue: '{{n}} overdue', today: '{{n}} due today', tomorrow: '{{n}} due tomorrow',
-    in3: '{{n}} due in 2–3 days', inboxOld: '{{n}} old inbox notes' },
+    in3: '{{n}} due in 2–3 days', inboxOld: '{{n}} old inbox notes',
+    high: '{{n}} high priority', mid: '{{n}} medium', low: '{{n}} low',
+    active: '{{n}} open ({{p}} people)', overdueAll: '{{n}} overdue ({{p}} people)' },
 };
+/**
+ * 形ごとの、並べる順番。人数を添える区分は、人数の入っている数の名前も
+ * ※ アプリの notification.service.ts の DAILY_KEYS・PEOPLE_OF と同じに保つこと
+ */
+const DAILY_KEYS: Record<DailyGroup, string[]> = {
+  due: ['overdue', 'today', 'tomorrow', 'in3', 'inboxOld'],
+  priority: ['high', 'mid', 'low', 'inboxOld'],
+  assignee: ['active', 'overdueAll', 'inboxOld'],
+};
+const PEOPLE_OF: Record<string, string> = { active: 'people', overdueAll: 'overduePeople' };
 const APP_TITLE = { ja: '課題管理', en: 'Issue Tracker' };
 
 /** {{名前}} を値で置き換える */
@@ -293,9 +384,10 @@ function fill(text: string, params: Record<string, string>): string {
 /** 通知の文書から、プッシュの本文を作る */
 function pushBody(n: DocumentData, lang: 'ja' | 'en'): string {
   if (n.type === 'daily' && n.counts) {
-    const parts = ['overdue', 'today', 'tomorrow', 'in3', 'inboxOld']
-      .filter((k) => n.counts[k] > 0)
-      .map((k) => fill(DAILY_PARTS[lang][k], { n: String(n.counts[k]) }))
+    const c = n.counts;
+    const parts = DAILY_KEYS[dailyGroupOf(n.group)]
+      .filter((k) => (c[k] ?? 0) > 0)
+      .map((k) => fill(DAILY_PARTS[lang][k], { n: String(c[k]), p: String(c[PEOPLE_OF[k]] ?? '') }))
       .join(lang === 'ja' ? '・' : ', ');
     return fill(PUSH_TEXT[lang].daily, { parts });
   }

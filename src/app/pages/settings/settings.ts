@@ -2,13 +2,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
-import { PushService } from '../../core/notification/push.service';
-import {
-  COMMON_TIMEZONES, DEFAULT_DUE_REMINDERS, REMINDER_BUCKETS, ReminderBucket, formatDateTime, tzOffset,
-} from '../../core/time/time';
-
-/** 並び順を無視して、同じ組み合わせかを比べる */
-const sameSet = (a: string[], b: string[]) => [...a].sort().join() === [...b].sort().join();
+import { COMMON_TIMEZONES, formatDateTime, tzOffset } from '../../core/time/time';
 import { I18nService, Lang, TPipe } from '../../i18n/i18n';
 import { HelpTip } from '../../shared/help-tip';
 import { PASSWORD_RULE } from '../login/login';
@@ -23,6 +17,13 @@ type Section = 'general' | 'password';
     <header class="bar"><a routerLink="/" class="link">{{ 'common.back' | t }}</a></header>
     <main>
       <h1>{{ 'settings.title' | t }}</h1>
+      <a routerLink="/settings/notifications" class="to-notify">
+        <span class="to-body">
+          <strong>{{ 'notifySettings.title' | t }}</strong>
+          <span class="help">{{ 'notifySettings.openHelp' | t }}</span>
+        </span>
+        <span aria-hidden="true">›</span>
+      </a>
 
       <section>
         <h2>{{ 'settings.profile' | t }}</h2>
@@ -44,34 +45,6 @@ type Section = 'general' | 'password';
           <button type="button" [class.on]="defaultView() === 'list'" (click)="defaultView.set('list')">{{ 'tabs.list' | t }}</button>
           <button type="button" [class.on]="defaultView() === 'board'" (click)="defaultView.set('board')">{{ 'tabs.board' | t }}</button>
         </div>
-      </section>
-      <section>
-        <h2>{{ 'settings.dueReminders' | t }} <app-help-tip [keys]="['settings.dueRemindersHelp']" /></h2>
-        @for (b of reminderOptions; track b) {
-          <label class="check">
-            <input type="checkbox" [checked]="dueReminders().includes(b)" (change)="toggleReminder(b)" />
-            {{ 'settings.reminder.' + b | t }}
-          </label>
-        }
-      </section>
-
-      <section>
-        <h2>{{ 'push.title' | t }} <app-help-tip [keys]="['push.help']" /></h2>
-        @switch (push.state()) {
-          @case ('on') {
-            <p class="help">{{ 'push.on' | t }}</p>
-            <button type="button" class="link" [disabled]="pushBusy()" (click)="togglePush(false)">
-              {{ 'push.disable' | t }}</button>
-          }
-          @case ('off') {
-            <p class="help">{{ 'push.off' | t }}</p>
-            <button type="button" class="primary" [disabled]="pushBusy()" (click)="togglePush(true)">
-              {{ 'push.enable' | t }}</button>
-          }
-          @case ('blocked') { <p class="help">{{ 'push.blocked' | t }}</p> }
-          @default { <p class="help">{{ 'push.unsupported' | t }}</p> }
-        }
-        @if (pushError()) { <p class="msg ng">{{ pushError() | t }}</p> }
       </section>
 
       <section>
@@ -127,7 +100,7 @@ type Section = 'general' | 'password';
     h2 { font-size: 16px; margin: 0; }
     .field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
     input, select { min-height: 44px; font-size: 16px; padding: 0 12px; }
-    .chips { display: flex; gap: 8px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
     .chips button { min-height: 44px; padding: 0 18px; border: 1px solid var(--border-strong); background: var(--surface);
       border-radius: 22px; font-size: 14px; }
     .chips button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
@@ -145,6 +118,10 @@ type Section = 'general' | 'password';
     .savebar span { flex: 1; font-size: 13px; }
     .check { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 14px; }
     .check input { width: 20px; height: 20px; min-height: 0; padding: 0; }
+    .to-notify { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 16px; margin-bottom: 16px;
+      border: 1px solid var(--border); border-radius: 10px; color: var(--text); text-decoration: none; font-size: 18px; }
+    .to-notify:hover { background: var(--surface-alt); }
+    .to-body { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 15px; }
   `,
 })
 export class Settings implements OnInit {
@@ -160,20 +137,14 @@ export class Settings implements OnInit {
    language = signal<Lang>('ja');
    timeZone = signal('Asia/Tokyo');
    defaultView = signal<'list' | 'board'>('list');
-   dueReminders = signal<ReminderBucket[]>(DEFAULT_DUE_REMINDERS);
-   readonly reminderOptions = REMINDER_BUCKETS;
    // 保存済みの値（変更があるかの比較用）
    private saved = signal({
-     displayName: '', language: 'ja' as Lang, timeZone: 'Asia/Tokyo', defaultView: 'list' as 'list' | 'board',
-     dueReminders: DEFAULT_DUE_REMINDERS,
-   });
+    displayName: '', language: 'ja' as Lang, timeZone: 'Asia/Tokyo', defaultView: 'list' as 'list' | 'board',
+  });
  
    currentPw = '';
    newPw = '';
    busy = signal(false);
-   protected push = inject(PushService);
-   pushBusy = signal(false);
-   pushError = signal('');
    msg = signal<{ section: Section; key: string; ok: boolean } | null>(null);
  
    nowInZone = computed(() => formatDateTime(new Date(), this.timeZone(), this.i18n.lang()));
@@ -182,17 +153,14 @@ export class Settings implements OnInit {
      return this.displayName().trim() !== s.displayName
        || this.language() !== s.language
        || this.timeZone() !== s.timeZone
-       || this.defaultView() !== s.defaultView
-       || !sameSet(this.dueReminders(), s.dueReminders);
+       || this.defaultView() !== s.defaultView;
    });
 
   async ngOnInit() {
-    this.push.refresh();
     const p = this.authService.profile() ?? (await this.authService.fetchProfile());
     if (p) {
       this.saved.set({
         displayName: p.displayName, language: p.language, timeZone: p.timeZone, defaultView: p.defaultView ?? 'list',
-        dueReminders: p.dueReminders ?? DEFAULT_DUE_REMINDERS,
       });
       this.discard();
     }
@@ -202,20 +170,16 @@ export class Settings implements OnInit {
     const s = this.saved();
     const changes: {
       displayName?: string; language?: Lang; timeZone?: string; defaultView?: 'list' | 'board';
-      dueReminders?: ReminderBucket[];
     } = {};
     const name = this.displayName().trim();
     if (name !== s.displayName) changes.displayName = name;
     if (this.language() !== s.language) changes.language = this.language();
     if (this.timeZone() !== s.timeZone) changes.timeZone = this.timeZone();
     if (this.defaultView() !== s.defaultView) changes.defaultView = this.defaultView();
-    if (!sameSet(this.dueReminders(), s.dueReminders)) changes.dueReminders = this.dueReminders();
-
     await this.run('general', async () => {
       await this.authService.updateProfile(changes);
       this.saved.set({
         displayName: name, language: this.language(), timeZone: this.timeZone(), defaultView: this.defaultView(),
-        dueReminders: this.dueReminders(),
       });
       });
     
@@ -228,35 +192,12 @@ export class Settings implements OnInit {
     this.language.set(s.language);
     this.timeZone.set(s.timeZone);
     this.defaultView.set(s.defaultView);
-    this.dueReminders.set(s.dueReminders);
     this.msg.set(null);
-  }
-
-  /** 期限前の区分を入れたり外したりする（並びは選択肢の順にそろえる） */
-  toggleReminder(b: ReminderBucket) {
-    const cur = this.dueReminders();
-    const next = cur.includes(b) ? cur.filter((x) => x !== b) : [...cur, b];
-    this.dueReminders.set(REMINDER_BUCKETS.filter((x) => next.includes(x)));
   }
 
   /** タブを閉じる・再読み込みするときの確認 */
   onBeforeUnload(e: BeforeUnloadEvent) {
     if (this.dirty()) e.preventDefault();
-  }
-
-  /** プッシュ通知を、この端末で受け取る・受け取らない（保存ボタンを待たずに、すぐ反映） */
-  async togglePush(on: boolean) {
-    this.pushBusy.set(true);
-    this.pushError.set('');
-    try {
-      if (on) await this.push.enable();
-      else await this.push.disable();
-    } catch (e) {
-      console.error(e);
-      this.pushError.set('push.failed');
-    } finally {
-      this.pushBusy.set(false);
-    }
   }
 
   async changePassword() {

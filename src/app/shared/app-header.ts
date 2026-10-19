@@ -151,6 +151,8 @@ import { InboxPop } from './inbox-pop';
               <span>{{ email() }}</span>
             </div>
             <a routerLink="/settings" role="menuitem" (click)="open.set(false)">{{ 'menu.settings' | t }}</a>
+            <a routerLink="/settings/notifications" role="menuitem" (click)="open.set(false)">
+              {{ 'notifySettings.title' | t }}</a>
             <button type="button" role="menuitem" (click)="logout()">{{ 'common.logout' | t }}</button>
           </div>
         }

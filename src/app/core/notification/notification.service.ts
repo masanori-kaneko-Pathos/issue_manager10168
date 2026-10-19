@@ -7,9 +7,19 @@ import {
 import { auth, db } from '../firebase';
 import { AuthService } from '../auth/auth.service';
 import { I18nService } from '../../i18n/i18n';
-import { AppNotification, NotificationType } from '../models';
+import { AppNotification, DailyGroup, NotificationType } from '../models';
 
 const DAY = 24 * 60 * 60 * 1000;
+/**
+ * 朝のまとめの、形ごとの並べる順番。人数を添える区分は、人数の入っている数の名前も
+ * ※ functions/src/index.ts の DAILY_KEYS・PEOPLE_OF と同じに保つこと
+ */
+const DAILY_KEYS: Record<DailyGroup, string[]> = {
+  due: ['overdue', 'today', 'tomorrow', 'in3', 'inboxOld'],
+  priority: ['high', 'mid', 'low', 'inboxOld'],
+  assignee: ['active', 'overdueAll', 'inboxOld'],
+};
+const PEOPLE_OF: Record<string, string> = { active: 'people', overdueAll: 'overduePeople' };
 /** 通知が自動で消えるまでの日数（TTL） */
 export const NOTIFY_KEEP_DAYS = 90;
 /** 見張る件数（新しい順）。ピン止めは別に見張るので、この数に入らなくても落ちない */
@@ -117,11 +127,12 @@ export class NotificationService {
   /** 通知の文面（ベルの小窓とお知らせのページで共通） */
   text(n: AppNotification) {
     // 朝のまとめは、0件でない区分だけを「・」でつなぐ
+    // 朝のまとめは、送ったときの形で、0件でない区分だけを「・」でつなぐ（形のない古いものは期限別）
     if (n.type === 'daily' && n.counts) {
       const c = n.counts;
-      const parts = (['overdue', 'today', 'tomorrow', 'in3', 'inboxOld'] as const)
-        .filter((k) => c[k] > 0)
-        .map((k) => this.i18n.t('notify.daily.' + k, { n: String(c[k]) }))
+      const parts = (DAILY_KEYS[n.group ?? 'due'] ?? DAILY_KEYS.due)
+        .filter((k) => (c[k] ?? 0) > 0)
+        .map((k) => this.i18n.t('notify.daily.' + k, { n: String(c[k]), p: String(c[PEOPLE_OF[k]] ?? '') }))
         .join(this.i18n.lang() === 'ja' ? '・' : ', ');
       return this.i18n.t('notify.types.daily', { parts });
     }
