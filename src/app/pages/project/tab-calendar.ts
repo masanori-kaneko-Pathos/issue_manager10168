@@ -12,6 +12,7 @@ import { compareIssues, isManualPriority, priorityOf } from '../../core/issue/pr
 import { ProjectContext } from './project-context';
 import { dateKey } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
+import { PeopleFilter, whoFromQuery, whoQuery } from '../../shared/people-filter';
 
 type Mode = 'month' | 'week';
 interface Day { key: string; d: number; dow: number; inRange: boolean; }
@@ -33,9 +34,11 @@ function addDays(dt: Date, n: number): Date {
 
 @Component({
   selector: 'app-tab-calendar',
-  imports: [RouterLink, TPipe, CdkDropListGroup, CdkDropList, CdkDrag, DueDialog, PriorityMark],
+  imports: [RouterLink, TPipe, CdkDropListGroup, CdkDropList, CdkDrag, DueDialog, PriorityMark, PeopleFilter],
   template: `
     <div class="toolbar">
+      <app-people-filter [members]="ctx.assignable()" [counts]="ctx.activeCount()" [value]="who()"
+        (picked)="setWho($event)" />
       <div class="nav">
         <button type="button" (click)="move(-1)" [attr.aria-label]="'calendar.prev' | t">‹</button>
         <button type="button" (click)="goToday()">{{ 'calendar.today' | t }}</button>
@@ -180,6 +183,18 @@ export class ProjectCalendar implements OnInit {
   /** つかんでいる間は、つかんだ時点のままにする */
   private frozen = signal<Issue[] | null>(null);
   issues = computed(() => this.frozen() ?? this.ctx.openIssues());
+  /** URL から読んだ「選んだ人」（抜けた人が混ざっていることもある） */
+  private whoRaw = signal<string[]>([]);
+  /** 絞り込みに使う人。担当者になれる人だけ残す（抜けた人は黙って外す） */
+  who = computed(() => {
+    const ok = new Set(this.ctx.assignable().map((m) => m.uid));
+    return this.whoRaw().filter((u) => ok.has(u));
+  });
+  /** 人の絞り込みをかけた課題 */
+  shown = computed(() => {
+    const who = new Set(this.who());
+    return who.size ? this.issues().filter((i) => who.has(i.assigneeId)) : this.issues();
+  });
   loading = computed(() => this.ctx.issuesLoading());
   mode = signal<Mode>('month');
   /** 表示の基準の日付（'YYYY-MM-DD'）。月なら、その月を出す */
@@ -209,7 +224,7 @@ export class ProjectCalendar implements OnInit {
   byDay = computed(() => {
     const now = this.clock.now();
     const map = new Map<string, Issue[]>();
-    for (const i of this.issues()) {
+    for (const i of this.shown()) {
       const key = dateKey(i.dueAt.toDate(), this.tz());
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(i);
@@ -241,6 +256,7 @@ export class ProjectCalendar implements OnInit {
     this.mode.set(p.get('view') === 'week' ? 'week' : 'month');
     const d = p.get('date');
     this.cursor.set(d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : this.todayKey());
+    this.whoRaw.set(whoFromQuery(p, this.myUid));
   }
 
   move(dir: 1 | -1) {
@@ -254,6 +270,11 @@ export class ProjectCalendar implements OnInit {
 
   goToday() {
     this.cursor.set(this.todayKey());
+    this.updateUrl();
+  }
+
+  setWho(list: string[]) {
+    this.whoRaw.set(list);
     this.updateUrl();
   }
 
@@ -278,7 +299,7 @@ export class ProjectCalendar implements OnInit {
       relativeTo: this.route,
       replaceUrl: true,
       queryParamsHandling: 'merge',
-      queryParams: { view: this.mode() === 'week' ? 'week' : null, date: this.cursor() },
+      queryParams: { ...whoQuery(this.who()), view: this.mode() === 'week' ? 'week' : null, date: this.cursor() },
     });
   }
 
@@ -298,7 +319,7 @@ export class ProjectCalendar implements OnInit {
   manual(i: Issue) {
     return isManualPriority(i);
   }
-    // ---- ドラッグで期限を変える ----
+  // ---- ドラッグで期限を変える ----
   /** つかめるのは、管理者・提起者・担当者で、クローズ前の課題だけ（ルールの editAllowed と同じ） */
   canMove(i: Issue) {
     if (i.status === 'closed' || this.ctx.archived()) return false;

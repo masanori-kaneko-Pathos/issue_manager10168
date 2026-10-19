@@ -22,6 +22,7 @@ import { UndoService } from '../../core/undo/undo.service';
 import { HelpTip } from '../../shared/help-tip';
 import { StatusDialog } from '../../shared/status-dialog';
 import { I18nService, TPipe } from '../../i18n/i18n';
+import { PeopleFilter, whoFromQuery, whoQuery } from '../../shared/people-filter';
 
 type ColKey = 'open' | 'in_progress' | 'resolved' | 'done' | 'on_hold';
 type DueFilter = 'today' | 'week' | 'overdue';
@@ -55,18 +56,16 @@ const EMPTY_PAYLOAD = {
 @Component({
   selector: 'app-tab-board',
   imports: [CdkDropListGroup, CdkDropList, CdkDrag, NgTemplateOutlet,
-    CdkScrollable, RouterLink, TPipe, HelpTip, StatusDialog, LabelChip, PriorityMark, DueDialog],
+    CdkScrollable, RouterLink, TPipe, HelpTip, StatusDialog, LabelChip, PriorityMark, DueDialog, PeopleFilter],
   template: `
     <div class="quick">
+      <app-people-filter [members]="ctx.assignable()" [counts]="ctx.activeCount()" [value]="who()"
+        (picked)="setWho($event)" />
       <div class="chips" role="group" [attr.aria-label]="'board.by' | t">
         @for (v of views; track v) {
           <button type="button" [class.on]="by() === v" [attr.aria-pressed]="by() === v"
             (click)="setBy(v)">{{ 'board.views.' + v | t }}</button>
         }
-      </div>
-      <div class="chips">
-        <button type="button" [class.on]="!mine()" (click)="setMine(false)">{{ 'board.all' | t }}</button>
-        <button type="button" [class.on]="mine()" (click)="setMine(true)">{{ 'board.mine' | t }}</button>
       </div>
       <!-- 「期限」の表示では、列そのものが期限で分かれているので出さない -->
       @if (by() !== 'due') {
@@ -87,7 +86,7 @@ const EMPTY_PAYLOAD = {
     </div>
 
     @if (notMoved(); as m) {
-      @let w = who(m.latest);
+      @let w = conflictBy(m.latest);
       <p class="notice" role="status">{{ 'conflict.notMoved' | t: { n: '' + m.n } }} {{ w.key | t: w.params }}</p>
     }
     @if (loading()) {
@@ -377,7 +376,13 @@ export class ProjectBoard implements OnInit {
   /** 期限切れの列には落とせない（わざわざ過去にする場面がないため。どうしても過去にするなら、詳細から） */
   readonly dueEnter = (_drag: CdkDrag<Issue>, drop: CdkDropList<string>) => drop.data !== 'overdue';
   menuFor = signal<string | null>(null);
-  mine = signal(false);
+  /** URL から読んだ「選んだ人」（抜けた人が混ざっていることもある） */
+  private whoRaw = signal<string[]>([]);
+  /** 絞り込みに使う人。担当者になれる人だけ残す（抜けた人は黙って外す。だれも残らなければ全員） */
+  who = computed(() => {
+    const ok = new Set(this.ctx.assignable().map((m) => m.uid));
+    return this.whoRaw().filter((u) => ok.has(u));
+  });
   due = signal<DueFilter | null>(null);
   /** 移動できなかったときの知らせ（数秒で消える） */
   notMoved = signal<{ n: number; latest: Issue } | null>(null);
@@ -405,7 +410,8 @@ export class ProjectBoard implements OnInit {
   filtered = computed(() => {
     const now = this.clock.now();
     let list = this.issues();
-    if (this.mine()) list = list.filter((i) => i.assigneeId === this.myUid);
+    const who = new Set(this.who());
+    if (who.size) list = list.filter((i) => who.has(i.assigneeId));
     const due = this.due();
     if (due) {
       const limit = due === 'today' ? endOfDayIn(0, this.tz()).getTime()
@@ -447,7 +453,9 @@ export class ProjectBoard implements OnInit {
     // 担当者別：担当者にできるメンバー（自分が先頭、あとは名前順）。件数の多い順にはしない（ランキングにしない）。
     // 抜けた人が担当のままの課題も、取りこぼさないよう列にする
     const me = this.myUid;
-    const members = this.ctx.members().filter((m) => m.role !== 'viewer')
+    // 人を選んでいるときは、選んだ人の列だけ
+    const who = this.who();
+    const members = this.ctx.assignable().filter((m) => !who.length || who.includes(m.uid))
       .sort((a, b) => Number(b.uid === me) - Number(a.uid === me) || a.displayName.localeCompare(b.displayName))
       .map((m) => m.uid);
     const ids = [...new Set([...members, ...list.map((i) => i.assigneeId)])];
@@ -532,7 +540,7 @@ export class ProjectBoard implements OnInit {
 
   async ngOnInit() {
     const p = this.route.snapshot.queryParamMap;
-    this.mine.set(p.get('mine') === '1');
+    this.whoRaw.set(whoFromQuery(p, this.myUid));
     const d = p.get('due');
     this.due.set(d === 'today' || d === 'week' || d === 'overdue' ? d : null);
     const b = p.get('by');
@@ -557,8 +565,14 @@ export class ProjectBoard implements OnInit {
     );
   }
   // ---- 絞り込み（URLに残す） ----
-  setMine(v: boolean) {
-    this.mine.set(v);
+  /** 人を選び直した（空なら全員） */
+  setWho(list: string[]) {
+    this.whoRaw.set(list);
+    // 担当者別では列そのものが変わるので、スマホは最初の列に戻す（消えた列を指したままにしない）
+    if (this.by() === 'assignee') {
+      this.mobileCol.set(this.tabCols()[0]?.key ?? 'open');
+      this.boardEl()?.nativeElement.scrollTo({ left: 0 });
+    }
     this.updateUrl();
   }
   /** null は「すべて」。同じものをもう一度押しても解除 */
@@ -581,7 +595,7 @@ export class ProjectBoard implements OnInit {
       relativeTo: this.route,
       replaceUrl: true,
       queryParamsHandling: 'merge',
-      queryParams: { mine: this.mine() ? '1' : null, due: this.due(), by: this.by() === 'status' ? null : this.by() },
+      queryParams: { ...whoQuery(this.who()), due: this.due(), by: this.by() === 'status' ? null : this.by() },
     });
   }
 
@@ -683,7 +697,8 @@ export class ProjectBoard implements OnInit {
     this.noticeTimer = setTimeout(() => this.notMoved.set(null), 6000);
   }
 
-  who(latest: Issue) {
+  /** 先に更新した人（移動できなかったときの知らせに使う） */
+  conflictBy(latest: Issue) {
     return conflictWho(latest, this.ctx.members(), this.myUid);
   }
 

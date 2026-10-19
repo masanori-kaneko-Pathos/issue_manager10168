@@ -412,6 +412,16 @@ export const en: Dict = {
     overdueN: '{{n}} overdue',
     dueDropHint: 'Drop a card on a column to change its due date (with a reason).',
   },
+  who: {
+    open: 'Filter by assignee',
+    all: 'Everyone',
+    me: 'Me',
+    two: '{{a}}, {{b}}',
+    many: '{{n}} people',
+    search: 'Filter by name',
+    noMatch: 'No one found',
+    count: '{{n}} open',
+  },
   projectSettings: {
     adminOnly: 'Only admins can use this page.',
     labels: 'Labels',
@@ -631,7 +641,7 @@ export const en: Dict = {
     noData: 'No issues were resolved in this period.',
     causes: 'By cause (issues resolved in this period)',
     members: 'Workload by member',
-    membersHelp: 'Admins see everyone; others see only their own row. These numbers are not for evaluation, so rows are sorted by name. On-time rate is the share of issues resolved in this period that were resolved by the due date set when they were created. Effect check counts yes / partial / no for issues closed in this period.(issues that were already overdue when created are not counted)',
+    membersHelp: 'Admins see everyone; others see only their own row. These numbers are not for evaluation, so rows are sorted by name. On-time rate is the share of issues resolved in this period that were resolved by the due date set when they were created. Effect check counts yes / partial / no for issues closed in this period. (issues that were already overdue when created are not counted)',
     cols: {
       name: 'Name', assigned: 'Assigned', overdue: 'Overdue', resolved: 'Resolved',
       onTime: 'On-time rate', effect: 'Effect (yes / partial / no)',

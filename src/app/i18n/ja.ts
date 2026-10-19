@@ -409,6 +409,16 @@ export const ja = {
     overdueN: '期限切れ {{n}}',
     dueDropHint: 'カードを列に落とすと、期限を変えられます（理由を書いて確定）。',
   },
+  who: {
+    open: '担当者で絞り込む',
+    all: '全員',
+    me: '自分',
+    two: '{{a}}、{{b}}',
+    many: '{{n}}人',
+    search: '名前で絞る',
+    noMatch: '見つかりません',
+    count: '未完了 {{n}}件',
+  },
   projectSettings: {
     adminOnly: 'この画面は、管理者だけが使えます。',
     labels: 'ラベル',

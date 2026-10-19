@@ -57,6 +57,23 @@ export class ProjectContext {
   canCreate = computed(() =>
     (this.role() === 'admin' || this.role() === 'member') && !this.project()?.archived);
 
+  /** 担当者になれる人（管理者とメンバー）。人の絞り込みの一覧に使う */
+  assignable = computed(() => this.members().filter((m) => m.role !== 'viewer'));
+
+  /**
+   * 人ごとの未完了（未着手・対応中・保留）の件数。人の絞り込みで、名前の横に薄く出す。
+   * 解決済みは提起者の確認待ちで、担当者の手を離れているので数えない（メンバーのタブは引き継ぎの数なので、解決済みも数える）
+   */
+  activeCount = computed(() => {
+    const map: Record<string, number> = {};
+    for (const i of this.openIssues()) {
+      if (i.status === 'open' || i.status === 'in_progress' || i.status === 'on_hold') {
+        map[i.assigneeId] = (map[i.assigneeId] ?? 0) + 1;
+      }
+    }
+    return map;
+  });
+
   async load(pid: string) {
     // 別のプロジェクトに移ったときは、前の見張りをやめてから始める
     this.stopWatching();
