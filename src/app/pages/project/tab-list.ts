@@ -7,9 +7,9 @@ import { ProjectContext } from './project-context';
 import { Clock } from '../../core/time/clock';
 import { AuthService } from '../../core/auth/auth.service';
 import { HelpTip } from '../../shared/help-tip';
-import { 
+import {
   DEFAULT_SETTINGS, ISSUE_TYPES, Issue, IssueType, Level, OPEN_STATUSES, labelsOf, hasWorkaround, MAX_LABELS_PER_ISSUE
- } from '../../core/models';
+} from '../../core/models';
 import { LabelChip } from '../../shared/label-chip';
 import { PriorityMark } from '../../shared/priority-mark';
 import { compareIssues, isManualPriority, isStale, priorityOf } from '../../core/issue/priority';
@@ -22,6 +22,7 @@ import { BulkBar } from '../../shared/bulk-bar';
 import { MemberSelect } from '../../shared/member-select';
 import { NotificationService } from '../../core/notification/notification.service';
 import { setDoc } from 'firebase/firestore';
+import { PeopleFilter, whoFromQuery, whoQuery } from '../../shared/people-filter';
 
 type SortKey = 'priority' | 'due' | 'number' | 'updated';
 type BulkAction = 'assignee' | 'labels' | 'importance' | 'due' | 'delete';
@@ -35,7 +36,7 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
 
 @Component({
   selector: 'app-tab-list',
-  imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, PriorityMark, BulkBar, MemberSelect],
+  imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, PriorityMark, BulkBar, MemberSelect, PeopleFilter],
   host: { '(document:keydown.escape)': 'showFilters.set(false)' },
   template: `
     <section>
@@ -70,17 +71,9 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
         </div>
       }
 
-      <div class="avatars">
-        @for (m of assignable(); track m.uid) {
-          <button type="button" class="avatar" [class.on]="assignee() === m.uid"
-            [attr.aria-label]="m.displayName" [title]="m.displayName" (click)="toggle(assignee, m.uid)">
-            @if (m.photoURL) {
-              <img [src]="m.photoURL" alt="" referrerpolicy="no-referrer" />
-            } @else {
-              {{ m.displayName.slice(0, 1) }}
-            }
-          </button>
-        }
+      <div class="people">
+        <app-people-filter [members]="assignable()" [counts]="ctx.activeCount()" [value]="who()"
+          (picked)="setWho($event)" />
       </div>
 
       <div class="toolbar">
@@ -99,9 +92,6 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
             </span>
             @if (label()) {
               <span class="cond on"><span class="k">{{ 'issue.labelIds' | t }}</span>{{ labelName(label()!) }}</span>
-            }
-            @if (assignee()) {
-              <span class="cond on"><span class="k">{{ 'issue.assignee' | t }}</span>{{ memberName(assignee()!) }}</span>
             }
             @if (overdueOnly()) {
               <span class="cond on">{{ 'list.overdue' | t }}</span>
@@ -321,12 +311,8 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
     .qchip { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 8px;
       padding: 4px 12px; border-radius: 8px; background: var(--primary-bg); font-size: 13px; }
     .qchip span { flex: 1; min-width: 50%; overflow-wrap: anywhere; }
-    .avatars { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
-    .avatar { width: 36px; height: 36px; border-radius: 50%; border: 2px solid transparent; background: var(--primary-bg);
-      padding: 0; overflow: hidden; font-size: 14px; display: flex; align-items: center; justify-content: center; }
-    .avatar img { width: 100%; height: 100%; object-fit: cover; }
-    .avatar.on { border-color: var(--primary); }
-        .toolbar { display: flex; align-items: center; gap: 8px; }
+    .people { margin: 8px 0; }
+    .toolbar { display: flex; align-items: center; gap: 8px; }
     .filter-wrap { position: relative; flex: 1; min-width: 0; }
     .summary { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; width: 100%;
       min-height: 40px; padding: 4px 10px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px;
@@ -464,7 +450,13 @@ export class TabList implements OnInit {
   // 条件（URLと同期する）
   q = signal('');
   scope = signal<'open' | 'all'>('open');
-  assignee = signal<string | null>(null);
+  /** URL から読んだ「選んだ人」（抜けた人が混ざっていることもある） */
+  private whoRaw = signal<string[]>([]);
+  /** 絞り込みに使う人。担当者になれる人だけ残す（抜けた人は黙って外す。だれも残らなければ全員） */
+  who = computed(() => {
+    const ok = new Set(this.ctx.assignable().map((m) => m.uid));
+    return this.whoRaw().filter((u) => ok.has(u));
+  });
   type = signal<IssueType | null>(null);
   priority = signal<Level | null>(null);
   overdueOnly = signal(false);
@@ -480,7 +472,7 @@ export class TabList implements OnInit {
   activeCount = computed(() =>
     [this.scope() === 'all', this.type(), this.priority(), this.label(), this.overdueOnly(), this.staleOnly()]
       .filter(Boolean).length);
-  hasCondition = computed(() => !!this.q().trim() || !!this.assignee() || this.activeCount() > 0);
+  hasCondition = computed(() => !!this.q().trim() || this.who().length > 0 || this.activeCount() > 0);
 
   visible = computed(() => {
     const now = this.clock.now();
@@ -494,8 +486,8 @@ export class TabList implements OnInit {
 
     // ヘッダーの検索と同じ決まり（空白で区切ると、すべての語を含む）
     if (ts.length) list = list.filter((i) => issueMatches(i, ts));
-    const assignee = this.assignee();
-    if (assignee) list = list.filter((i) => i.assigneeId === assignee);
+    const who = new Set(this.who());
+    if (who.size) list = list.filter((i) => who.has(i.assigneeId));
     const type = this.type();
     if (type) list = list.filter((i) => i.type === type);
     const priority = this.priority();
@@ -532,7 +524,7 @@ export class TabList implements OnInit {
     const p = this.route.snapshot.queryParamMap;
     this.q.set(p.get('q') ?? '');
     this.scope.set(p.get('scope') === 'all' ? 'all' : 'open');
-    this.assignee.set(p.get('assignee'));
+    this.whoRaw.set(whoFromQuery(p, this.myUid));
     this.type.set(p.get('type') as IssueType | null);
     this.priority.set(p.get('priority') as Level | null);
     this.overdueOnly.set(p.get('overdue') === '1');
@@ -577,7 +569,7 @@ export class TabList implements OnInit {
       queryParams: {
         q: this.q().trim() || null,
         scope: this.scope() === 'all' ? 'all' : null,
-        assignee: this.assignee(),
+        ...whoQuery(this.who()),
         type: this.type(),
         priority: this.priority(),
         overdue: this.overdueOnly() ? '1' : null,
@@ -592,7 +584,9 @@ export class TabList implements OnInit {
 
   /** ヘッダーの検索から来た言葉の絞り込みを外す */
   clearQ() { this.q.set(''); this.changed(); }
-  
+  /** 人を選び直した（空なら全員） */
+  setWho(list: string[]) { this.whoRaw.set(list); this.changed(); }
+
   setScope(s: 'open' | 'all') { this.scope.set(s); this.changed(); }
   setSort(k: SortKey) { this.sort.set(k); this.dir.set(DEFAULT_DIR[k]); this.changed(); }
   flipDir() { this.dir.set(this.dir() === 'asc' ? 'desc' : 'asc'); this.changed(); }
@@ -611,7 +605,7 @@ export class TabList implements OnInit {
 
   clearFilters() {
     this.scope.set('open');
-    this.assignee.set(null);
+    this.whoRaw.set([]);
     this.type.set(null);
     this.priority.set(null);
     this.label.set(null);
