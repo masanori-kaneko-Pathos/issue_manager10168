@@ -97,8 +97,9 @@ textarea { font-size: 16px; padding: 8px 12px; font-weight: normal; }
 .timeline li { padding: 8px 0; border-bottom: 1px solid var(--border); }
 .timeline li.comment { background: var(--surface-alt); padding: 8px 12px; }
 .timeline .meta { font-size: 12px; color: var(--text-muted); }
-.comment-box { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
-.comment-box .primary { align-self: flex-end; }
+.mention { color: var(--primary); font-weight: bold; }
+.issue-ref { padding: 0; border: none; background: none; color: var(--primary); font: inherit;
+  text-decoration: underline; cursor: pointer; }
 .tools { display: flex; gap: 8px; margin-bottom: 4px; align-items: center; }
 .tools button { min-height: 44px; padding: 0 16px; border: 1px solid var(--border-strong); background: var(--surface);
   border-radius: 8px; font-size: 14px; }

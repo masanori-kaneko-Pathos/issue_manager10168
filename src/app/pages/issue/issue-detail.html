@@ -691,7 +691,7 @@
                         {{ 'comment.save' | t }}</button>
                     </div>
                   } @else if (item.body) {
-                    <p class="pre">{{ item.body }}</p>
+                    <p class="pre">@for (s of commentSegs(item); track $index) {@if (s.kind === 'mention') {<span class="mention">{{ s.text }}</span>} @else if (s.kind === 'issue') {<button type="button" class="issue-ref" (click)="openNumber(s.n!)">{{ s.text }}</button>} @else {{{ s.text }}}}</p>
                   }
                   @if (item.changes?.dueAt; as c) {
                     <p class="change">{{ 'issue.due' | t }}：{{ fmt(c.from) }} → {{ fmt(c.to) }}</p>
@@ -708,11 +708,7 @@
               }
             </ul>
             @if (i.status !== 'deleted' && !projectArchived()) {
-              <div class="comment-box">
-                <textarea [(ngModel)]="comment" rows="3" [placeholder]="'detail.commentPlaceholder' | t"></textarea>
-                <button type="button" class="primary" [disabled]="busy() || !comment.trim()" (click)="sendComment()">
-                  {{ 'detail.send' | t }}</button>
-              </div>
+              <app-comment-box [pid]="pid" [iid]="iid" [members]="members()" />
             }
           </section>
         </div>

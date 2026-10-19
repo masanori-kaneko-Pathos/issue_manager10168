@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { NoticeAbout, NotificationService } from '../notification/notification.service';
 import {
   DocumentReference, FirestoreError, QueryDocumentSnapshot, Timestamp, Transaction, Unsubscribe, collection,
-  doc, getDoc, getDocs, onSnapshot, orderBy, or, query, runTransaction, serverTimestamp, where,
+  doc, getDoc, getDocs, limit, onSnapshot, orderBy, or, query, runTransaction, serverTimestamp, where,
   addDoc, updateDoc, deleteField, deleteDoc, writeBatch, arrayRemove, arrayUnion,
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -345,6 +345,13 @@ export class IssueService {
   async get(pid: string, iid: string): Promise<Issue | null> {
     const s = await getDoc(doc(db, 'projects', pid, 'issues', iid));
     return s.exists() ? { ...(s.data() as Omit<Issue, 'id'>), id: s.id } : null;
+  }
+
+  /** 番号で課題を1件探す（コメントの「#12」を押したとき） */
+  async findByNumber(pid: string, number: number): Promise<Issue | null> {
+    const s = await getDocs(query(collection(db, 'projects', pid, 'issues'), where('number', '==', number), limit(1)));
+    const d = s.docs[0];
+    return d ? { ...(d.data() as Omit<Issue, 'id'>), id: d.id } : null;
   }
 
   /** 1件の課題を見張る。消えた（または読めない）ときは null */

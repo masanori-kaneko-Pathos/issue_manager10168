@@ -29,6 +29,8 @@ import { UndoService } from '../../core/undo/undo.service';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { MergeDialog } from './merge-dialog';
 import { SubtaskList } from './subtask-list';
+import { CommentBox } from './comment-box';
+import { commentSegments } from '../../core/issue/comment';
 
 
 /** 経緯の「編集した欄」の項目名 → 翻訳キー（issue.〇〇）。名前が違うものだけ書く */
@@ -55,7 +57,7 @@ function sameField(k: keyof IssueEdits, a: Issue, b: Issue): boolean {
 @Component({
   selector: 'app-issue-detail',
   imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, StatusDialog, PriorityMark, LinkDialog,
-    MergeDialog, LabelPicker, MemberSelect, SubtaskList],
+    MergeDialog, LabelPicker, MemberSelect, SubtaskList, CommentBox],
   host: {
     '(document:keydown.escape)':
       'menuOpen.set(false); statusMenu.set(false); prioMenu.set(false); typeMenu.set(false); closeField()',
@@ -180,7 +182,6 @@ export class IssueDetail implements OnInit {
   // ステータス変更の入力
   // ステータス変更のモーダル（入力が要るものだけ開く）
   active = signal<Transition | null>(null);
-  comment = '';
   // コメントのその場での編集
   editingId = signal<string | null>(null);
   editBody = '';
@@ -721,20 +722,6 @@ export class IssueDetail implements OnInit {
 
   }
 
-  async sendComment() {
-    const body = this.comment.trim();
-    if (!body) return;
-    this.busy.set(true);
-    try {
-      await this.issueService.addComment(this.pid, this.iid, body, this.myUid, this.tz());
-      this.comment = '';
-    } catch (e) {
-      console.error(e);
-    } finally {
-      this.busy.set(false);
-    }
-  }
-
   // ---- 関連課題 ----
   /** 相手の課題を1件ずつ見張る（増えたら始め、外したらやめる）。読めなければ null */
   private syncLinked(rels: IssueRelation[]) {
@@ -806,6 +793,24 @@ export class IssueDetail implements OnInit {
     if (pid === this.pid) return '#' + number;
     const name = this.projectNames()[pid];
     return name ? `${name} #${number}` : this.i18n.t('links.unreadable');
+  }
+
+  /** コメントの本文を、メンションと「#番号」で分ける（メンションした人の名前だけを色付きにする） */
+  commentSegs(item: TimelineItem) {
+    const names = (item.mentions ?? []).map((u) => this.memberName(u)).filter((n) => n !== '—');
+    return commentSegments(item.body ?? '', names);
+  }
+
+  /** コメントの「#12」を押したとき：その番号の課題を探して移る（見つからなければ知らせる） */
+  async openNumber(n: number) {
+    try {
+      const target = await this.issueService.findByNumber(this.pid, n);
+      if (target) this.router.navigate(['/p', this.pid, 'i', target.id]);
+      else this.showFlash('comment.issueNotFound');
+    } catch (e) {
+      console.error(e);
+      this.showFlash('comment.issueNotFound');
+    }
   }
 
   memberName(uid: string) {

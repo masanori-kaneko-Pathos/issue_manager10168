@@ -457,6 +457,9 @@ export const en: Dict = {
     edited: 'edited',
     deletedBy: '{{name}} deleted a comment',
     deleteConfirm: 'Delete this comment? The deletion will remain in the history.',
+    help: 'Type @ to mention someone and # to link an issue. Only people you pick from the list are notified.',
+    hashHint: 'Type a number or title to see issues in this project.',
+    issueNotFound: 'That issue was not found (it may have been deleted).',
   },
   conflict: {
     byName: '{{name}} updated this issue before you.',

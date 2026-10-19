@@ -247,6 +247,8 @@ const PUSH_TEXT: Record<'ja' | 'en', Record<string, string>> = {
     merged: '{{name}} さんが、#{{n}}「{{title}}」を別の課題に統合しました',
     projectDeleted: '{{name}} さんが、プロジェクト「{{project}}」を削除しました',
     subtaskAssigned: '{{name}} さんが、#{{n}}「{{title}}」のサブタスクをあなたの担当にしました',
+    mention: '{{name}} さんが、#{{n}}「{{title}}」のコメントであなたをメンションしました',
+    watchResolved: '{{name}} さんが、#{{n}}「{{title}}」を解決済みにしました',
   },
   en: {
     assigned: '{{name}} assigned you to #{{n}} "{{title}}"',
@@ -265,6 +267,8 @@ const PUSH_TEXT: Record<'ja' | 'en', Record<string, string>> = {
     merged: '{{name}} merged #{{n}} "{{title}}" into another issue',
     projectDeleted: '{{name}} deleted the project "{{project}}"',
     subtaskAssigned: '{{name}} assigned you a subtask on #{{n}} "{{title}}"',
+    mention: '{{name}} mentioned you in a comment on #{{n}} "{{title}}"',
+    watchResolved: '{{name}} resolved #{{n}} "{{title}}"',
   },
 };
 const DAILY_PARTS: Record<'ja' | 'en', Record<string, string>> = {
