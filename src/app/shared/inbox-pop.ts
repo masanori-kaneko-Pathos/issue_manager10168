@@ -1,8 +1,8 @@
 import { Component, OnInit, computed, inject, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { InboxService } from '../core/inbox/inbox.service';
-import { UndoService } from '../core/undo/undo.service';
+import { InboxService, splitMemo, stableOrder } from '../core/inbox/inbox.service';
+import { MemoRow } from './memo-row';
 import { IS_TOUCH, enterKey } from '../core/dom';
 import { TPipe } from '../i18n/i18n';
 
@@ -12,7 +12,7 @@ import { TPipe } from '../i18n/i18n';
  */
 @Component({
   selector: 'app-inbox-pop',
-  imports: [FormsModule, RouterLink, TPipe],
+  imports: [FormsModule, RouterLink, TPipe, MemoRow],
   template: `
     <div class="backdrop" (click)="close.emit()"></div>
     <div class="pop" role="dialog" [attr.aria-label]="'inbox.write' | t">
@@ -21,25 +21,8 @@ import { TPipe } from '../i18n/i18n';
         <a routerLink="/inbox" class="all" (click)="close.emit()">{{ 'inbox.seeAll' | t: { n: '' + inbox.count() } }}</a>
       </div>
       <ul class="recent">
-        @for (m of inbox.active().slice(0, 3); track m.id) {
-          <li class="m-row">
-            <a [routerLink]="['/inbox', m.id]" (click)="close.emit()">
-              <span class="t">{{ m.title }}</span>
-              @if (m.body) { <span class="b">{{ firstLine(m.body) }}</span> }
-            </a>
-            <button type="button" class="m-more" [attr.aria-label]="'inbox.memoMenu' | t" [title]="'inbox.memoMenu' | t"
-              [attr.aria-expanded]="menuFor() === m.id" (click)="toggleMenu(m.id, $event)">⋮</button>
-            @if (menuFor() === m.id) {
-              <div class="m-backdrop" (click)="menuFor.set(null)"></div>
-              <div class="m-menu" role="menu" [class.left]="menuLeft()">
-                <a role="menuitem" [routerLink]="['/new']" [queryParams]="{ memo: m.id }" (click)="close.emit()">
-                  {{ 'inbox.toIssue' | t }}</a>
-                <a role="menuitem" [routerLink]="['/inbox', m.id]" (click)="close.emit()">{{ 'inbox.edit' | t }}</a>
-                <button type="button" role="menuitem" class="danger" (click)="remove(m.id)">
-                  {{ 'inbox.popDelete' | t }}</button>
-              </div>
-            }
-          </li>
+        @for (m of recent(); track m.id) {
+          <li><app-memo-row [memo]="m" [compact]="true" touchUi="menu" (leave)="close.emit()" /></li>
         } @empty {
           <li class="empty">{{ 'inbox.empty' | t }}</li>
         }
@@ -69,23 +52,6 @@ import { TPipe } from '../i18n/i18n';
     .h { font-size: 15px; font-weight: bold; }
     .all { font-size: 13px; color: var(--primary); text-decoration: none; white-space: nowrap; }
     .recent { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-    .m-row { position: relative; display: flex; align-items: center; gap: 2px; }
-    .m-row > a { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px; min-height: 30px;
-      padding: 4px 6px; border-radius: 6px; color: var(--text); text-decoration: none; }
-    .m-row > a:hover { background: var(--surface-alt); }
-    .m-more { flex: none; width: 28px; height: 28px; border: none; border-radius: 6px; background: none;
-      color: var(--text-muted); font-size: 16px; cursor: pointer; }
-    .m-more:hover { background: var(--surface-alt); }
-    .m-backdrop { position: fixed; inset: 0; z-index: 1; }
-    /* ⋮ の横に出す（下の行にはかぶさらない）。右に空きがなければ左に */
-    .m-menu { position: absolute; top: 0; left: calc(100% + 4px); z-index: 2; min-width: 160px; padding: 6px 0;
-      display: flex; flex-direction: column; background: var(--surface); border-radius: 10px;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2); }
-    .m-menu.left { left: auto; right: 32px; }
-    .m-menu a, .m-menu button { display: block; text-align: left; padding: 0 16px; min-height: 38px; line-height: 38px;
-      background: none; border: none; color: var(--text); text-decoration: none; font-size: 13px; cursor: pointer; }
-    .m-menu a:hover, .m-menu button:hover { background: var(--surface-alt); }
-    .m-menu .danger { color: var(--danger-text); }
     /* タイトルも詳しいことも、15文字ほどで切って「…」 */
     .t { flex: none; max-width: 15em; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .b { min-width: 0; max-width: 15em; font-size: 11px; color: var(--text-muted);
@@ -112,46 +78,17 @@ export class InboxPop implements OnInit {
   readonly touch = IS_TOUCH;
   busy = signal(false);
   error = signal('');
-  private undo = inject(UndoService);
-  /** ⋮ を開いているメモ */
-  menuFor = signal<string | null>(null);
-  /** メニューを ⋮ の左に出すか（右に空きがないとき） */
-  menuLeft = signal(false);
-
-  toggleMenu(id: string, e: MouseEvent) {
-    if (this.menuFor() === id) {
-      this.menuFor.set(null);
-      return;
-    }
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    // 右に、メニュー（約170px）が入る空きがあるか
-    this.menuLeft.set(window.innerWidth - r.right < 180);
-    this.menuFor.set(id);
-  }
-
-  /** ゴミ箱に移す（30日で自動で消える）。下に「元に戻す」を出す */
-  async remove(id: string) {
-    this.menuFor.set(null);
-    try {
-      await this.inbox.discard(id);
-      this.undo.offer('inbox.discarded', undefined, () => this.inbox.restore(id));
-    } catch (e) {
-      console.error(e);
-      this.error.set('common.saveError');
-    }
-  }
-
 
   /** 1行目がタイトル（200字まで）、2行目からが詳しいこと */
-  title = computed(() => this.inbox.draft().split('\n')[0].trim().slice(0, 200));
-  private body = computed(() => this.inbox.draft().split('\n').slice(1).join('\n').trim().slice(0, 5000));
+  title = computed(() => splitMemo(this.inbox.draft()).title);
+  private body = computed(() => splitMemo(this.inbox.draft()).body);
+  /** 開いた時点の並び（直したメモが、開いている間に上へ跳ねないように） */
+  private order = signal<string[] | null>(null);
+  recent = computed(() => stableOrder(this.inbox.active(), this.order()).slice(0, 3));
 
   ngOnInit() {
+    this.order.set(this.inbox.active().map((m) => m.id));
     setTimeout(() => document.getElementById('inbox-pop-text')?.focus());
-  }
-
-  firstLine(body: string) {
-    return body.split('\n')[0];
   }
 
   /** Enter で保存（変換の確定では保存しない）。Shift＋Enter・Ctrl＋Enter で改行。スマホの Enter は改行 */

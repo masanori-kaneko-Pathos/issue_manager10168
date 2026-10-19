@@ -1,4 +1,4 @@
-import { Routes } from '@angular/router';
+import { Router, Routes } from '@angular/router';
 import { inject } from '@angular/core';
 import { AuthService } from './core/auth/auth.service';
 import { authGuard, guestGuard, unsavedGuard } from './core/auth/auth.guards';
@@ -45,9 +45,10 @@ export const routes: Routes = [
           loadComponent: () => import('./pages/inbox/inbox').then((m) => m.Inbox) },
         { path: 'inbox/new', canActivate: [authGuard],
           loadComponent: () => import('./pages/inbox/inbox-new').then((m) => m.InboxNew) },
-        // ':id' は 'new' より後に置く（先に置くと、'new' がメモの id として扱われてしまう）
-        { path: 'inbox/:id', canActivate: [authGuard], canDeactivate: [unsavedGuard],
-          loadComponent: () => import('./pages/inbox/inbox-memo').then((m) => m.InboxMemo) },
+        // メモのページはやめた。古いリンク（/inbox/メモのid）は、受信箱でそのメモを開いた状態に回す
+        // （':id' は 'new' より後に置く。先に置くと、'new' がメモの id として扱われてしまう）
+        { path: 'inbox/:id',
+          redirectTo: ({ params }) => inject(Router).createUrlTree(['/inbox'], { queryParams: { m: params['id'] } }) },
         { path: 'notifications', canActivate: [authGuard],
           loadComponent: () => import('./pages/notification/notifications').then((m) => m.Notifications) },        
         { path: 'settings', canActivate: [authGuard], canDeactivate: [unsavedGuard],

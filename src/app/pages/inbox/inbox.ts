@@ -1,15 +1,15 @@
-import { Component, inject, signal } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
-import { Clock } from '../../core/time/clock';
-import { INBOX_TRASH_DAYS, InboxService } from '../../core/inbox/inbox.service';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { INBOX_TRASH_DAYS, InboxService, stableOrder } from '../../core/inbox/inbox.service';
 import { InboxMemo } from '../../core/models';
-import { relativeTime } from '../../core/time/time';
+import { MemoRow } from '../../shared/memo-row';
 import { I18nService, TPipe } from '../../i18n/i18n';
+
 
 /** 受信箱：未整理のメモの一覧。直す・課題にする・ゴミ箱へ。ゴミ箱は30日で自動で消える */
 @Component({
   selector: 'app-inbox',
-  imports: [RouterLink, TPipe],
+  imports: [RouterLink, TPipe, MemoRow],
   template: `
     <main>
       <div class="head">
@@ -23,19 +23,8 @@ import { I18nService, TPipe } from '../../i18n/i18n';
         <p>{{ 'common.loading' | t }}</p>
       } @else {
         <ul class="list">
-          @for (m of inbox.active(); track m.id) {
-            <li>
-              <a class="main" [routerLink]="['/inbox', m.id]">
-                <p class="memo-title">{{ m.title }}
-                  @if (inbox.isOld(m)) { <span class="old">{{ 'inbox.old' | t }}</span> }</p>
-                @if (m.body) { <p class="body">{{ firstLine(m.body) }}</p> }
-                <p class="meta">{{ when(m) }}</p>
-              </a>
-              <div class="actions">
-                <a class="small primary-btn" [routerLink]="['/new']" [queryParams]="{ memo: m.id }">
-                  {{ 'inbox.toIssue' | t }}</a>
-              </div>
-            </li>
+          @for (m of list(); track m.id) {
+            <li><app-memo-row [memo]="m" touchUi="icons" [startEditing]="m.id === openId" /></li>
           } @empty {
             <li class="empty">{{ 'inbox.empty' | t }}</li>
           }
@@ -75,22 +64,8 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .list { list-style: none; padding: 0; margin: 8px 0 16px; }
     .list li { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 10px 4px;
       border-bottom: 1px solid var(--border); }
-    .list li input, .list li textarea { flex-basis: 100%; font-size: 16px; padding: 8px 12px; }
-    .list li input { min-height: 44px; }
-    .main { flex: 1; min-width: 60%; display: block; color: inherit; text-decoration: none;
-      border-radius: 6px; padding: 2px 4px; margin: -2px -4px; }
-    .main:hover { background: var(--surface-alt); }
-    .body { overflow: hidden; text-overflow: ellipsis; white-space: nowrap !important; }
     .memo-title { margin: 0; font-size: 15px; overflow-wrap: anywhere; }
-    .old { margin-left: 6px; font-size: 11px; padding: 1px 8px; border-radius: 10px;
-      background: var(--warning-bg); color: var(--warning-text); }
-    .body { margin: 4px 0 0; font-size: 13px; color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
-    .meta { margin: 4px 0 0; font-size: 12px; color: var(--text-muted); }
     .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-left: auto; }
-    .small { min-height: 36px; padding: 0 12px; font-size: 13px; }
-    .primary-btn { display: inline-flex; align-items: center; border: none; border-radius: 8px; text-decoration: none;
-      background: var(--primary); color: var(--on-primary); cursor: pointer; }
-    .primary-btn:disabled { background: var(--disabled); }
     .link { background: none; border: none; color: var(--primary); min-height: 40px; font-size: 14px; cursor: pointer; }
     .link:disabled { color: var(--text-disabled); }
     .danger { color: var(--danger-text); }
@@ -99,29 +74,31 @@ import { I18nService, TPipe } from '../../i18n/i18n';
   `,
 })
 export class Inbox {
-    protected inbox = inject(InboxService);
-    private clock = inject(Clock);
-    private i18n = inject(I18nService);
-    private router = inject(Router);
-  
-    readonly trashDays = INBOX_TRASH_DAYS;
-    showTrash = signal(false);
-    busyId = signal<string | null>(null);
-    error = signal('');
+  protected inbox = inject(InboxService);
+  private i18n = inject(I18nService);
 
-  when(m: InboxMemo) {
-    return relativeTime(m.createdAt.toMillis(), this.i18n.lang(), this.clock.now());
+  readonly trashDays = INBOX_TRASH_DAYS;
+  /** 検索やホームから ?m= で来たとき、そのメモを直す状態で開く */
+  readonly openId = inject(ActivatedRoute).snapshot.queryParamMap.get('m');
+  showTrash = signal(false);
+  busyId = signal<string | null>(null);
+  error = signal('');
+  /** 開いた時点の並び（直したメモが上へ跳ねないように。読み込み直すと、更新の新しい順に並び直る） */
+  private order = signal<string[] | null>(null);
+  list = computed(() => stableOrder(this.inbox.active(), this.order()));
+
+  constructor() {
+    // メモが届いたら、その時点の並びを1回だけ覚える
+    effect(() => {
+      if (this.inbox.loaded() && untracked(this.order) === null) {
+        this.order.set(untracked(this.inbox.active).map((m) => m.id));
+      }
+    });
   }
 
-  /** 本文の1行目（一覧では1行だけ出す） */
-  firstLine(body: string) {
-    return body.split('\n')[0];
-  }
-
-  /** 戻したら、そのメモのページへ（戻した理由は、たいてい「もう一度見たい・直したい」だから） */
-  async restore(m: InboxMemo) {
-    await this.run(m, () => this.inbox.restore(m.id));
-    if (!this.error()) this.router.navigate(['/inbox', m.id]);
+  /** ゴミ箱から戻す（一覧に戻るだけ。前のようにメモのページへは移らない） */
+  restore(m: InboxMemo) {
+    return this.run(m, () => this.inbox.restore(m.id));
   }
 
   /** 完全に削除は元に戻せないので、確かめる */

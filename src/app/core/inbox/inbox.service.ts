@@ -30,10 +30,10 @@ export class InboxService {
   draft = signal('');
   private flashTimer: ReturnType<typeof setTimeout> | undefined;
 
-  /** 未整理のメモ（新しい順） */
+  /** 未整理のメモ（更新が新しい順。直したメモが上に来る） */
   active = computed(() => this.items()
     .filter((m) => !m.discardedAt)
-    .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis()));
+    .sort((a, b) => b.updatedAt.toMillis() - a.updatedAt.toMillis()));
   /** ゴミ箱のメモ（捨てた順。自動で消える日時を過ぎたものは、実際に消えるまでの間も出さない） */
   trash = computed(() => {
     const now = this.clock.now();
@@ -115,4 +115,28 @@ export class InboxService {
     clearTimeout(this.flashTimer);
     this.flashTimer = setTimeout(() => this.flash.set(null), 4000);
   }
+}
+
+/** 1つの欄の文字を、タイトル（1行目）と詳しいこと（2行目から）に分ける */
+export function splitMemo(text: string): { title: string; body: string } {
+  const [first, ...rest] = text.split('\n');
+  return { title: (first ?? '').trim().slice(0, 200), body: rest.join('\n').trim().slice(0, 5000) };
+}
+
+/** メモを、1つの欄に入れる文字に戻す */
+export function joinMemo(m: { title: string; body: string }): string {
+  return m.body ? `${m.title}\n${m.body}` : m.title;
+}
+
+/**
+ * 並びを、ある時点（order）のまま保つ（赤AH）。そのあと新しく入れたメモだけは、一番上に足す。
+ * 直したメモが上へ跳ねないようにするため。読み込み直したときに、更新の新しい順に並び直る
+ */
+export function stableOrder<T extends { id: string }>(all: T[], order: string[] | null): T[] {
+  if (!order) return all;
+  const pos = new Map(order.map((id, i) => [id, i]));
+  return [
+    ...all.filter((m) => !pos.has(m.id)),
+    ...all.filter((m) => pos.has(m.id)).sort((a, b) => pos.get(a.id)! - pos.get(b.id)!),
+  ];
 }

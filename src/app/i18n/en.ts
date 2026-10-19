@@ -577,6 +577,9 @@ export const en: Dict = {
     memoMenu: 'Note actions',
     edit: 'Edit',
     popDelete: 'Delete',
+    editHelp: 'First line is the title, the rest is details. Enter or click outside to save, Esc to cancel. Shift+Enter for a new line.',
+    editHelpTouch: 'First line is the title, the rest is details. Tap outside to save.',
+    editedAgo: 'edited {{t}}',
   },
 
   causeEdit: {

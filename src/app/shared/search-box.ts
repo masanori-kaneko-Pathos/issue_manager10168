@@ -26,6 +26,7 @@ interface Row {
   done?: boolean;
   field?: string;
   snippet?: Seg[];
+  query?: Record<string, string>;
 }
 
 /**
@@ -134,7 +135,7 @@ interface Row {
     <ng-template #row let-r>
       <li role="option" [id]="'sr-' + r.idx" [attr.aria-selected]="r.idx === active()"
         [class.active]="r.idx === active()" [class.done]="r.done" (mouseenter)="active.set(r.idx)">
-        <a [routerLink]="r.link" (click)="done()">
+        <a [routerLink]="r.link" [queryParams]="r.query ?? null" (click)="done()">
           <span class="r-title">@if (r.num !== undefined) {<span class="num">#{{ r.num }} </span>}@for (g of r.title; track $index) {<span [class.hit]="g.hit">{{ g.text }}</span>}</span>
           @if (r.status && r.status !== 'open') { <span class="st">{{ 'status.' + r.status | t }}</span> }
           @if (r.snippet) {
@@ -249,7 +250,7 @@ export class SearchBox {
     const memoHits = scope ? [] : this.search.findMemos(q);
     const memos = memoHits.slice(0, PER_GROUP).map((m) => {
       const inTitle = ts.map((t) => findMatch(m.title, t)).find((x) => x) ?? null;
-      return add({ link: ['/inbox', m.id], title: segments(m.title, inTitle) });
+      return add({ link: ['/inbox'], query: { m: m.id }, title: segments(m.title, inTitle) });
     });
 
     const groups = this.search.find(q, scope).map((g) => ({
@@ -336,7 +337,7 @@ export class SearchBox {
       e.preventDefault();
       const r = this.view().flat[this.active()];
       if (r) {
-        this.router.navigate(r.link);
+        this.router.navigate(r.link, { queryParams: r.query });
         this.done();
       }
     }

@@ -573,6 +573,9 @@ export const ja = {
     memoMenu: 'このメモの操作',
     edit: '編集',
     popDelete: '削除',
+    editHelp: '1行目がタイトル、2行目から詳しいこと。Enter か外を押すと保存、Esc で直さずに戻します。Shift＋Enter で改行。',
+    editHelpTouch: '1行目がタイトル、2行目から詳しいこと。外を押すと保存します。',
+    editedAgo: '{{t}}に編集',
   },
 
   causeEdit: {

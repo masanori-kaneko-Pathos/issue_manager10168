@@ -78,10 +78,39 @@ import { InboxPop } from './inbox-pop';
                 <li class="n-row">
                   <button type="button" class="n-item" [class.unread]="!n.read" (click)="openNotice(n)">
                     @if (!n.read) { <span class="dot" role="img" [attr.aria-label]="'notify.unread' | t"></span> }
-                    <span class="n-text">@if (n.pinned) {<span class="pin" role="img" [attr.aria-label]="'notify.pinned' | t">📌 </span>}{{ notify.text(n) }}</span>
+                    <span class="n-text">@if (n.pinned) {<svg class="pin-mark" viewBox="0 0 24 24" width="13" height="13" role="img" [attr.aria-label]="'notify.pinned' | t" fill="currentColor"><path d="M9 3h6l-1 6 3 3H7l3-3z" /><path d="M12 15v6" stroke="currentColor" stroke-width="2" /></svg> }{{ notify.text(n) }}</span>
                     @if (n.detail) { <span class="n-detail">{{ n.detail }}</span> }
                     <span class="n-meta">{{ n.projectName ? n.projectName + ' · ' : '' }}{{ noticeWhen(n) }}</span>
                   </button>
+
+                  <!-- PC：行に乗せたときだけ出るアイコン（メニューを開く1手を省く） -->
+                  <div class="n-hover" role="group" [attr.aria-label]="'notify.actions' | t">
+                    <button type="button" class="n-ic" [title]="(n.read ? 'notify.markUnread' : 'notify.markRead') | t"
+                      [attr.aria-label]="(n.read ? 'notify.markUnread' : 'notify.markRead') | t"
+                      (click)="act(n, n.read ? 'unread' : 'read')">
+                      @if (n.read) {
+                        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="5" fill="currentColor" /></svg>
+                      } @else {
+                        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor"
+                          stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7" /></svg>
+                      }
+                    </button>
+                    <button type="button" class="n-ic" [class.on]="n.pinned"
+                      [title]="(n.pinned ? 'notify.unpin' : 'notify.pin') | t"
+                      [attr.aria-label]="(n.pinned ? 'notify.unpin' : 'notify.pin') | t" (click)="act(n, n.pinned ? 'unpin' : 'pin')">
+                      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" [attr.fill]="n.pinned ? 'currentColor' : 'none'"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 3h6l-1 6 3 3H7l3-3z" /><path d="M12 15v6" /></svg>
+                    </button>
+                    <button type="button" class="n-ic danger" [title]="'notify.delete' | t" [attr.aria-label]="'notify.delete' | t"
+                      (click)="act(n, 'delete')">
+                      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 7h16" /><path d="M10 11v6M14 11v6" /><path d="M6 7l1 13h10l1-13" /><path d="M9 7V4h6v3" /></svg>
+                    </button>
+                  </div>
+
+                  <!-- スマホ：乗せる操作がないので ⋮ のまま -->
                   <button type="button" class="n-more" [attr.aria-label]="'notify.actions' | t" [title]="'notify.actions' | t"
                     [attr.aria-expanded]="rowMenu() === n.id" (click)="toggleRowMenu(n.id, $event)">⋮</button>
                   @if (rowMenu() === n.id) {
@@ -203,11 +232,13 @@ import { InboxPop } from './inbox-pop';
       background: none; color: var(--text-muted); font-size: 16px; cursor: pointer; }
     .n-more:hover { background: var(--surface-muted); }
     .n-backdrop { position: fixed; inset: 0; z-index: 2; }
-    .n-menu { position: absolute; right: 8px; top: 40px; z-index: 3; min-width: 160px; padding: 6px 0;
+    /* ⋮ の横に出す（下の行にはかぶさらない）。右に空きがなければ ⋮ の左に */
+    .n-menu { position: absolute; top: 6px; left: calc(100% + 4px); z-index: 3; min-width: 160px; padding: 6px 0;
       display: flex; flex-direction: column; background: var(--surface); border-radius: 10px;
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2); }
-    /* 小窓の下のほうの行では、下に開くと切れるので上に開く */
-    .n-menu.up { top: auto; bottom: calc(100% - 6px); }
+    .n-menu.left { left: auto; right: 40px; }
+    /* 小窓の下のほうの行では、下にはみ出して切れるので、行の下端にそろえて上へ伸ばす */
+    .n-menu.up { top: auto; bottom: 6px; }
     .n-menu button { text-align: left; padding: 0 16px; min-height: 40px; background: none; border: none;
       color: var(--text); font-size: 13px; cursor: pointer; }
     .n-menu button:hover { background: var(--surface-alt); }
@@ -217,6 +248,23 @@ import { InboxPop } from './inbox-pop';
       color: var(--primary); text-decoration: none; }
     .pen-wrap { position: relative; }
     .pen { border: none; padding: 0; cursor: pointer; }
+    .pin-mark { vertical-align: -1px; margin-right: 4px; color: var(--primary); }
+    /* 乗せたときのアイコン：ふだんは隠す */
+    .n-hover { display: none; }
+    .n-ic { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0;
+      border: none; border-radius: 6px; background: none; color: var(--text-muted); cursor: pointer; }
+    .n-ic:hover { background: var(--surface-muted); color: var(--text); }
+    .n-ic.on { color: var(--primary); }
+    .n-ic.danger:hover { color: var(--danger-text); }
+    /* マウスを乗せられる端末だけ：⋮ を消し、乗せた行（キーボードで移った行も）の右下にアイコンを出す */
+    @media (hover: hover) and (pointer: fine) {
+      .n-more { display: none; }
+      .n-row .n-item { padding-right: 12px; }
+      .n-row:hover .n-item { background: var(--surface-alt); }
+      .n-row:hover .n-hover, .n-row:focus-within .n-hover {
+        display: flex; gap: 2px; position: absolute; right: 8px; bottom: 6px; padding: 2px;
+        border-radius: 8px; background: var(--surface-alt); }
+    }
     @media (max-width: 600px) {
       .panel { position: fixed; left: 12px; right: 12px; top: 58px; width: auto; }
     }
@@ -244,8 +292,10 @@ export class AppHeader {
   }
   /** ベルの一覧で ⋮ を開いている通知 */
   rowMenu = signal<string | null>(null);
-  /** 行の ⋮ のメニューを上に開くか（小窓の下のほうでは、下に開くと切れるため） */
+  /** 行の ⋮ のメニューを、上へ伸ばすか（小窓の下のほうでは、下にはみ出して切れるため） */
   rowMenuUp = signal(false);
+  /** ⋮ の左に出すか（右に空きがないとき。小窓は画面の右端にあるので、PC ではたいてい左） */
+  rowMenuLeft = signal(false);
 
   toggleRowMenu(id: string, e: MouseEvent) {
     if (this.rowMenu() === id) {
@@ -254,8 +304,9 @@ export class AppHeader {
     }
     const btn = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const panel = (e.currentTarget as HTMLElement).closest('.panel')?.getBoundingClientRect();
-    // ボタンの下に、メニュー（約130px）が入る空きがあるか
-    this.rowMenuUp.set(!!panel && panel.bottom - btn.bottom < 140);
+    // 下に、メニュー（約130px）が入る空きがあるか。右に、メニュー（約170px）が入る空きがあるか
+    this.rowMenuUp.set(!!panel && panel.bottom - btn.top < 140);
+    this.rowMenuLeft.set(window.innerWidth - btn.right < 180);
     this.rowMenu.set(id);
   }
   private searchBox = viewChild(SearchBox);

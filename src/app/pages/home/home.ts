@@ -76,7 +76,7 @@ import { DeleteProjectDialog } from '../project/delete-project-dialog';
         <ul class="list">
           @for (m of inbox.active().slice(0, 3); track m.id) {
             <li class="memo">
-              <a class="name" [routerLink]="['/inbox', m.id]">{{ m.title }}</a>
+              <a class="name" routerLink="/inbox" [queryParams]="{ m: m.id }">{{ m.title }}</a>
               @if (inbox.isOld(m)) { <span class="old">{{ 'inbox.old' | t }}</span> }
             </li>
           } @empty {
