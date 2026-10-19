@@ -225,10 +225,13 @@ export class ProjectHome {
   me = computed(() => this.ctx.members().find((m) => m.uid === auth.currentUser!.uid) ?? null);
 
   /** タブの並び。設定は管理者だけに出す */
-  tabs = computed(() =>
-    this.ctx.role() === 'admin'
-      ? ['list', 'board', 'calendar', 'dashboard', 'members', 'settings']
-      : ['list', 'board', 'calendar', 'dashboard', 'members']);
+  tabs = computed(() => [
+    'list', 'board', 'calendar',
+    // ガント風表示は、管理者が設定でオンにしたときだけ（仕様メモ【14】）
+    ...(this.ctx.project()?.settings?.features?.gantt ? ['gantt'] : []),
+    'dashboard', 'members',
+    ...(this.ctx.role() === 'admin' ? ['settings'] : []),
+  ]);
 
   constructor() {
     // 別のプロジェクトに移ったときも読み直す

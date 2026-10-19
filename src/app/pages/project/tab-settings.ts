@@ -81,6 +81,18 @@ const RANGES: Record<NumKey, [number, number]> = {
         </div>
       </section>
 
+      <section>
+        <h2>{{ 'projectSettings.features' | t }}</h2>
+        <label class="feature">
+          <input type="checkbox" [checked]="settings().features.gantt"
+            (change)="setFeature('gantt', $any($event.target).checked)" />
+          <span class="f-body">
+            <span class="f-name">{{ 'projectSettings.gantt' | t }}</span>
+            <span class="help">{{ 'projectSettings.ganttHelp' | t }}</span>
+          </span>
+        </label>
+      </section>
+
       @if (dirty()) {
         <div class="savebar" role="status">
           <span>{{ 'settings.unsaved' | t }}</span>
@@ -126,6 +138,10 @@ const RANGES: Record<NumKey, [number, number]> = {
     .num .in { display: flex; align-items: center; gap: 6px; }
     .num input { width: 100px; }
     .num .help { margin: 0; }
+    .feature { display: flex; align-items: flex-start; gap: 10px; max-width: 520px; cursor: pointer; }
+    .feature input { width: 20px; height: 20px; margin-top: 2px; }
+    .f-body { display: flex; flex-direction: column; gap: 2px; }
+    .f-name { font-size: 14px; font-weight: bold; }
   `,
 })
 export class ProjectSettings implements OnInit {
@@ -173,6 +189,12 @@ export class ProjectSettings implements OnInit {
   /** 数を入れる。保存するまでは画面の中だけ */
   setNum(k: NumKey, v: unknown) {
     this.settings.update((s) => ({ ...s, [k]: Number(v) }));
+    this.info.set('');
+  }
+
+  /** 使う機能のオン・オフ。保存するまでは画面の中だけ（保存は「通知と日数」と同じバー） */
+  setFeature(k: keyof SettingsData['features'], v: boolean) {
+    this.settings.update((s) => ({ ...s, features: { ...s.features, [k]: v } }));
     this.info.set('');
   }
 

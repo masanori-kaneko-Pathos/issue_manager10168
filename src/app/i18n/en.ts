@@ -431,6 +431,9 @@ export const en: Dict = {
     unitDays: 'days',
     unitCount: 'issues',
     rangeError: 'Some values are out of range. Enter whole numbers within the range shown for each item.',
+    features: 'Features',
+    gantt: 'Gantt-style view',
+    ganttHelp: 'Adds a tab that shows issues as bars from the start date to the due date. No dependency arrows or automatic scheduling.',
   },
   labelPicker: {
     none: 'This project has no labels. Admins can add them in the Settings tab.',
@@ -778,6 +781,15 @@ export const en: Dict = {
     on: 'Watching',
     off: 'Watch',
     help: 'Watch to get comments and when this issue is resolved, sent back, closed, or rejected. The reporter and assignee watch automatically (they can stop).',
+  },
+  gantt: {
+    off: 'The Gantt-style view is turned off. Admins can turn it on under "Features" in the Settings tab.',
+    noDeps: 'Bars run from the start date to the due date. Dependencies are not drawn; check "Waiting for" on each issue.',
+    scaleDay: 'Day',
+    scaleWeek: 'Week',
+    today: 'Today',
+    byAssignee: 'Group by assignee',
+    empty: 'No open issues.',
   },
   links: {
     title: 'Related issues',
