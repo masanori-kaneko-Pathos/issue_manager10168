@@ -483,6 +483,9 @@ export class IssueDetail implements OnInit {
     const w = this.who(c);
     return `${this.i18n.t(w.key, w.params)} ${this.i18n.t(this.editField() ? 'field.conflictText' : 'field.conflictPick')}`;
   });
+  /** 登録画面から来て、添付できなかったファイル（1回だけ出す） */
+  attachFailed = signal<string[]>(
+    ((history.state as Record<string, unknown> | null)?.['attachFailed'] as string[] | undefined) ?? []);
   /** 下に数秒だけ出す知らせ（翻訳キー） */
   flash = signal('');
   private flashTimer: ReturnType<typeof setTimeout> | undefined;
@@ -524,6 +527,9 @@ export class IssueDetail implements OnInit {
   showRejectHelp = computed(() => this.transitions().some((a) => a.t.key === 'reject' || a.t.key === 'sendBack'));
 
   async ngOnInit() {
+    // 添付できなかった知らせは1回だけ。読んだら履歴から消し、再読み込みで出し直さない
+    const { attachFailed, ...rest } = (history.state ?? {}) as Record<string, unknown>;
+    if (attachFailed !== undefined) history.replaceState(rest, '');
     // 見張りを先に始めて、役割などの読み込みと並行して届くようにする
     this.watch();
     await this.load();

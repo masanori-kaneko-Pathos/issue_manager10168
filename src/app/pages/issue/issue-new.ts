@@ -14,6 +14,10 @@ import { HelpTip } from '../../shared/help-tip';
 import { LabelPicker } from '../../shared/label-picker';
 import { MemberSelect } from '../../shared/member-select';
 import { DraftService } from '../../core/draft/draft.service';
+import { AttachmentService, checkFile } from '../../core/attachment/attachment.service';
+import { MAX_ATTACHMENTS } from '../../core/models';
+import { sizeText } from './attachment-list';
+import { ImageViewer, ViewerImage } from '../../shared/image-viewer';
 
 const LAST_PROJECT_KEY = 'issuemanager.lastProject';
 
@@ -52,7 +56,7 @@ interface IssueDraft {
 
 @Component({
   selector: 'app-issue-new',
-  imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelPicker, MemberSelect],
+  imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelPicker, MemberSelect, ImageViewer],
   template: `
     <header class="bar"><a [routerLink]="backLink()" class="link">{{ 'common.back' | t }}</a></header>
     <main>
@@ -173,12 +177,57 @@ interface IssueDraft {
               <p class="help">{{ 'effort.hint' | t }}</p>
             </div>
           }
+          <div class="field">
+            <span>{{ 'attach.title' | t }}</span>
+            <div class="drop" [class.over]="over()" (dragover)="onDragOver($event)" (dragleave)="over.set(false)"
+              (drop)="onDrop($event)">
+              @if (pending().length) {
+                <ul class="pending">
+                  @for (f of pending(); track $index; let k = $index) {
+                    <li>
+                      @if (f.url) {
+                        <button type="button" class="pthumb" [attr.aria-label]="'attach.view' | t: { name: f.file.name }"
+                          (click)="viewPending(k)">
+                          <img [src]="f.url" alt="" (error)="$any($event.target).style.visibility = 'hidden'" />
+                        </button>
+                      }
+                      <span class="pname">{{ f.file.name }}</span>
+                      <span class="psize">{{ size(f.file.size) }}</span>
+                      @if (progress(); as pr) {
+                        <span class="bar"><span class="fill" [style.width.%]="(pr[k] ?? 0) * 100"></span></span>
+                      } @else {
+                        <button type="button" class="x" [attr.aria-label]="'attach.unpick' | t: { name: f.file.name }"
+                          (click)="unpick(k)">✕</button>
+                      }
+                    </li>
+                  }
+                </ul>
+              }
+              @if (pending().length < maxFiles) {
+                <div class="add-row">
+                  <label class="add">{{ 'attach.add' | t }}
+                    <input type="file" multiple hidden (change)="onPickFiles($event)" />
+                  </label>
+                  <span class="help">{{ 'attach.dropHint' | t }}</span>
+                </div>
+              } @else {
+                <p class="help">{{ 'attach.max' | t: { n: '' + maxFiles } }}</p>
+              }
+              @if (fromDraft) { <p class="help">{{ 'attach.notInDraft' | t }}</p> }
+            </div>
+            @for (e of fileErrors(); track $index) {
+              <p class="error" role="alert">{{ e.key | t: { name: e.name, n: '' + maxFiles } }}</p>
+            }
+          </div>
         }
 
         @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
         <button type="submit" class="primary" [disabled]="busy() || !ready()">{{ 'issueNew.submit' | t }}</button>
       </form>
     </main>
+    @if (viewer(); as v) {
+      <app-image-viewer [images]="v.list" [start]="v.index" (close)="viewer.set(null)" />
+    }
   `,
   styles: `
     .bar { padding: 8px 16px; border-bottom: 1px solid var(--border); }
@@ -213,6 +262,21 @@ interface IssueDraft {
     .similar-help { margin: 0 !important; font-size: 12px !important; color: var(--text-muted); }
     .hours { display: flex; align-items: center; gap: 6px; font-weight: normal; }
     .hours input { width: 120px; }
+    .drop { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 8px; font-weight: normal; }
+    .drop.over { outline: 2px dashed var(--primary); background: var(--primary-bg); }
+    .pending { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+    .pending li { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 6px;
+      background: var(--surface-alt); font-size: 13px; }
+    .pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .psize { font-size: 12px; color: var(--text-muted); }
+    .bar { flex: 0 0 80px; height: 4px; border-radius: 2px; background: var(--surface-muted); overflow: hidden; }
+    .fill { display: block; height: 100%; background: var(--primary); }
+    .x { width: 28px; min-height: 28px; border: none; background: none; color: var(--text-muted); cursor: pointer; }
+    .add-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+    .add { display: inline-flex; align-items: center; min-height: 36px; color: var(--primary); font-size: 14px; cursor: pointer; }
+    .pthumb { flex: none; width: 40px; height: 40px; padding: 0; border: 1px solid var(--border); border-radius: 4px;
+      overflow: hidden; background: var(--surface); cursor: zoom-in; }
+    .pthumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   `,
 })
 export class IssueNew implements OnInit {
@@ -322,6 +386,8 @@ export class IssueNew implements OnInit {
     inject(DestroyRef).onDestroy(() => {
       clearTimeout(this.titleTimer);
       this.flushDraft(); // 離れるときは、待たずにしまう
+      // 小さな絵のために作った一時的な URL を返す
+      this.pending().forEach((p) => p.url && URL.revokeObjectURL(p.url));
     });
   }
 
@@ -482,6 +548,84 @@ export class IssueNew implements OnInit {
     this.showDetail.set(true);
   }
 
+  // ---- 添付（登録するまで手元にためておき、登録したあとに上げる） ----
+  private attachments = inject(AttachmentService);
+  readonly maxFiles = MAX_ATTACHMENTS;
+  /** 下書きから開いたか（ファイルは下書きに残らないことを知らせるため） */
+  readonly fromDraft = !!this.route.snapshot.queryParamMap.get('draft');
+  /** ためたファイルと、画像なら手元で作った一時的な URL（小さな絵に使う。外したとき・離れるときに返す） */
+  pending = signal<{ file: File; url: string | null }[]>([]);
+  viewer = signal<{ list: ViewerImage[]; index: number } | null>(null);
+
+  /** 選んだ画像を、上げる前に大きく見る */
+  viewPending(k: number) {
+    const list = this.pending()
+      .map((p, j) => ({ id: String(j), name: p.file.name, url: p.url ?? '' }))
+      .filter((x) => x.url);
+    this.viewer.set({ list, index: Math.max(0, list.findIndex((x) => x.id === String(k))) });
+  }
+  /** 上げている途中の進み具合（ファイルごと。上げる前は null） */
+  progress = signal<number[] | null>(null);
+  fileErrors = signal<{ key: string; name: string }[]>([]);
+  over = signal(false);
+
+  size(n: number) {
+    return sizeText(n);
+  }
+
+  onPickFiles(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const list = Array.from(input.files ?? []);
+    input.value = ''; // 同じファイルを選び直しても、選んだことになるように
+    this.addFiles(list);
+  }
+
+  onDragOver(e: DragEvent) {
+    if (!e.dataTransfer?.types.includes('Files')) return;
+    e.preventDefault(); // これがないと、ブラウザがファイルを開いてしまう
+    this.over.set(true);
+  }
+
+  onDrop(e: DragEvent) {
+    const list = Array.from(e.dataTransfer?.files ?? []);
+    this.over.set(false);
+    if (!list.length) return;
+    e.preventDefault();
+    this.addFiles(list);
+  }
+
+  /** 数・大きさ・種類を、ためる前に確かめる（課題の詳細の添付と同じ決まり） */
+  private addFiles(list: File[]) {
+    this.fileErrors.set([]);
+    for (const f of list) {
+      if (this.pending().length >= MAX_ATTACHMENTS) {
+        this.fileErrors.update((x) => [...x, { key: 'attach.max', name: f.name }]);
+        break;
+      }
+      const bad = checkFile(f);
+      if (bad) this.fileErrors.update((x) => [...x, { key: 'attach.' + bad, name: f.name }]);
+      else this.pending.update((p) => [...p, { file: f, url: f.type.startsWith('image/') ? URL.createObjectURL(f) : null }]);
+    }
+  }
+
+  unpick(k: number) {
+    const url = this.pending()[k]?.url;
+    if (url) URL.revokeObjectURL(url); // 一時的な URL を返す（返さないと、メモリに残り続ける）
+    this.pending.update((p) => p.filter((_, j) => j !== k));
+  }
+
+  /** できた課題に、ためたファイルを上げる（同時に進む）。上げられなかったファイルの名前を返す */
+  private async uploadPending(pid: string, iid: string): Promise<string[]> {
+    const list = this.pending();
+    if (!list.length) return [];
+    this.progress.set(list.map(() => 0));
+    const results = await Promise.allSettled(list.map((x, k) => this.attachments.upload(
+      pid, iid, x.file, this.myUid, this.tz(), {
+        onProgress: (p) => this.progress.update((all) => all && all.map((x, j) => (j === k ? p : x))),
+      })));
+      return results.flatMap((r, k) => (r.status === 'rejected' ? [list[k].file.name] : []));
+  }  
+
   /** 何か触ったら、少し待ってから下書きにしまう（1文字ごとに書き込まないように） */
   touch() {
     if (!this.draftable || this.submitted) return;
@@ -577,7 +721,7 @@ export class IssueNew implements OnInit {
     this.error.set('');
     try {
       const pid = this.pid()!;
-      await this.issues.create(pid, {
+      const { iid } = await this.issues.create(pid, {
         title: this.title.trim(),
         type: this.type()!,
         importance: this.importance()!,
@@ -598,6 +742,13 @@ export class IssueNew implements OnInit {
       this.submitted = true;
       clearTimeout(this.draftTimer);
       this.drafts.remove(this.draftId);
+      // 課題ができてから、ためたファイルを上げる（添付の一覧は課題の下に作るので、課題が先に要る）
+      const failed = await this.uploadPending(pid, iid);
+      if (failed.length) {
+        // 課題はできているので作り直させず、その課題の詳細へ移って、詳細からもう一度添付してもらう
+        await this.router.navigate(['/p', pid, 'i', iid], { state: { attachFailed: failed } });
+        return;
+      }
       // 切り出したときは、親の課題に戻る（切り出し済みになったことを、その場で確かめられるように）
       await this.router.navigate(this.splitFrom ? ['/p', pid, 'i', this.splitFrom.iid] : ['/p', pid]);
     } catch (e) {

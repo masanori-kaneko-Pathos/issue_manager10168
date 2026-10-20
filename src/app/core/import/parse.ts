@@ -59,7 +59,7 @@ async function readExcel(buf: ArrayBuffer): Promise<SheetTable[]> {
  * 日本語の Excel で「CSV」として保存すると Shift_JIS になることが多いため。
  * UTF-8 の先頭の BOM は、TextDecoder が取り除く
  */
-function decode(buf: ArrayBuffer): string {
+export function decode(buf: ArrayBuffer): string {
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(buf);
   } catch {
@@ -68,7 +68,7 @@ function decode(buf: ArrayBuffer): string {
 }
 
 /** 1行目にカンマがなく、タブがあれば、タブ区切りとみなす */
-function looksTabbed(text: string): boolean {
+export function looksTabbed(text: string): boolean {
   const first = text.split(/\r\n|\n|\r/, 1)[0] ?? '';
   return first.includes('\t') && !first.includes(',');
 }

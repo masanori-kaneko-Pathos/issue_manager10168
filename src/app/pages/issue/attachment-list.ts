@@ -1,4 +1,6 @@
-import { Component, computed, inject, input, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { ImageViewer, ViewerImage } from '../../shared/image-viewer';
+import { TextView, TextViewer } from '../../shared/text-viewer';
 import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth/auth.service';
 import { AttachmentService, checkFile } from '../../core/attachment/attachment.service';
@@ -14,7 +16,7 @@ export function sizeText(n: number) {
 /** 課題の「添付」の欄：一覧・追加（ボタンとドラッグ）・進み具合・削除 */
 @Component({
   selector: 'app-attachment-list',
-  imports: [TPipe],
+  imports: [TPipe, ImageViewer, TextViewer],
   template: `
     <div class="drop" [class.over]="over()" (dragover)="onDragOver($event)" (dragleave)="over.set(false)"
       (drop)="onDrop($event)">
@@ -22,16 +24,28 @@ export function sizeText(n: number) {
         <ul class="files">
           @for (a of items(); track a.id) {
             <li>
-              <svg class="ic" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor"
-                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                @if (a.type.startsWith('image/')) {
-                  <rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="2" /><path d="m21 16-5-5-9 9" />
-                } @else {
-                  <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6" />
-                }
-              </svg>
+              @if (isImage(a) && urls()[a.id] && !broken().has(a.id)) {
+                <button type="button" class="thumb" [attr.aria-label]="'attach.view' | t: { name: a.name }" (click)="open(a)">
+                  <img [src]="urls()[a.id]" alt="" loading="lazy" (error)="markBroken(a.id)" />
+                </button>
+              } @else {
+                <svg class="ic" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  @if (a.type.startsWith('image/')) {
+                    <rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="2" /><path d="m21 16-5-5-9 9" />
+                  } @else {
+                    <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6" />
+                  }
+                </svg>
+              }
               <div class="body">
-                <button type="button" class="name" [title]="'attach.open' | t" (click)="open(a)">{{ a.name }}</button>
+                <button type="button" class="name" [title]="(kindOf(a) === 'file' ? 'attach.download' : 'attach.open') | t: { name: a.name }"
+                  (click)="open(a)">{{ a.name }}
+                  @if (kindOf(a) === 'file') {
+                    <svg class="dl" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor"
+                      stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></svg>
+                  }</button>
                 <span class="meta">{{ size(a.size) }} · {{ nameOf()(a.by) }} · {{ when(a) }}</span>
               </div>
               @if (canRemove(a)) {
@@ -68,6 +82,12 @@ export function sizeText(n: number) {
       }
       @for (e of errors(); track $index) { <p class="error" role="alert">{{ e.key | t: { name: e.name } }}</p> }
     </div>
+    @if (viewer(); as v) {
+      <app-image-viewer [images]="v.list" [start]="v.index" (close)="viewer.set(null)" />
+    }
+    @if (textView(); as tv) {
+      <app-text-viewer [view]="tv" (close)="textView.set(null)" />
+    }
   `,
   styles: `
     :host { display: block; }
@@ -91,6 +111,11 @@ export function sizeText(n: number) {
     .add { display: inline-flex; align-items: center; min-height: 36px; color: var(--primary); font-size: 14px; cursor: pointer; }
     .hint { font-size: 12px; color: var(--text-muted); margin: 0; }
     .error { margin: 4px 0 0; font-size: 13px; color: var(--danger-text); }
+    .thumb { flex: none; width: 56px; height: 56px; padding: 0; border: 1px solid var(--border); border-radius: 6px;
+      overflow: hidden; background: var(--surface-alt); cursor: zoom-in; }
+    .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .thumb:hover { border-color: var(--primary); }
+    .dl { vertical-align: -2px; margin-left: 4px; }
   `,
 })
 export class AttachmentList {
@@ -117,6 +142,86 @@ export class AttachmentList {
   uploading = signal<{ id: number; name: string; p: number }[]>([]);
   errors = signal<{ key: string; name: string }[]>([]);
   private seq = 0;
+
+  // ---- 小さな絵と、大きく見る窓 ----
+  /** 画像の URL（添付の id → URL）。倉庫から1回だけもらう */
+  urls = signal<Record<string, string>>({});
+  /** もう URL を頼んだ添付（同じものを何度も頼まないための控え。画面に出さないのでシグナルにしない） */
+  private asked = new Set<string>();
+  /** この端末で表示できない画像（iPhone の HEIC を Chrome で見たときなど）。アイコンに戻す */
+  broken = signal(new Set<string>());
+  /** 大きく見ている画像（null＝閉じている） */
+  viewer = signal<{ list: ViewerImage[]; index: number } | null>(null);
+
+  constructor() {
+    // 画像の添付が増えたら、その URL をもらう（もらった分は控えておき、二度は頼まない）
+    effect(() => {
+      for (const a of this.items()) {
+        if (!this.isImage(a) || this.asked.has(a.id)) continue;
+        this.asked.add(a.id);
+        this.files.urlOf(a)
+          .then((u) => this.urls.update((m) => ({ ...m, [a.id]: u })))
+          .catch((e) => console.warn('画像の URL をもらえませんでした', a.name, e));
+      }
+    });
+  }
+
+  /** 見ている CSV・テキスト（null＝閉じている） */
+  textView = signal<TextView | null>(null);
+
+  /**
+   * 押したときの扱い：image＝大きく見る、table＝表で見る、text＝テキストで見る、pdf＝新しいタブ、
+   * file＝ダウンロード（Excel・Word などは、ブラウザが表示できずにダウンロードに回すため、そうと書いて落とす）
+   */
+  kindOf(a: Attachment): 'image' | 'table' | 'text' | 'pdf' | 'file' {
+    if (this.isImage(a)) return 'image';
+    if (a.type === 'text/csv' || /\.(csv|tsv)$/i.test(a.name)) return 'table';
+    if (a.type === 'text/plain') return 'text';
+    if (a.type === 'application/pdf') return 'pdf';
+    return 'file';
+  }
+
+  /** CSV は表に、テキストはそのまま。長いものは、はじめの500行（テキストは20万字）だけ */
+  private async showText(a: Attachment, table: boolean) {
+    this.textView.set({ name: a.name, loading: true });
+    try {
+      const raw = await this.files.textOf(a);
+      if (table) {
+        const { parseDelimited, looksTabbed } = await import('../../core/import/parse');
+        const all = parseDelimited(raw, /\.tsv$/i.test(a.name) || looksTabbed(raw) ? '\t' : ',');
+        this.textView.set({ name: a.name, loading: false, rows: all.slice(0, 501), more: Math.max(0, all.length - 501) });
+      } else {
+        this.textView.set({ name: a.name, loading: false, text: raw.slice(0, 200000) });
+      }
+    } catch (e) {
+      console.error(e);
+      this.textView.set({ name: a.name, loading: false, failed: true });
+    }
+  }
+
+  /** ダウンロード：この画面のまま落とす（新しいタブにすると、空のタブが残るため） */
+  private async download(a: Attachment) {
+    try {
+      const url = await this.files.urlOf(a);
+      const link = document.createElement('a');
+      link.href = url;
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (e) {
+      console.error(e);
+      this.errors.set([{ key: 'attach.openFailed', name: a.name }]);
+    }
+  }
+
+  isImage(a: Attachment) {
+    return a.type.startsWith('image/');
+  }
+
+  markBroken(id: string) {
+    this.broken.update((s) => new Set(s).add(id));
+  }
 
   canRemove(a: Attachment) {
     return !this.archived() && (a.by === this.myUid || this.isAdmin());
@@ -188,6 +293,24 @@ export class AttachmentList {
    * （URL を待ってから開くと、ブラウザに「勝手に開いたタブ」として止められるため）
    */
   async open(a: Attachment) {
+    const kind = this.kindOf(a);
+    if (kind === 'table' || kind === 'text') return this.showText(a, kind === 'table');
+    if (kind === 'file') return this.download(a);
+    // 画像は、その場で大きく見る（この欄の画像を ← → で次々見られるように）
+    if (this.isImage(a) && !this.broken().has(a.id)) {
+      try {
+        const url = this.urls()[a.id] ?? (await this.files.urlOf(a));
+        const list = this.items()
+          .filter((x) => this.isImage(x) && !this.broken().has(x.id))
+          .map((x) => ({ id: x.id, name: x.name, url: x.id === a.id ? url : this.urls()[x.id] ?? '' }))
+          .filter((x) => x.url);
+        this.viewer.set({ list, index: Math.max(0, list.findIndex((x) => x.id === a.id)) });
+      } catch (e) {
+        console.error(e);
+        this.errors.set([{ key: 'attach.openFailed', name: a.name }]);
+      }
+      return;
+    }
     const w = window.open('', '_blank');
     try {
       const url = await this.files.urlOf(a);

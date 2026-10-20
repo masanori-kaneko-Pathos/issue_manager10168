@@ -187,7 +187,9 @@ export class IssueService {
 
   /** 課題番号の採番と、課題・履歴の作成を、1つのトランザクションで行う */
   /** memoId があれば、受信箱のメモも同じトランザクションで消す（課題になったメモを残さないため） */
-  create(pid: string, input: NewIssue, uid: string, tz: string, memoId?: string): Promise<number> {
+  create(
+    pid: string, input: NewIssue, uid: string, tz: string, memoId?: string,
+  ): Promise<{ number: number; iid: string }> {
     return runTransaction(db, async (tx) => {
       const projectRef = doc(db, 'projects', pid);
       const project = await tx.get(projectRef);
@@ -257,7 +259,8 @@ export class IssueService {
         pid, projectName: project.data()!['name'], iid: issueRef.id, issueNumber: number, issueTitle: input.title,
       });
       if (n) tx.set(n.ref, n.data);
-      return number;
+      // 課題の id も返す（登録のあとに、添付をこの課題に上げるため）
+      return { number, iid: issueRef.id };
     });
   }
 

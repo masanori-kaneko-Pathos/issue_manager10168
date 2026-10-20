@@ -129,6 +129,13 @@ export class AttachmentService {
     await batch.commit();
   }
 
+  /** CSV・テキストの中身を、文字にして読む（文字コードは、インポートと同じく UTF-8 → だめなら Shift_JIS） */
+  async textOf(a: Attachment): Promise<string> {
+    const s = await this.storage();
+    const { decode } = await import('../import/parse');
+    return decode(await s.getBytes(s.ref(s.st, a.path)));
+  }
+
   /** 開くための URL（押したときだけ読む） */
   async urlOf(a: Attachment) {
     const s = await this.storage();

@@ -66,6 +66,14 @@
     }
   </header>
   <main>
+    @if (attachFailed().length) {
+      <div class="req" role="alert">
+        <p>{{ 'attach.someFailed' | t: { names: attachFailed().join(i18n.lang() === 'ja' ? '、' : ', ') } }}</p>
+        <div class="row">
+          <button type="button" class="link" (click)="attachFailed.set([])">{{ 'projects.dismiss' | t }}</button>
+        </div>
+      </div>
+    }
     @if (watchError(); as k) { <p class="error" role="alert">{{ k | t }}</p> }
     @if (loading()) {
       <p>{{ 'common.loading' | t }}</p>

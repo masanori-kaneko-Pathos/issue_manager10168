@@ -36,7 +36,7 @@ export class SampleService {
       doneCriteria: this.i18n.t('doneCriteria.bug'), description: t('a.description'),
       labelIds: ['quality'], occurredOn: null, impact: t('a.impact'),
     }, uid, tz);
-    let a = await this.issues.findByNumber(pid, na);
+    let a = await this.issues.findByNumber(pid, na.number);
     if (a) {
       const start = TRANSITIONS.find((x) => x.key === 'start')!;
       await this.issues.changeStatus(pid, a, start, EMPTY_STATUS_PAYLOAD, uid, tz);
