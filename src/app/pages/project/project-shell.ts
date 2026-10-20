@@ -101,6 +101,16 @@ import { DeleteProjectDialog } from './delete-project-dialog';
       </div>
     }
 
+    @if (ctx.project()!.sample && !ctx.project()!.archived) {
+      <div class="sample" role="status">
+        <p>{{ 'sample.banner' | t }}</p>
+        @if (ctx.role() === 'admin') {
+          <button type="button" class="sample-end" (click)="sampleEnd.set(true); archiveOpen.set(true)">
+            {{ 'sample.end' | t }}</button>
+        }
+      </div>
+    }
+
     <nav class="tabs">
       @for (t of tabs(); track t) {
         <a
@@ -133,8 +143,9 @@ import { DeleteProjectDialog } from './delete-project-dialog';
 
     @if (archiveOpen()) {
       <app-archive-dialog
-        (done)="archiveOpen.set(false)"
-        (cancel)="archiveOpen.set(false)"
+        [presetReason]="sampleEnd() ? i18n.t('sample.endReason') : ''"
+        (done)="archiveOpen.set(false); sampleEnd.set(false)"
+        (cancel)="archiveOpen.set(false); sampleEnd.set(false)"
       />
     }
 
@@ -143,6 +154,7 @@ import { DeleteProjectDialog } from './delete-project-dialog';
         [pid]="ctx.pid()"
         [name]="ctx.project()!.name"
         [others]="ctx.members().length - 1"
+        [prefill]="!!ctx.project()!.sample"
         (done)="onDeleted($event)"
         (cancel)="deleteOpen.set(false)"
       />
@@ -193,6 +205,11 @@ import { DeleteProjectDialog } from './delete-project-dialog';
     .more-btn { position: relative; }
     .dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%;
       background: var(--danger); }    
+    .sample { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; padding: 10px 12px;
+      border-radius: 8px; background: var(--primary-bg); border: 1px solid var(--primary); }
+    .sample p { flex: 1; min-width: 60%; margin: 0; font-size: 14px; }
+    .sample-end { min-height: 40px; padding: 0 16px; border: none; border-radius: 8px; background: var(--primary);
+      color: var(--on-primary); cursor: pointer; }
   `,
 })
 export class ProjectHome {
@@ -204,6 +221,8 @@ export class ProjectHome {
   exportOpen = signal(false);
   archiveOpen = signal(false);
   deleteOpen = signal(false);
+  /** 見本を終えるために、アーカイブの窓を開いた（理由を最初から入れておく） */
+  sampleEnd = signal(false);
   busy = signal(false);
   error = signal('');
   protected i18n = inject(I18nService);

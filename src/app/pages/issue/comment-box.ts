@@ -7,6 +7,10 @@ import { SearchService } from '../../core/search/search.service';
 import { normalize } from '../../core/search/match';
 import { Member } from '../../core/models';
 import { I18nService, TPipe } from '../../i18n/i18n';
+import { AttachmentService, checkFile } from '../../core/attachment/attachment.service';
+
+/** 1つのコメントに添付できる数 */
+const MAX_COMMENT_FILES = 5;
 
 /** 候補の1行。insert＝選んだときに本文へ入れる文字 */
 interface Cand { key: string; label: string; sub: string; insert: string; uid?: string; }
@@ -24,7 +28,8 @@ interface Cand { key: string; label: string; sub: string; insert: string; uid?: 
         [attr.aria-label]="'detail.commentPlaceholder' | t" role="combobox" aria-controls="cb-list"
         [attr.aria-expanded]="cands().length > 0" [attr.aria-activedescendant]="cands().length ? 'cb-' + active() : null"
         (input)="detect()" (click)="detect()" (keydown)="onKey($event)" (focus)="search.load()"
-        (blur)="trigger.set(null)"></textarea>
+        (blur)="trigger.set(null)" (paste)="onPaste($event)" (dragover)="onDragOver($event)"
+        (dragleave)="over.set(false)" (drop)="onDrop($event)" [class.over]="over()"></textarea>
       @if (cands().length) {
         <ul class="cands" id="cb-list" role="listbox">
           @for (c of cands(); track c.key; let i = $index) {
@@ -38,7 +43,29 @@ interface Cand { key: string; label: string; sub: string; insert: string; uid?: 
         <p class="cands hint">{{ 'comment.hashHint' | t }}</p>
       }
     </div>
+    @if (pending().length) {
+      <ul class="pending">
+        @for (f of pending(); track $index) {
+          <li>
+            <span class="pname">{{ f.file.name }}</span>
+            @if (f.p !== null) {
+              <span class="bar"><span class="fill" [style.width.%]="f.p * 100"></span></span>
+            } @else {
+              <button type="button" class="x" [attr.aria-label]="'attach.unpick' | t: { name: f.file.name }"
+                (click)="unpick($index)">✕</button>
+            }
+          </li>
+        }
+      </ul>
+    }
+    @for (e of fileErrors(); track $index) { <p class="error" role="alert">{{ e.key | t: { name: e.name, n: '' + max } }}</p> }
     <div class="foot">
+      <label class="clip" [title]="'attach.addToComment' | t" [attr.aria-label]="'attach.addToComment' | t">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7" /></svg>
+        <input type="file" multiple hidden (change)="onPick($event)" />
+      </label>
       <p class="help">{{ 'comment.help' | t }}</p>
       <button type="button" class="primary" [disabled]="busy() || !body.trim()" (click)="send()">
         {{ 'detail.send' | t }}</button>
@@ -63,6 +90,17 @@ interface Cand { key: string; label: string; sub: string; insert: string; uid?: 
       border-radius: 8px; font-size: 14px; cursor: pointer; flex: none; }
     .primary:disabled { background: var(--disabled); }
     .error { color: var(--danger-text); font-size: 13px; }
+    textarea.over { outline: 2px dashed var(--primary); outline-offset: 2px; }
+    .pending { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+    .pending li { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 6px;
+      background: var(--surface-alt); font-size: 13px; }
+    .pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar { flex: 0 0 80px; height: 4px; border-radius: 2px; background: var(--surface-muted); overflow: hidden; }
+    .fill { display: block; height: 100%; background: var(--primary); }
+    .x { width: 28px; height: 28px; border: none; background: none; color: var(--text-muted); cursor: pointer; }
+    .clip { flex: none; width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 8px; color: var(--text-muted); cursor: pointer; }
+    .clip:hover { background: var(--surface-alt); color: var(--text); }
   `,
 })
 export class CommentBox {
@@ -91,6 +129,12 @@ export class CommentBox {
   /** 候補から選んだ人（名前 → uid）。送るときに、本文に「@名前」が残っている人だけをメンションにする */
   private picked = new Map<string, string>();
   private tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
+  private files = inject(AttachmentService);
+  readonly max = MAX_COMMENT_FILES;
+  /** 送信まで手元にためるファイル（p＝上げている途中の進み具合。上げる前は null） */
+  pending = signal<{ file: File; p: number | null }[]>([]);
+  fileErrors = signal<{ key: string; name: string }[]>([]);
+  over = signal(false);
 
   cands = computed<Cand[]>(() => {
     const q = normalize(this.query());
@@ -112,6 +156,53 @@ export class CommentBox {
     }
     return [];
   });
+
+  // ---- 添付（送信まで手元にためる） ----
+  onPick(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const list = Array.from(input.files ?? []);
+    input.value = '';
+    this.addFiles(list);
+  }
+
+  /** 画像を貼り付けたら、添付として受け取る（文字の貼り付けは、そのまま本文へ） */
+  onPaste(e: ClipboardEvent) {
+    const list = Array.from(e.clipboardData?.files ?? []);
+    if (!list.length) return;
+    e.preventDefault();
+    this.addFiles(list);
+  }
+
+  onDragOver(e: DragEvent) {
+    if (!e.dataTransfer?.types.includes('Files')) return; // 文字のドラッグは、ふつうに本文へ
+    e.preventDefault();
+    this.over.set(true);
+  }
+
+  onDrop(e: DragEvent) {
+    const list = Array.from(e.dataTransfer?.files ?? []);
+    this.over.set(false);
+    if (!list.length) return;
+    e.preventDefault();
+    this.addFiles(list);
+  }
+
+  private addFiles(list: File[]) {
+    this.fileErrors.set([]);
+    for (const f of list) {
+      if (this.pending().length >= MAX_COMMENT_FILES) {
+        this.fileErrors.update((x) => [...x, { key: 'attach.commentMax', name: f.name }]);
+        break;
+      }
+      const bad = checkFile(f);
+      if (bad) this.fileErrors.update((x) => [...x, { key: 'attach.' + bad, name: f.name }]);
+      else this.pending.update((p) => [...p, { file: f, p: null }]);
+    }
+  }
+
+  unpick(i: number) {
+    this.pending.update((p) => p.filter((_, j) => j !== i));
+  }
 
   /**
    * カーソルの直前が「@名前の途中」「#番号の途中」かを見る。
@@ -171,9 +262,23 @@ export class CommentBox {
     this.busy.set(true);
     this.error.set('');
     try {
-      await this.issueService.addComment(this.pid(), this.iid(), body, this.myUid, this.tz(), mentions);
+      const cid = await this.issueService.addComment(this.pid(), this.iid(), body, this.myUid, this.tz(), mentions);
       this.body = '';
       this.picked.clear();
+      // コメントができたら、ためておいたファイルを、そのコメントの下に上げる（同時に進む）
+      const list = this.pending();
+      if (list.length) {
+        this.pending.set(list.map((x) => ({ ...x, p: 0 })));
+        const results = await Promise.allSettled(list.map((x, i) => this.files.upload(
+          this.pid(), this.iid(), x.file, this.myUid, this.tz(), {
+            cid,
+            onProgress: (p) => this.pending.update((all) => all.map((y, j) => (j === i ? { ...y, p } : y))),
+          })));
+        this.fileErrors.set(results.flatMap((r, i) => r.status === 'rejected'
+          ? [{ key: (r.reason as Error)?.message === 'tooBig' ? 'attach.tooBig' : 'attach.failed', name: list[i].file.name }]
+          : []));
+        this.pending.set([]);
+      }
     } catch (e) {
       console.error(e);
       this.error.set('common.saveError');

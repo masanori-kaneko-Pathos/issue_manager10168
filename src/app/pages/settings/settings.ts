@@ -98,6 +98,11 @@ type Section = 'general' | 'password';
           <p class="help">{{ 'settings.googleManaged' | t }}</p>
         }
       </section>
+      <section>
+        <h2>{{ 'deleteAccount.title' | t }}</h2>
+        <p class="help">{{ 'deleteAccount.entryHelp' | t }}</p>
+        <a routerLink="/settings/delete-account" class="danger-link">{{ 'deleteAccount.open' | t }}</a>
+      </section>
             @if (msg()?.section === 'general') {
         <p class="msg" [class.ng]="!msg()!.ok">{{ msg()!.key | t }}</p>
       }
@@ -143,6 +148,9 @@ type Section = 'general' | 'password';
     .to-notify:hover { background: var(--surface-alt); }
     .to-body { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 15px; }
     .row-start { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+    .danger-link { align-self: flex-start; display: inline-flex; align-items: center; min-height: 44px;
+      color: var(--danger-text); text-decoration: none; font-size: 14px; }
+    .danger-link:hover { text-decoration: underline; }
   `,
 })
 export class Settings implements OnInit {

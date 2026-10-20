@@ -81,7 +81,7 @@ export interface InboxMemo {
 
 /** 管理ログ（今は書くだけ。見る画面は後日） */
 export interface AdminLog {
-  type: 'role' | 'remove' | 'leave' | 'handover' | 'import' | 'archive' | 'unarchive';
+  type: 'role' | 'remove' | 'leave' | 'handover' | 'import' | 'archive' | 'unarchive' | 'account';
   by: string;           // 操作した人
   target: string;       // 対象の人
   from: Role;           // 操作する前の役割

@@ -1,4 +1,4 @@
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, OnInit, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ProjectService } from '../../core/project/project.service';
 import { SearchService } from '../../core/search/search.service';
@@ -50,9 +50,15 @@ import { TPipe } from '../../i18n/i18n';
     .primary:disabled { background: var(--disabled); cursor: default; }
   `,
 })
-export class DeleteProjectDialog {
+export class DeleteProjectDialog implements OnInit {
   pid = input.required<string>();
   name = input.required<string>();
+  /** 名前を最初から入れておく（見本のプロジェクト。確定を押すだけで消せる） */
+  prefill = input(false);
+
+  ngOnInit() {
+    if (this.prefill()) this.typed = this.name();
+  }
   /** 自分以外のメンバーの人数（知らせが届く人）。わからなければ null */
   others = input<number | null>(null);
   /** 消し終わった（移動や知らせは、呼んだ側が決める） */

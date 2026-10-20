@@ -4,11 +4,12 @@ import {
   createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut,
   sendEmailVerification, EmailAuthProvider, reauthenticateWithCredential, updatePassword,
   sendPasswordResetEmail, updateProfile as updateAuthProfile, // updateProfile（設定画面の保存）がすでにある
+  reauthenticateWithPopup,
 } from 'firebase/auth';
 import {
   collectionGroup, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch,
 } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { auth, db, firebaseApp } from '../firebase';
 import { I18nService } from '../../i18n/i18n';
 import { ReminderBucket } from '../time/time';
 import { DailyGroup } from '../models';
@@ -139,6 +140,31 @@ export class AuthService {
     await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email!, current));
     await updatePassword(u, next);
   }
+
+  /** 本人確認をし直す（アカウントの削除の前）。パスワードの人はパスワード、Google の人は Google の窓 */
+  async reauthenticate(password: string) {
+    const u = auth.currentUser!;
+    if (this.isPasswordUser()) {
+      await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email!, password));
+    } else {
+      await reauthenticateWithPopup(u, new GoogleAuthProvider());
+    }
+    // 関数は「ログインし直した時刻」を札で見るので、新しい札に取り替えておく
+    await u.getIdToken(true);
+  }
+
+  /** アカウントを削除する（関数に頼む）。済んだら、この端末の下書きを消して、ログアウトする */
+  async deleteAccount(handovers: Record<string, string>, reason: string) {
+    const uid = auth.currentUser!.uid;
+    const { getFunctions, httpsCallable } = await import('firebase/functions');
+    await httpsCallable(getFunctions(firebaseApp, 'asia-northeast1'), 'imDeleteAccount')({ handovers, reason });
+    // 下書き・書きかけは、この端末のブラウザにしかないので、ここで消す
+    for (const k of ['drafts', 'fields']) {
+      try { localStorage.removeItem(`issuemanager.${k}.${uid}`); } catch { /* 消せなくても害はない */ }
+    }
+    await this.logout();
+  }
+
   /** 自分の表示名。設定で変えた名前（プロフィール）を正とし、まだ読めていなければ Auth の名前を使う */
   myName(user: User | null = auth.currentUser): string {
     return this.profile()?.displayName

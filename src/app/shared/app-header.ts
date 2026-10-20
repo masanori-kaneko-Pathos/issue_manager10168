@@ -324,9 +324,10 @@ export class AppHeader {
 
   addOpen = signal(false);
   /** メニューを開いたときにいたプロジェクトと、そこでの自分のロール */
-  ctx = signal<{ pid: string | null; role: Role | null }>({ pid: null, role: null });
-  canInvite = computed(() => !!this.ctx().pid && this.ctx().role === 'admin');
-  inviteDenied = computed(() => (this.ctx().pid ? 'menu.inviteNeedAdmin' : 'menu.inviteNeedProject'));
+  ctx = signal<{ pid: string | null; role: Role | null; sample: boolean }>({ pid: null, role: null, sample: false });
+  canInvite = computed(() => !!this.ctx().pid && this.ctx().role === 'admin' && !this.ctx().sample);
+  inviteDenied = computed(() => !this.ctx().pid ? 'menu.inviteNeedProject'
+    : this.ctx().sample ? 'sample.noInvite' : 'menu.inviteNeedAdmin');
 
   open = signal(false);
   name = computed(() => this.authService.profile()?.displayName || this.authService.user()?.email || '');
@@ -361,14 +362,20 @@ export class AppHeader {
     this.bellOpen.set(false);
     const pid = this.currentPid();
     let role: Role | null = null;
+    let sample = false;
     if (pid) {
       try {
-        role = await this.projectService.myRole(pid, auth.currentUser!.uid);
+        const [r, p] = await Promise.all([
+          this.projectService.myRole(pid, auth.currentUser!.uid),
+          this.projectService.get(pid),
+        ]);
+        role = r;
+        sample = !!p?.sample;
       } catch {
         role = null;
       }
     }
-    this.ctx.set({ pid, role });
+    this.ctx.set({ pid, role, sample });
     this.addOpen.set(true);
   }
 
