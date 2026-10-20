@@ -229,7 +229,8 @@ export class IssueDetail implements OnInit {
   canEdit = computed(() => {
     const i = this.issue();
     const r = this.role();
-    if (!i || !r || i.status === 'closed' || i.status === 'merged' || this.projectArchived()) return false;
+    if (!i || !r || i.status === 'closed' || i.status === 'merged' || i.status === 'deleted'
+      || this.projectArchived()) return false;
     if (r === 'admin') return true;
     return r === 'member' && (i.reporterId === this.myUid || i.assigneeId === this.myUid);
   });

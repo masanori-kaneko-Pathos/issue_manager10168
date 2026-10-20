@@ -324,7 +324,7 @@
         <aside class="side" [attr.aria-label]="'detailMenu.props' | t">
           <div class="side-head">
             <span>{{ 'detailMenu.props' | t }}</span>
-            @if (!canEdit()) {
+            @if (!canEdit() && i.status !== 'deleted') {
               <app-help-tip kind="denied" align="right" [keys]="[projectArchived() ? 'archive.readonly' : 'edit.denied']" />
             }
           </div>
