@@ -438,6 +438,9 @@ export const ja = {
   },
   projectSettings: {
     adminOnly: 'この画面は、管理者だけが使えます。',
+    name: 'プロジェクト名',
+    nameHelp: '変えると、メンバー全員の画面にすぐ反映されます。過去のお知らせと、送ったまま承諾待ちの招待は、前の名前のまま残ります。',
+    nameEmpty: 'プロジェクト名を入れてください。',
     labels: 'ラベル',
     labelsHelp: '課題の分類に使います。1つの課題に5個まで付けられます。名前を変えても、付いている課題はそのままです。',
     labelName: 'ラベル名',
@@ -611,7 +614,16 @@ export const ja = {
     editHelpTouch: '1行目がタイトル、2行目から詳しいこと。外を押すと保存します。',
     editedAgo: '{{t}}に編集',
   },
-
+  drafts: {
+    title: '下書き',
+    menu: '下書き（{{n}}）',
+    help: '書きかけの課題やプロジェクトです。この端末のブラウザにだけ残ります。登録すると、ここから消えます。',
+    empty: '下書きはありません。',
+    untitled: '（無題）',
+    kinds: { issue: '課題', project: 'プロジェクト' },
+    delete: '下書きを削除',
+    deleted: '下書きを削除しました。',
+  },
   causeEdit: {
     open: '原因・対策を書く',
     title: '原因・対策',

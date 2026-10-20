@@ -14,6 +14,7 @@ import { SearchService } from '../core/search/search.service'
 import { SearchBox } from './search-box';
 import { ProjectNewDialog } from './project-new-dialog';
 import { InboxPop } from './inbox-pop';
+import { DraftService } from '../core/draft/draft.service';
 
 @Component({
   selector: 'app-header',
@@ -42,6 +43,11 @@ import { InboxPop } from './inbox-pop';
           <div class="menu" role="menu">
             <button type="button" role="menuitem" class="primary-item" (click)="newIssue()">
               {{ 'menu.newIssue' | t }}</button>
+            <!-- 下書きは、1件以上あるときだけ出す -->
+            @if (drafts.count()) {
+              <a routerLink="/drafts" role="menuitem" (click)="addOpen.set(false)">
+                {{ 'drafts.menu' | t: { n: '' + drafts.count() } }}</a>
+            }
             <button type="button" role="menuitem" (click)="newProject()">{{ 'menu.newProject' | t }}</button>
             <div class="item-row">
               <button type="button" role="menuitem" [disabled]="!canInvite()" (click)="invite()">
@@ -280,6 +286,8 @@ export class AppHeader {
   protected inbox = inject(InboxService);
   /** お知らせ（件数・一覧・既読） */
   protected notify = inject(NotificationService);
+  /** 下書き（件数を＋のメニューに出す） */
+  protected drafts = inject(DraftService);
   private clock = inject(Clock);
   private i18n = inject(I18nService);
   bellOpen = signal(false);

@@ -13,6 +13,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
 import { HelpTip } from '../../shared/help-tip';
 import { LabelPicker } from '../../shared/label-picker';
 import { MemberSelect } from '../../shared/member-select';
+import { DraftService } from '../../core/draft/draft.service';
 
 const LAST_PROJECT_KEY = 'issuemanager.lastProject';
 
@@ -32,6 +33,22 @@ function writeLastProject(pid: string) {
   }
 }
 
+/** 登録画面の下書きにしまう中身 */
+interface IssueDraft {
+  pid: string | null;
+  title: string;
+  type: IssueType | null;
+  importance: Level | null;
+  dueMs: number | null;
+  assigneeId: string;
+  doneCriteria: string;
+  description: string;
+  labelIds: string[];
+  occurredOn: string;
+  impact: string;
+  showDetail: boolean;
+}
+
 @Component({
   selector: 'app-issue-new',
   imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelPicker, MemberSelect],
@@ -42,7 +59,8 @@ function writeLastProject(pid: string) {
       @if (fromNumber(); as n) { <p class="notice">{{ 'prevention.creating' | t: { n: '' + n } }}</p> }
       @if (recurNumber(); as n) { <p class="notice">{{ 'links.recurCreating' | t: { n: '' + n } }}</p> }
       @if (splitNote(); as s) { <p class="notice">{{ 'subtask.splitCreating' | t: { n: '' + s.n, title: s.title } }}</p> }      
-      <form (ngSubmit)="save()">
+      <!-- 入力・選択・ボタンの操作は、どれも form まで上がってくるので、ここで1回だけ受けて下書きにしまう -->
+      <form (ngSubmit)="save()" (input)="touch()" (change)="touch()" (click)="touch()">
               @if (!loadingProjects() && projects().length === 0) {
           <p class="notice">
             {{ 'issueNew.noProject' | t }}
@@ -216,9 +234,20 @@ export class IssueNew implements OnInit {
   private splitFrom: { iid: string; sid: string; number: number } | null = null;
   splitNote = signal<{ n: number; title: string } | null>(null);
   fromNumber = signal<number | null>(null);
+  private drafts = inject(DraftService);
+  /** 下書きにできるのは、ふつうの登録だけ（メモ・再発防止・再発・切り出しは、元から開き直せば同じ中身になるため） */
+  private readonly draftable = !this.memoId && !this.fromIid && !this.recurIid && !this.splitOf;
+  /** この画面の下書きの id（下書きから開いたときはその id。新しく開いたときは、打ち始めたら下書きになる） */
+  private readonly draftId = this.route.snapshot.queryParamMap.get('draft') ?? crypto.randomUUID();
+  private draftTimer: ReturnType<typeof setTimeout> | undefined;
+  /** 何か触ったか（触っていなければしまわない） */
+  private touched = false;
+  /** 登録できた（このあとは、もうしまわない） */
+  private submitted = false;
   backLink = computed(() => {
     const src = this.fromIid || this.recurIid || this.splitOf;
-    return this.memoId ? ['/inbox']
+    return this.route.snapshot.queryParamMap.get('draft') ? ['/drafts']
+      : this.memoId ? ['/inbox']
       : src && this.fromPid ? ['/p', this.fromPid, 'i', src]
         : this.fromPid ? ['/p', this.fromPid] : ['/'];
   });
@@ -274,7 +303,10 @@ export class IssueNew implements OnInit {
   });
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => clearTimeout(this.titleTimer));
+    inject(DestroyRef).onDestroy(() => {
+      clearTimeout(this.titleTimer);
+      this.flushDraft(); // 離れるときは、待たずにしまう
+    });
   }
 
   onTitle(value: string) {
@@ -323,6 +355,8 @@ export class IssueNew implements OnInit {
         this.dueAt.set(d);
         this.dueInput = toLocalInput(d, this.tz());
       }
+      // 下書きから開いたら、その中身を入れる
+      await this.restoreDraft();
       // 受信箱のメモから来たら、タイトルと内容を入れておく
       if (this.memoId) {
         const memo = await this.inbox.get(this.memoId);
@@ -432,6 +466,60 @@ export class IssueNew implements OnInit {
     this.showDetail.set(true);
   }
 
+  /** 何か触ったら、少し待ってから下書きにしまう（1文字ごとに書き込まないように） */
+  touch() {
+    if (!this.draftable || this.submitted) return;
+    this.touched = true;
+    clearTimeout(this.draftTimer);
+    this.draftTimer = setTimeout(() => this.flushDraft(), 400);
+  }
+
+  /** 今の中身を下書きにしまう。空なら下書きを消す（空の下書きをためない） */
+  private flushDraft() {
+    clearTimeout(this.draftTimer);
+    if (!this.draftable || this.submitted || !this.touched) return;
+    const v: IssueDraft = {
+      pid: this.pid(), title: this.title, type: this.type(), importance: this.importance(),
+      dueMs: this.dueAt()?.getTime() ?? null, assigneeId: this.assigneeId(),
+      doneCriteria: this.doneCriteria, description: this.description, labelIds: this.labelIds(),
+      occurredOn: this.occurredOn, impact: this.impact, showDetail: this.showDetail(),
+    };
+    const empty = !v.title.trim() && !v.type && !v.importance && v.dueMs == null && !v.doneCriteria.trim()
+      && !v.description.trim() && !v.labelIds.length && !v.occurredOn && !v.impact.trim();
+    if (empty) this.drafts.remove(this.draftId);
+    else this.drafts.save({ id: this.draftId, kind: 'issue', title: v.title.trim(), pid: v.pid, data: v });
+  }
+
+  /**
+   * 下書きから開いたときに、中身を入れる。プロジェクトが今も登録できるものなら、そちらに切り替えてから。
+   * 期限は日時そのものを戻す（「今日中」は書いた日の今日なので、選んだボタンではなく日時で戻す）
+   */
+  private async restoreDraft() {
+    const id = this.route.snapshot.queryParamMap.get('draft');
+    const d = id ? this.drafts.get(id) : null;
+    if (!d || d.kind !== 'issue') return;
+    const v = d.data as IssueDraft;
+    if (v.pid && v.pid !== this.pid() && this.projects().some((p) => p.id === v.pid)) await this.selectProject(v.pid);
+    this.title = v.title;
+    this.type.set(v.type);
+    this.importance.set(v.importance);
+    if (v.dueMs != null) {
+      const due = new Date(v.dueMs);
+      this.dueAt.set(due);
+      this.dueInput = toLocalInput(due, this.tz());
+      this.duePreset.set(null);
+    }
+    // 担当者が抜けていたら自分のまま。ラベルは、今もプロジェクトにあるものだけ
+    if (this.members().some((m) => m.uid === v.assigneeId)) this.assigneeId.set(v.assigneeId);
+    this.doneCriteria = v.doneCriteria;
+    this.description = v.description;
+    const ok = new Set(this.currentLabels().map((l) => l.id));
+    this.labelIds.set(v.labelIds.filter((l) => ok.has(l)));
+    this.occurredOn = v.occurredOn;
+    this.impact = v.impact;
+    this.showDetail.set(v.showDetail);
+  }
+
   selectType(t: IssueType) {
     const prev = this.type();
     // 雛形のまま（未編集）なら差し替える。自分で書き換えた内容は消さない
@@ -482,6 +570,10 @@ export class IssueNew implements OnInit {
         splitFrom: this.splitFrom,
       }, this.myUid, this.tz(), this.memoId ?? undefined);
       writeLastProject(pid);
+      // 登録できたので、下書きは要らない（このあと画面を離れても、しまい直さない）
+      this.submitted = true;
+      clearTimeout(this.draftTimer);
+      this.drafts.remove(this.draftId);
       // 切り出したときは、親の課題に戻る（切り出し済みになったことを、その場で確かめられるように）
       await this.router.navigate(this.splitFrom ? ['/p', pid, 'i', this.splitFrom.iid] : ['/p', pid]);
     } catch (e) {

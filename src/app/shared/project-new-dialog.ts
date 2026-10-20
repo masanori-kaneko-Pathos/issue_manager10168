@@ -1,4 +1,5 @@
-import { Component, inject, output, signal, viewChild } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject, input, output, signal, viewChild } from '@angular/core';
+import { DraftService } from '../core/draft/draft.service';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { auth } from '../core/firebase';
@@ -6,6 +7,13 @@ import { ProjectService } from '../core/project/project.service';
 import { SearchService } from '../core/search/search.service';
 import { InvitePicker, Invitee } from './invite-picker';
 import { TPipe } from '../i18n/i18n';
+
+/** プロジェクトの作成の下書きにしまう中身 */
+interface ProjectDraft {
+  name: string;
+  inviteOpen: boolean;
+  invitees: Invitee[];
+}
 
 /** プロジェクトの作成（名前だけで作れる。作るときに招待もできる） */
 @Component({
@@ -17,7 +25,8 @@ import { TPipe } from '../i18n/i18n';
     <section class="dialog" [class.wide]="inviteOpen()" role="dialog" aria-modal="true"
       [attr.aria-label]="'projectNew.title' | t">
       <h2>{{ 'projectNew.title' | t }}</h2>
-      <form (ngSubmit)="create()">
+      <!-- 入力・選択・ボタンの操作は、どれも form まで上がってくるので、ここで1回だけ受けて下書きにしまう -->
+      <form (ngSubmit)="create()" (input)="touch()" (change)="touch()" (click)="touch()">
         <label class="field">{{ 'projectNew.name' | t }}
           <input name="name" [(ngModel)]="name" maxlength="100" autocomplete="off"
             [placeholder]="'projectNew.namePlaceholder' | t" />
@@ -29,7 +38,7 @@ import { TPipe } from '../i18n/i18n';
 
         @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
         <div class="row">
-          <button type="button" class="link" (click)="close.emit()">{{ 'workflow.cancel' | t }}</button>
+          <button type="button" class="link" (click)="cancel()">{{ 'workflow.cancel' | t }}</button>
           <button type="submit" class="primary" [disabled]="busy() || !name.trim()">{{ 'projectNew.submit' | t }}</button>
         </div>
       </form>
@@ -55,8 +64,66 @@ import { TPipe } from '../i18n/i18n';
     .primary:disabled { background: var(--disabled); cursor: default; }
   `,
 })
-export class ProjectNewDialog {
+export class ProjectNewDialog implements OnInit {
   close = output<void>();
+  /** 下書きから開いたときの、下書きの id（ヘッダーの＋から開いたときは null＝まっさら） */
+  draftId = input<string | null>(null);
+  private drafts = inject(DraftService);
+  /** この窓の下書きの id（入力を受け取ってから決まるので、ngOnInit で入れる） */
+  private id = '';
+  /** 最後にしまった（または開いたときの）中身。変わっていなければ、しまわない */
+  private lastSaved = '';
+  private draftTimer: ReturnType<typeof setTimeout> | undefined;
+  /** 作成できた・やめた（このあとは、もうしまわない） */
+  private done = false;
+
+  constructor() {
+    // 閉じるとき（外を押した・Esc も）に、まだしまっていない分をしまう
+    inject(DestroyRef).onDestroy(() => this.flushDraft());
+  }
+
+  ngOnInit() {
+    this.id = this.draftId() ?? crypto.randomUUID();
+    const d = this.draftId() ? this.drafts.get(this.draftId()!) : null;
+    if (d?.kind === 'project') {
+      const v = d.data as ProjectDraft;
+      this.name = v.name;
+      this.inviteOpen.set(v.inviteOpen);
+      this.invitees.set(v.invitees);
+    }
+    this.lastSaved = JSON.stringify(this.snapshot());
+  }
+
+  private snapshot(): ProjectDraft {
+    return { name: this.name, inviteOpen: this.inviteOpen(), invitees: this.invitees() };
+  }
+
+  /** 何か触ったら、少し待ってから下書きにしまう */
+  touch() {
+    if (this.done) return;
+    clearTimeout(this.draftTimer);
+    this.draftTimer = setTimeout(() => this.flushDraft(), 400);
+  }
+
+  /** 中身が変わっていたら、下書きにしまう。空なら下書きを消す（空の下書きをためない） */
+  private flushDraft() {
+    clearTimeout(this.draftTimer);
+    if (this.done) return;
+    const v = this.snapshot();
+    const json = JSON.stringify(v);
+    if (json === this.lastSaved) return;
+    if (!v.name.trim() && !v.invitees.length) this.drafts.remove(this.id);
+    else this.drafts.save({ id: this.id, kind: 'project', title: v.name.trim(), pid: null, data: v });
+    this.lastSaved = json;
+  }
+
+  /** やめる：自分で選んだので、下書きも捨てる（外を押した・Esc のときは残す） */
+  cancel() {
+    this.done = true;
+    clearTimeout(this.draftTimer);
+    this.drafts.remove(this.id);
+    this.close.emit();
+  }
 
   private ps = inject(ProjectService);
   private search = inject(SearchService);
@@ -83,6 +150,10 @@ export class ProjectNewDialog {
     try {
       const user = auth.currentUser!;
       const pid = await this.ps.create(name, user);
+      // 作れたので、下書きは要らない（このあと閉じても、しまい直さない）
+      this.done = true;
+      clearTimeout(this.draftTimer);
+      this.drafts.remove(this.id);
       this.search.invalidate();
       const list = this.inviteOpen() ? this.invitees() : [];
       const failed: Invitee[] = [];

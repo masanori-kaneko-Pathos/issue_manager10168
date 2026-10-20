@@ -187,6 +187,11 @@ export class ProjectService {
         return updateDoc(doc(db, 'projects', pid), { settings });
     }
 
+    /** プロジェクト名を変える（管理者のみ。1〜100文字の文字列かはルールで確認） */
+    rename(pid: string, name: string) {
+        return updateDoc(doc(db, 'projects', pid), { name });
+    }
+
     /** アーカイブ（管理者のみ）：全員が閲覧専用になり、通知も止まる。管理ログにも残す（追加の取り決め） */
     async archive(pid: string, kind: ArchiveKind, reason: string, by: string, role: Role) {
         const batch = writeBatch(db);

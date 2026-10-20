@@ -441,6 +441,9 @@ export const en: Dict = {
   },
   projectSettings: {
     adminOnly: 'Only admins can use this page.',
+    name: 'Project name',
+    nameHelp: 'Changes appear right away for all members. Past notifications and pending invitations keep the previous name.',
+    nameEmpty: 'Enter a project name.',
     labels: 'Labels',
     labelsHelp: 'Used to categorize issues. Up to 5 per issue. Renaming a label keeps it on its issues.',
     labelName: 'Label name',
@@ -615,7 +618,16 @@ export const en: Dict = {
     editHelpTouch: 'First line is the title, the rest is details. Tap outside to save.',
     editedAgo: 'edited {{t}}',
   },
-
+  drafts: {
+    title: 'Drafts',
+    menu: 'Drafts ({{n}})',
+    help: 'Issues and projects you started but have not created yet. They are kept only in this browser. Creating one removes it from here.',
+    empty: 'No drafts.',
+    untitled: '(Untitled)',
+    kinds: { issue: 'Issue', project: 'Project' },
+    delete: 'Delete draft',
+    deleted: 'Draft deleted.',
+  },
   causeEdit: {
     open: 'Write cause & fix',
     title: 'Cause & countermeasure',

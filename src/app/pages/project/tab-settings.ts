@@ -6,6 +6,7 @@ import {
 } from '../../core/models';
 import { ProjectContext } from './project-context';
 import { ProjectService } from '../../core/project/project.service';
+import { SearchService } from '../../core/search/search.service';
 import { HelpTip } from '../../shared/help-tip';
 import { LabelChip } from '../../shared/label-chip';
 import { I18nService, TPipe } from '../../i18n/i18n';
@@ -28,7 +29,13 @@ const RANGES: Record<NumKey, [number, number]> = {
       <p>{{ 'projectSettings.adminOnly' | t }}</p>
     } @else if (ctx.archived()) {
       <p>{{ 'archive.settingsLocked' | t }}</p>
-    } @else {
+    } @else {      
+      <section>
+        <h2>{{ 'projectSettings.name' | t }}</h2>
+        <input class="pname" [ngModel]="name()" (ngModelChange)="name.set($event); info.set('')" maxlength="100"
+          [attr.aria-label]="'projectSettings.name' | t" />
+        <p class="help">{{ 'projectSettings.nameHelp' | t }}</p>
+      </section>
       <section>
         <h2>{{ 'projectSettings.labels' | t }} <app-help-tip [keys]="['projectSettings.labelsHelp']" /></h2>
         <ul class="labels">
@@ -100,6 +107,7 @@ const RANGES: Record<NumKey, [number, number]> = {
   `,
   styles: `
     h2 { font-size: 16px; }
+    .pname { box-sizing: border-box; width: 100%; max-width: 480px; min-height: 44px; font-size: 16px; padding: 0 12px; }
     .labels { list-style: none; padding: 0; margin: 0 0 12px; }
     .labels li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0;
       border-bottom: 1px solid var(--border); }
@@ -144,6 +152,12 @@ export class ProjectSettings implements OnInit {
   protected ctx = inject(ProjectContext);
   private ps = inject(ProjectService);
   private i18n = inject(I18nService);
+  private search = inject(SearchService);
+
+  /** 画面で編集中のプロジェクト名と、保存済みの名前 */
+  name = signal('');
+  private savedName = signal('');
+  private nameDirty = computed(() => this.name().trim() !== this.savedName());
 
   readonly colors = LABEL_COLORS;
   readonly max = MAX_LABELS_PER_PROJECT;
@@ -165,9 +179,12 @@ export class ProjectSettings implements OnInit {
   private labelsDirty = computed(() => JSON.stringify(this.labels()) !== JSON.stringify(this.saved()));
   private settingsDirty = computed(() => JSON.stringify(this.settings()) !== JSON.stringify(this.savedSettings()));
   /** どちらかに未保存の変更があれば、下に保存のバーを出す（保存は1つのボタンで両方） */
-  dirty = computed(() => this.labelsDirty() || this.settingsDirty());
+  dirty = computed(() => this.nameDirty() || this.labelsDirty() || this.settingsDirty());
 
   ngOnInit() {
+    const name = this.ctx.project()?.name ?? '';
+    this.savedName.set(name);
+    this.name.set(name);
     // 色が未設定の古いラベルにも、表示どおりの色を入れておく
     const list = (this.ctx.project()?.labels ?? []).map((l) => ({ ...l, color: labelColor(l) }));
     this.saved.set(list);
@@ -227,6 +244,11 @@ export class ProjectSettings implements OnInit {
   }
 
   async save() {
+    const projectName = this.name().trim();
+    if (!projectName) {
+      this.error.set('projectSettings.nameEmpty');
+      return;
+    }
     const list = this.labels().map((l) => ({ ...l, name: l.name.trim() }));
     if (list.some((l) => !l.name)) {
       this.error.set('projectSettings.emptyName');
@@ -249,6 +271,13 @@ export class ProjectSettings implements OnInit {
     this.error.set('');
     try {
       // 変えたほうだけ保存する
+      if (this.nameDirty()) {
+        await this.ps.rename(this.ctx.pid(), projectName);
+        this.savedName.set(projectName);
+        this.name.set(projectName);
+        // ヘッダーの検索が取っておいたプロジェクト名を捨てる（古い名前で出ないように）
+        this.search.invalidate();
+      }
       if (this.labelsDirty()) {
         await this.ps.updateLabels(this.ctx.pid(), list);
         this.ctx.setLabels(list);
@@ -270,6 +299,7 @@ export class ProjectSettings implements OnInit {
   }
 
   discard() {
+    this.name.set(this.savedName());
     this.labels.set(this.saved());
     this.settings.set(this.savedSettings());
     this.error.set('');

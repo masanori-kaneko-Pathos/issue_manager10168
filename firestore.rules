@@ -376,6 +376,10 @@ service cloud.firestore {
           // 設定を変えたときだけ、形と範囲を確かめる（ラベルだけの保存は、設定の中身に左右されない）
           && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['settings'])
               || validSettings(request.resource.data.settings))
+          // 名前を変えたときだけ、作るときと同じ決まり（1〜100文字の文字列）を確かめる
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['name'])
+              || (request.resource.data.name is string
+                  && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 100))
           // アーカイブ中は、解除しかできない（名前・設定・ラベルは、解除してから）
           && (resource.data.archived == false
               || request.resource.data.diff(resource.data).affectedKeys()
