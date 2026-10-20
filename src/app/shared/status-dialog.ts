@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { auth } from '../core/firebase';
 import { AuthService } from '../core/auth/auth.service';
 import { ConflictError, IssueService, conflictWho } from '../core/issue/issue.service';
-import { CAUSE_CATEGORIES, CauseCategory, Effect, Issue, Member, hasWorkaround } from '../core/models';
+import { CAUSE_CATEGORIES, CauseCategory, Effect, Issue, Member, hasWorkaround, toHours } from '../core/models';
 import { Transition } from '../core/issue/workflow';
 import { I18nService, TPipe } from '../i18n/i18n';
 
@@ -38,6 +38,12 @@ import { I18nService, TPipe } from '../i18n/i18n';
             }
           </div>
         </fieldset>
+        @if (effort()) {
+          <label class="field">{{ 'issue.actualHours' | t }}（{{ 'effort.optional' | t }}）
+            <span class="hours">
+              <input type="number" min="0" max="999" step="0.5" [(ngModel)]="actual" /> {{ 'effort.unit' | t }}</span>
+          </label>
+        }
         @if (needsWaCheck()) {
           <div class="criteria">
             <p class="help">{{ 'workaround.endedHelp' | t }}</p>
@@ -131,6 +137,8 @@ import { I18nService, TPipe } from '../i18n/i18n';
     .conflict p:last-child { margin-bottom: 0; }
     .warn { margin: 0; padding: 10px 12px; border-radius: 8px; font-size: 13px;
       background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
+    .hours { display: flex; align-items: center; gap: 6px; font-weight: normal; }
+    .hours input { width: 120px; min-height: 40px; font-size: 16px; padding: 0 8px; }
     `,
 })
 export class StatusDialog implements OnInit {
@@ -141,6 +149,8 @@ export class StatusDialog implements OnInit {
   pid = input.required<string>();
   /** 依頼から開いたときに、最初から入れておく理由（再開の依頼） */
   presetReason = input('');
+  /** 工数がオンのプロジェクトか（解決するとき、実績の欄を出す） */
+  effort = input(false);
   done = output<void>();
   cancel = output<void>();
 
@@ -155,6 +165,7 @@ export class StatusDialog implements OnInit {
   cause = '';
   countermeasure = '';
   learning = '';
+  actual: number | null = null;
   causeCategory = signal<CauseCategory | null>(null);
   effect = signal<Effect | null>(null);
   doneMet = signal(false);
@@ -180,6 +191,7 @@ export class StatusDialog implements OnInit {
     this.cause = i.cause ?? '';
     this.countermeasure = i.countermeasure ?? '';
     this.causeCategory.set(i.causeCategory ?? null);
+    this.actual = i.actualHours ?? null;
     if (this.transition().needs === 'resolve') this.loadSubtaskNote();
   }
 
@@ -200,7 +212,8 @@ export class StatusDialog implements OnInit {
     switch (this.transition().needs) {
       case 'reason': return !!this.reason.trim();
       case 'resolve': return !!(this.cause.trim() && this.countermeasure.trim() && this.causeCategory() && this.doneMet()
-        && (!this.needsWaCheck() || this.waEnded()));
+        && (!this.needsWaCheck() || this.waEnded())
+        && (!this.effort() || toHours(this.actual) !== undefined));
       case 'close': return !!(this.effect() && this.doneMet());
       default: return true;
     }
@@ -220,6 +233,7 @@ export class StatusDialog implements OnInit {
         learning: this.learning.trim(),
         doneCriteriaMet: this.doneMet(),
         workaroundEnded: this.needsWaCheck() && this.waEnded(),
+        actualHours: this.effort() && this.transition().needs === 'resolve' ? toHours(this.actual) ?? null : null,
       }, auth.currentUser!.uid, this.tz());
       this.done.emit();
     } catch (e) {

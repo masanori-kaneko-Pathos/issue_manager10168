@@ -460,6 +460,30 @@
                 @if (i.impact) {<span class="pre">{{ i.impact }}</span>} @else {<span class="muted">—</span>}
               }
             </dd>
+            @if (effortOn()) {
+              @for (h of hourFields; track h.f) {
+                <dt>{{ 'issue.' + h.k | t }}</dt>
+                <dd>
+                  @if (editField() === h.f) {
+                    <div class="inline-edit">
+                      <span class="hours">
+                        <input [id]="'e-' + h.f" type="number" min="0" max="999" step="0.5" [(ngModel)]="draftHours"
+                          (keydown)="onLineKey($event)" />
+                        {{ 'effort.unit' | t }}</span>
+                      @if (fieldConflict()) { <p class="field-conflict" role="alert">{{ conflictText() }}</p> }
+                      <div class="row">
+                        <button type="button" class="link" (click)="closeField()">{{ 'workflow.cancel' | t }}</button>
+                        <button type="button" class="primary" [disabled]="busy()" (click)="saveField()">{{ 'edit.save' | t }}</button>
+                      </div>
+                    </div>
+                  } @else if (canEdit()) {
+                    <button type="button" class="text-btn" (click)="openField(h.f)">{{ hoursText(i[h.k]) }}</button>
+                  } @else {
+                    {{ hoursText(i[h.k]) }}
+                  }
+                </dd>
+              }
+            }
           </dl>
         </aside>
 
@@ -509,6 +533,13 @@
                 <app-subtask-list [pid]="pid" [issue]="i" [members]="assignable()" [nameOf]="nameFn"
                   [canEdit]="canEditSubtasks()" [canWork]="canWork()" [canRemind]="canRemind()"
                   [projectName]="projectName()" />
+              </dd>
+            }
+            @if (canAttach() || issueFiles().length) {
+              <dt>{{ 'attach.title' | t }}</dt>
+              <dd>
+                <app-attachment-list [pid]="pid" [iid]="iid" [items]="issueFiles()" [canAdd]="canAttach()"
+                  [isAdmin]="role() === 'admin'" [archived]="projectArchived()" [nameOf]="nameFn" />
               </dd>
             }
             @if (i.cause) {
@@ -685,7 +716,7 @@
             }
 
             @if (active(); as t) {
-              <app-status-dialog [issue]="base()!" [transition]="t" [pid]="pid" [members]="members()"
+              <app-status-dialog [issue]="base()!" [transition]="t" [pid]="pid" [members]="members()" [effort]="effortOn()"
                 [presetReason]="handling()?.kind === 'reopen' ? handling()!.reason : ''"
                 (done)="onStatusDone()" (cancel)="active.set(null); handling.set(null)" />
             }
@@ -752,6 +783,10 @@
                     </div>
                   } @else if (item.body) {
                     <p class="pre">@for (s of commentSegs(item); track $index) {@if (s.kind === 'mention') {<span class="mention">{{ s.text }}</span>} @else if (s.kind === 'issue') {<button type="button" class="issue-ref" (click)="openNumber(s.n!)">{{ s.text }}</button>} @else {{{ s.text }}}}</p>
+                  }
+                  @if (item.kind === 'comment' && !item.deleted && filesOf(item.id).length) {
+                    <app-attachment-list [pid]="pid" [iid]="iid" [items]="filesOf(item.id)" [canAdd]="false"
+                      [isAdmin]="role() === 'admin'" [archived]="projectArchived()" [nameOf]="nameFn" />
                   }
                   @if (item.changes?.dueAt; as c) {
                     <p class="change">{{ 'issue.due' | t }}：{{ fmt(c.from) }} → {{ fmt(c.to) }}</p>

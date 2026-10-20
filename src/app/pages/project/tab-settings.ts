@@ -94,6 +94,14 @@ const RANGES: Record<NumKey, [number, number]> = {
             <span class="help">{{ 'projectSettings.ganttHelp' | t }}</span>
           </span>
         </label>
+        <label class="feature">
+          <input type="checkbox" [checked]="settings().features.effort"
+            (change)="setFeature('effort', $any($event.target).checked)" />
+          <span class="f-body">
+            <span class="f-name">{{ 'projectSettings.effort' | t }}</span>
+            <span class="help">{{ 'projectSettings.effortHelp' | t }}</span>
+          </span>
+        </label>
       </section>
 
       @if (dirty()) {
@@ -143,6 +151,7 @@ const RANGES: Record<NumKey, [number, number]> = {
     .num input { width: 100px; }
     .num .help { margin: 0; }
     .feature { display: flex; align-items: flex-start; gap: 10px; max-width: 520px; cursor: pointer; }
+    .feature + .feature { margin-top: 12px; }
     .feature input { width: 20px; height: 20px; margin-top: 2px; }
     .f-body { display: flex; flex-direction: column; gap: 2px; }
     .f-name { font-size: 14px; font-weight: bold; }

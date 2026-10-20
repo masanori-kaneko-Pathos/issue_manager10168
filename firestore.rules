@@ -133,7 +133,8 @@ service cloud.firestore {
 
     function resolutionOk() {
       let d = request.resource.data;
-      return d.cause is string && d.cause.size() > 0
+      return validHours(d, 'actualHours')
+        && d.cause is string && d.cause.size() > 0
         && d.countermeasure is string && d.countermeasure.size() > 0
         && d.causeCategory in ['requirements', 'design', 'testing', 'operation', 'communication', 'external', 'other']
         && d.doneCriteriaMet == true
@@ -197,7 +198,8 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/projects/$(pid)/members/$(d.assigneeId)).data.role in ['admin', 'member']
         // 番号は、採番した値と一致
         && d.number == getAfter(projectPath(pid)).data.issueSeq
-        && getAfter(projectPath(pid)).data.issueSeq == get(projectPath(pid)).data.issueSeq + 1;
+        && getAfter(projectPath(pid)).data.issueSeq == get(projectPath(pid)).data.issueSeq + 1
+        && validHours(d, 'estimateHours');
     }
 
     // ふだんの登録：提起者は本人、未着手、登録日時は今（過去の日付の課題は作れない）
@@ -206,7 +208,7 @@ service cloud.firestore {
       return d.keys().hasOnly([
                'number', 'title', 'type', 'status', 'importance', 'priorityOverride', 'dueAt', 'firstDueAt',
                'startAt', 'doneCriteria', 'description', 'assigneeId', 'reporterId', 'labelIds',
-               'createdAt', 'updatedAt', 'updatedBy', 'occurredOn', 'impact', 'relatedFrom'])
+               'createdAt', 'updatedAt', 'updatedBy', 'occurredOn', 'impact', 'relatedFrom', 'estimateHours'])
         && d.reporterId == request.auth.uid
         && d.status == 'open'
         && d.createdAt == request.time;
@@ -247,6 +249,12 @@ service cloud.firestore {
         && request.time < resource.data.createdAt + duration.value(1, 'd');
     }
 
+    // 工数（時間）：未入力か、0〜999 の数（0.5刻みは画面でそろえる）
+    function validHours(d, k) {
+      return d.get(k, null) == null
+        || (d.get(k, null) is number && d.get(k, null) >= 0 && d.get(k, null) <= 999);
+    }
+
     function hasReason() {
       return request.resource.data.statusReason is string
         && request.resource.data.statusReason.size() > 0;
@@ -276,7 +284,8 @@ service cloud.firestore {
       let d = request.resource.data;
       return d.diff(resource.data).affectedKeys().hasOnly([
                'title', 'type', 'importance', 'dueAt', 'assigneeId', 'doneCriteria', 'description', 'labelIds',
-               'updatedAt', 'updatedBy', 'occurredOn', 'impact'])
+               'updatedAt', 'updatedBy', 'occurredOn', 'impact', 'estimateHours', 'actualHours'])
+        && validHours(d, 'estimateHours') && validHours(d, 'actualHours')
         && (d.get('occurredOn', null) == null || d.occurredOn.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))
         && d.get('impact', '') is string && d.get('impact', '').size() <= 200
         && d.labelIds is list && d.labelIds.size() <= 5
@@ -532,7 +541,8 @@ service cloud.firestore {
           && (
             (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                'status', 'statusReason', 'updatedAt', 'updatedBy', 'cause', 'countermeasure', 'causeCategory',
-               'doneCriteriaMet', 'resolvedAt', 'effect', 'learning', 'closedAt', 'workaroundEnded', 'resolvedAssignee'])
+               'doneCriteriaMet', 'resolvedAt', 'effect', 'learning', 'closedAt', 'workaroundEnded', 'resolvedAssignee',
+               'actualHours'])
              && statusChangeAllowed(pid))
             || editAllowed(pid)
             || priorityAllowed(pid)
@@ -706,7 +716,38 @@ service cloud.firestore {
 
           allow delete: if canEditParent() || purgeChildAllowed(pid, iid);
         }
-
+        // 添付の一覧（ファイル本体は Storage）。課題への添付は管理者・メンバー、コメントへの添付は閲覧者も。
+        // 消すのは置いた本人か管理者。ファイル本体は、文書が消えたら関数が消す
+        match /attachments/{aid} {
+          function issueStatus() {
+            return get(/databases/$(database)/documents/projects/$(pid)/issues/$(iid)).data.status;
+          }
+          function validAttachment() {
+            let d = request.resource.data;
+            return d.keys().hasOnly(['name', 'size', 'type', 'path', 'cid', 'by', 'at'])
+              && d.name is string && d.name.size() > 0 && d.name.size() <= 200
+              && d.size is int && d.size > 0 && d.size <= 10 * 1024 * 1024
+              && d.type is string && d.type.size() <= 200
+              && d.by == request.auth.uid
+              && d.at == request.time
+              // 置き場所は、文書の名前と同じ id。課題へとコメントへで形が違う
+              && ((d.get('cid', null) == null
+                    && d.path == 'projects/' + pid + '/issues/' + iid + '/' + aid)
+                || (d.get('cid', null) is string
+                    && d.path == 'projects/' + pid + '/issues/' + iid + '/c/' + d.cid + '/' + aid));
+          }
+          allow read: if isMember(pid);
+          allow create: if validAttachment()
+            && get(projectPath(pid)).data.archived == false
+            // 課題へ：書ける人（管理者・メンバー）で、クローズ・統合・削除フォルダの中ではない
+            && ((request.resource.data.get('cid', null) == null && canWrite(pid)
+                  && !(issueStatus() in ['closed', 'merged', 'deleted']))
+              // コメントへ：メンバーなら閲覧者も。削除フォルダの中ではない（コメントの決まりと同じ）
+              || (request.resource.data.get('cid', null) is string && isMember(pid) && issueStatus() != 'deleted'));
+          allow delete: if (isMember(pid) && get(projectPath(pid)).data.archived == false
+              && (resource.data.by == request.auth.uid || isAdmin(pid)))
+            || purgeChildAllowed(pid, iid);
+        }
 
       }
     }

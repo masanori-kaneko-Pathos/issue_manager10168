@@ -15,6 +15,7 @@ import { LabelPicker } from '../../shared/label-picker';
 import {
   CAUSE_CATEGORIES, CauseCategory, DEFAULT_SETTINGS, Issue, IssueRelation, Label, Level, Member, Project, Role,
   TimelineItem, labelsOf, OPEN_STATUSES, hasWorkaround, ISSUE_TYPES, watchersOf, IssueRequest, RequestKind, Reminder,
+  Attachment, toHours
 } from '../../core/models';
 import { LinkDialog } from './link-dialog';
 import { StatusDialog } from '../../shared/status-dialog';
@@ -36,6 +37,8 @@ import { RequestService } from '../../core/request/request.service';
 import { commentSegments } from '../../core/issue/comment';
 import { ReminderService } from '../../core/reminder/reminder.service';
 import { ReminderDialog } from './reminder-dialog';
+import { AttachmentService } from '../../core/attachment/attachment.service';
+import { AttachmentList } from './attachment-list';
 
 
 /** 経緯の「編集した欄」の項目名 → 翻訳キー（issue.〇〇）。名前が違うものだけ書く */
@@ -62,7 +65,8 @@ function sameField(k: keyof IssueEdits, a: Issue, b: Issue): boolean {
 @Component({
   selector: 'app-issue-detail',
   imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, StatusDialog, PriorityMark, LinkDialog,
-    MergeDialog, LabelPicker, MemberSelect, SubtaskList, CommentBox, RequestDialog, DeleteDialog, ReminderDialog],
+    MergeDialog, LabelPicker, MemberSelect, SubtaskList, CommentBox, RequestDialog, DeleteDialog, ReminderDialog,
+    AttachmentList],
   host: {
     '(document:keydown.escape)':
       'menuOpen.set(false); statusMenu.set(false); prioMenu.set(false); typeMenu.set(false); closeField()',
@@ -273,6 +277,26 @@ export class IssueDetail implements OnInit {
     this.reminderOpen.set(false);
     this.showFlash(at ? 'reminder.saved' : 'reminder.removed');
   }
+  // ---- 添付 ----
+  private attachments = inject(AttachmentService);
+  /** この課題の添付（課題へも、コメントへも） */
+  files = signal<Attachment[]>([]);
+  /** 課題への添付だけ（コメントへの添付は、そのコメントの下に出す） */
+  issueFiles = computed(() => this.files().filter((a) => !a.cid));
+  /** コメントへの添付（コメントの id → 添付） */
+  private commentFiles = computed(() => {
+    const m = new Map<string, Attachment[]>();
+    for (const a of this.files()) if (a.cid) m.set(a.cid, [...(m.get(a.cid) ?? []), a]);
+    return m;
+  });
+  filesOf(cid: string) {
+    return this.commentFiles().get(cid) ?? [];
+  }
+  /** 足せるか：管理者・メンバー（アーカイブ中は不可）で、クローズ・統合・削除フォルダの中でない */
+  canAttach = computed(() => {
+    const s = this.issue()?.status;
+    return this.canCreate() && !!s && !['closed', 'merged', 'deleted'].includes(s);
+  });
   // ---- 依頼 ----
   private requests = inject(RequestService);
   /** この課題の、対応待ちの依頼 */
@@ -426,6 +450,18 @@ export class IssueDetail implements OnInit {
   readonly duePresets = [
     { key: 'today', days: 0 }, { key: 'tomorrow', days: 1 }, { key: 'in3', days: 3 }, { key: 'in7', days: 7 },
   ];
+  /** 工数がオンのプロジェクトか（設定の「使う機能」） */
+  effortOn = signal(false);
+  /** 右の項目に並べる工数の2欄（テンプレートで繰り返すため） */
+  readonly hourFields = [
+    { f: 'estimate', k: 'estimateHours' }, { f: 'actual', k: 'actualHours' },
+  ] as const;
+  /** 工数の入力中の値 */
+  draftHours: number | null = null;
+
+  hoursText(v: number | null | undefined) {
+    return v == null ? '—' : this.i18n.t('effort.hours', { n: String(v) });
+  }
   /** 担当者にできる人（閲覧者は担当者になれない） */
   assignable = computed(() => this.members().filter((m) => m.role !== 'viewer'));
   assigneeChanged = computed(() => this.draftAssignee() !== this.editBase()?.assigneeId);
@@ -513,6 +549,7 @@ export class IssueDetail implements OnInit {
       }, (e) => console.error(e)),
       this.requests.watchOpenFor(this.pid, this.iid, (list) => this.openRequests.set(list), (e) => console.error(e)),
       this.reminders.watch(this.pid, this.iid, (r) => this.reminder.set(r), (e) => console.error(e)),
+      this.attachments.watch(this.pid, this.iid, (list) => this.files.set(list), (e) => console.error(e)),
     );
   }
 
@@ -558,6 +595,7 @@ export class IssueDetail implements OnInit {
     this.staleDays.set(project?.settings?.staleDays ?? DEFAULT_SETTINGS.staleDays);
     this.projectName.set(project?.name ?? '');
     this.formerMembers = project?.formerMembers ?? {};
+    this.effortOn.set(!!project?.settings?.features?.effort);
   }
 
   /** メンバーを見張る。最初の1回が届いたら、待っている load() に知らせる */
@@ -636,6 +674,7 @@ export class IssueDetail implements OnInit {
     this.draftDue.set(i.dueAt.toDate());
     this.draftDueInput = toLocalInput(i.dueAt.toDate(), this.tz());
     this.draftReason = '';
+    this.draftHours = f === 'estimate' ? i.estimateHours ?? null : f === 'actual' ? i.actualHours ?? null : null;
     this.editField.set(f);
     setTimeout(() => focusById('e-' + f));
   }
@@ -713,6 +752,11 @@ export class IssueDetail implements OnInit {
       if ([...next].sort().join() !== [...(base.labelIds ?? [])].sort().join()) edits = { labelIds: next };
     } else if (f === 'assignee') {
       if (this.draftAssignee() !== base.assigneeId) edits = { assigneeId: this.draftAssignee() };
+    } else if (f === 'estimate' || f === 'actual') {
+      const k = f === 'estimate' ? 'estimateHours' : 'actualHours';
+      const v = toHours(this.draftHours);
+      if (v === undefined) return false; // 数でない・範囲の外は保存しない
+      if (v !== (base[k] ?? null)) edits = { [k]: v };
     } else if (f === 'due') {
       const d = this.draftDue();
       if (!d) return false;
@@ -938,6 +982,9 @@ export class IssueDetail implements OnInit {
       return this.i18n.t('detail.events.subtask.' + item.sub.action, {
         name, title: item.sub.title, n: String(item.sub.number ?? ''),
       });
+    }
+    if (item.type === 'attachment' && item.file) {
+      return this.i18n.t('detail.events.attachment.' + item.file.action, { name, file: item.file.name });
     }
     if (item.type === 'created') return this.i18n.t('detail.events.created', { name });
     if (item.type === 'imported') return this.i18n.t('detail.events.imported', { name });
@@ -1199,6 +1246,9 @@ export class IssueDetail implements OnInit {
     this.busy.set(true);
     try {
       await this.issueService.deleteComment(this.pid, this.iid, item.id, this.myUid);
+      // コメントの添付も一緒に消す（本文が消えたのに、ファイルだけ残らないように。ファイル本体は関数が消す）
+      await Promise.allSettled(this.filesOf(item.id)
+        .map((a) => this.attachments.remove(this.pid, this.iid, a, this.myUid, this.tz())));
     } catch (e) {
       console.error(e);
       this.error.set('common.saveError');

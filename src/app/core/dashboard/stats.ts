@@ -125,3 +125,16 @@ export function memberRows(members: Member[], issues: Issue[], from: number, to:
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
+
+/**
+ * 工数：期間内に解決した課題の、見積と実績の合計。両方が書いてある課題だけを数える（片方だけだと比べられないため）。
+ * プロジェクト全体だけ（仕様メモ【13】：メンバー別には出さない）
+ */
+export function effortTotals(resolved: Issue[]): { n: number; estimate: number; actual: number } {
+  const both = resolved.filter((i) => i.estimateHours != null && i.actualHours != null);
+  return {
+    n: both.length,
+    estimate: both.reduce((s, i) => s + i.estimateHours!, 0),
+    actual: both.reduce((s, i) => s + i.actualHours!, 0),
+  };
+}

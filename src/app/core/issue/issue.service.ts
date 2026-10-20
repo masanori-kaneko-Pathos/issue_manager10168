@@ -53,6 +53,7 @@ function matchesEdits(i: Issue, edits: IssueEdits): boolean {
       case 'labelIds': return [...(i.labelIds ?? [])].sort().join() === [...(v as string[])].sort().join();
       case 'occurredOn': return (i.occurredOn ?? null) === (v ?? null);
       case 'impact': return (i.impact ?? '') === v;
+      case 'estimateHours': case 'actualHours': return (i[k] ?? null) === (v ?? null);
       default: return i[k] === v;
     }
   });
@@ -66,6 +67,8 @@ export function previousOf(i: Issue, edits: IssueEdits): IssueEdits {
     else if (k === 'labelIds') prev.labelIds = i.labelIds ?? [];
     else if (k === 'occurredOn') prev.occurredOn = i.occurredOn ?? null;
     else if (k === 'impact') prev.impact = i.impact ?? '';
+    // 書いていなかった工数は「未入力（null）」として戻す（undefined だと、戻すときに書かれないため）
+    else if (k === 'estimateHours' || k === 'actualHours') prev[k] = i[k] ?? null;
     else (prev as Record<string, unknown>)[k] = i[k];
   }
   return prev;
@@ -102,6 +105,8 @@ export interface NewIssue {
   recurrenceOf?: { iid: string; number: number } | null;
   /** サブタスクを課題に切り出すときの、親の課題とサブタスク（同じプロジェクト） */
   splitFrom?: { iid: string; sid: string; number: number } | null;
+  /** 工数の見積（工数がオンのときだけ。未入力なら書かない） */
+  estimateHours?: number | null;
 }
 
 export interface StatusPayload {
@@ -114,6 +119,8 @@ export interface StatusPayload {
   doneCriteriaMet: boolean;
   /** 解決済みにするとき、回避策を外したと確かめたか */
   workaroundEnded?: boolean;
+  /** 解決するときの工数の実績（任意。入れたときだけ書く） */
+  actualHours?: number | null;
 }
 
 /** 入力が要らないステータス変更（対応を始める・再開）に使う、空の入力 */
@@ -132,6 +139,8 @@ export interface IssueEdits {
   labelIds?: string[];
   occurredOn?: string | null; // null は「空にする」
   impact?: string;
+  estimateHours?: number | null; // null は「空にする」
+  actualHours?: number | null;
 }
 
 /** サブタスクを足すときの値（状態は未着手から。メモは空から） */
@@ -214,6 +223,7 @@ export class IssueService {
         updatedBy: uid,
         // ひも付けがあるときだけ書く
         ...(input.relatedFrom ? { relatedFrom: input.relatedFrom } : {}),
+        ...(input.estimateHours != null ? { estimateHours: input.estimateHours } : {}),
       });
       tx.set(doc(collection(issueRef, 'events')), { type: 'created', by: uid, tz, at: serverTimestamp() });
       // 再発として登録：新しい課題（再発元を指す）と元の課題（再発した課題を指す）を、登録と同じ封筒でつなぐ
@@ -385,6 +395,7 @@ export class IssueService {
         resolvedAssignee: issue.assigneeId,
       });
       if (p.workaroundEnded) update['workaroundEnded'] = true;
+      if (p.actualHours != null) update['actualHours'] = p.actualHours;
     }
     if (t.needs === 'close') {
       Object.assign(update, {
@@ -454,8 +465,10 @@ export class IssueService {
    * コメント：書くのと同時に、メンションした人と、ウォッチしている人に知らせる（今もメンバーの人だけ）。
    * 両方に当たる人には、メンションの1通だけ（先に並べたほうが残る）
    */
-  addComment(pid: string, iid: string, body: string, uid: string, tz: string, mentions: string[] = []) {
+  addComment(pid: string, iid: string, body: string, uid: string, tz: string, mentions: string[] = []): Promise<string> {
     const issueRef = doc(db, 'projects', pid, 'issues', iid);
+    // 先に名前を決めておく（添付を、このコメントの置き場所に上げるため）
+    const ref = doc(collection(issueRef, 'comments'));
     return runTransaction(db, async (tx) => {
       const s = await tx.get(issueRef);
       if (!s.exists()) throw new Error('issue-not-found');
@@ -465,10 +478,11 @@ export class IssueService {
         ...mentions.map((to): NoticeWant => ({ to, type: 'mention', detail })),
         ...watchersOf(i).map((to): NoticeWant => ({ to, type: 'comment', detail })),
       ]);
-      tx.set(doc(collection(issueRef, 'comments')), {
+      tx.set(ref, {
         body, by: uid, tz, at: serverTimestamp(), ...(mentions.length ? { mentions } : {}),
       });
       notes.forEach((n) => tx.set(n.ref, n.data));
+      return ref.id;
     });
   }
 
@@ -482,7 +496,7 @@ export class IssueService {
       ? { muted: arrayRemove(uid), ...(auto ? {} : { watchers: arrayUnion(uid) }) }
       : { watchers: arrayRemove(uid), ...(auto ? { muted: arrayUnion(uid) } : {}) });
   }
-  
+
   /** コメントを直す（本人のみ。ルールで確認） */
   updateComment(pid: string, iid: string, cid: string, body: string) {
     return updateDoc(doc(db, 'projects', pid, 'issues', iid, 'comments', cid), {
@@ -628,7 +642,7 @@ export class IssueService {
         by: uid, tz, at: serverTimestamp(),
       });
     });
-  }  
+  }
 
   /** 優先度の手動変更。value が null なら「自動に戻す」 */
   async setPriority(
@@ -900,7 +914,7 @@ export class IssueService {
       type: 'subtask', sub: { action: 'remove', title: sub.title }, by: uid, tz, at: serverTimestamp(),
     });
     await batch.commit();
-  }  
+  }
 
   /** この課題を元にして作られた課題（再発防止など）を見張る。削除フォルダのものは出さない */
   watchRelatedTo(
@@ -926,13 +940,15 @@ export class IssueService {
   /** 完全削除：経緯とコメントを消してから、課題を消す（管理者のみ。削除フォルダの中だけ。元に戻せない） */
   async purgeIssue(pid: string, iid: string) {
     const ref = doc(db, 'projects', pid, 'issues', iid);
-    const [events, comments, links, subtasks] = await Promise.all([
+    const [events, comments, links, subtasks, attachments] = await Promise.all([
       getDocs(collection(ref, 'events')),
       getDocs(collection(ref, 'comments')),
       getDocs(collection(ref, 'links')),
       getDocs(collection(ref, 'subtasks')),
+      getDocs(collection(ref, 'attachments')), // 一覧の文書が消えると、関数がファイルも消す
     ]);
-    const children = [...events.docs, ...comments.docs, ...links.docs, ...subtasks.docs].map((d) => d.ref);
+    const children = [...events.docs, ...comments.docs, ...links.docs, ...subtasks.docs, ...attachments.docs]
+      .map((d) => d.ref);
     // まとめ書きは1回500件まで。余裕をみて400件ずつ
     for (let i = 0; i < children.length; i += 400) {
       const batch = writeBatch(db);

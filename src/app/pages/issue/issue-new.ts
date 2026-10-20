@@ -7,7 +7,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { ProjectService } from '../../core/project/project.service';
 import { IssueService } from '../../core/issue/issue.service';
 import { InboxService } from '../../core/inbox/inbox.service';
-import { ISSUE_TYPES, IssueLink, IssueType, Level, Member, ProjectWithRole, Issue } from '../../core/models';
+import { ISSUE_TYPES, IssueLink, IssueType, Level, Member, ProjectWithRole, Issue, toHours } from '../../core/models';
 import { dateKey, endOfDayIn, formatDateTime, parseLocalInput, toLocalInput, zonedTime } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { HelpTip } from '../../shared/help-tip';
@@ -47,6 +47,7 @@ interface IssueDraft {
   occurredOn: string;
   impact: string;
   showDetail: boolean;
+  estimate?: number | null;
 }
 
 @Component({
@@ -163,6 +164,15 @@ interface IssueDraft {
             <input id="f-impact" name="impact" [(ngModel)]="impact" maxlength="200"
               [placeholder]="'issueNew.impactPlaceholder' | t" />
           </div>
+          @if (effortOn()) {
+            <div class="field">
+              <span><label for="f-estimate">{{ 'issue.estimateHours' | t }}</label></span>
+              <span class="hours">
+                <input id="f-estimate" type="number" name="estimate" min="0" max="999" step="0.5" [(ngModel)]="estimate" />
+                {{ 'effort.unit' | t }}</span>
+              <p class="help">{{ 'effort.hint' | t }}</p>
+            </div>
+          }
         }
 
         @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
@@ -201,6 +211,8 @@ interface IssueDraft {
     .similar a { flex: 1; color: var(--text); overflow-wrap: anywhere; }
     .similar .st { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: var(--surface); white-space: nowrap; }
     .similar-help { margin: 0 !important; font-size: 12px !important; color: var(--text-muted); }
+    .hours { display: flex; align-items: center; gap: 6px; font-weight: normal; }
+    .hours input { width: 120px; }
   `,
 })
 export class IssueNew implements OnInit {
@@ -279,6 +291,10 @@ export class IssueNew implements OnInit {
   description = '';
   occurredOn = '';
   impact = '';
+  /** 工数の見積（時間。工数がオンのプロジェクトだけ） */
+  estimate: number | null = null;
+  /** 選んでいるプロジェクトで、工数がオンか */
+  effortOn = computed(() => !!this.projects().find((p) => p.id === this.pid())?.settings?.features?.effort);
   /** 発生日に選べる最後の日（自分のタイムゾーンでの今日） */
   today = computed(() => dateKey(new Date(), this.tz()));
 
@@ -482,10 +498,11 @@ export class IssueNew implements OnInit {
       pid: this.pid(), title: this.title, type: this.type(), importance: this.importance(),
       dueMs: this.dueAt()?.getTime() ?? null, assigneeId: this.assigneeId(),
       doneCriteria: this.doneCriteria, description: this.description, labelIds: this.labelIds(),
-      occurredOn: this.occurredOn, impact: this.impact, showDetail: this.showDetail(),
+      occurredOn: this.occurredOn, impact: this.impact, showDetail: this.showDetail(),      
+      estimate: this.estimate,
     };
     const empty = !v.title.trim() && !v.type && !v.importance && v.dueMs == null && !v.doneCriteria.trim()
-      && !v.description.trim() && !v.labelIds.length && !v.occurredOn && !v.impact.trim();
+    && !v.description.trim() && !v.labelIds.length && !v.occurredOn && !v.impact.trim() && v.estimate == null;
     if (empty) this.drafts.remove(this.draftId);
     else this.drafts.save({ id: this.draftId, kind: 'issue', title: v.title.trim(), pid: v.pid, data: v });
   }
@@ -518,6 +535,7 @@ export class IssueNew implements OnInit {
     this.occurredOn = v.occurredOn;
     this.impact = v.impact;
     this.showDetail.set(v.showDetail);
+    this.estimate = v.estimate ?? null;
   }
 
   selectType(t: IssueType) {
@@ -549,6 +567,11 @@ export class IssueNew implements OnInit {
 
   async save() {
     if (!this.ready()) return;
+    const estimateHours = this.effortOn() ? toHours(this.estimate) : null;
+    if (estimateHours === undefined) {
+      this.error.set('effort.invalid');
+      return;
+    }
 
     this.busy.set(true);
     this.error.set('');
@@ -565,6 +588,7 @@ export class IssueNew implements OnInit {
         labelIds: this.labelIds(),
         occurredOn: this.occurredOn || null,
         impact: this.impact.trim(),
+        estimateHours,
         relatedFrom: this.relatedFrom,
         recurrenceOf: this.recurrenceOf,
         splitFrom: this.splitFrom,

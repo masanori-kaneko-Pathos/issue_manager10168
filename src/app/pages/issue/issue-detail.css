@@ -190,6 +190,8 @@ a.add-link { display: inline-flex; align-items: center; text-decoration: none; }
 .link, .primary, .tools button { cursor: pointer; }
 .link:disabled, .primary:disabled, .tools button:disabled { cursor: default; }
 .pill.remind { border-color: var(--primary); background: var(--primary-bg); color: var(--primary); }
+.hours { display: flex; align-items: center; gap: 6px; }
+.inline-edit .hours input { width: 110px; }
 @media (min-width: 861px) {
   .side .inline-edit input, .side .inline-edit textarea, .side select { font-size: 14px; padding: 6px 8px; }
 }

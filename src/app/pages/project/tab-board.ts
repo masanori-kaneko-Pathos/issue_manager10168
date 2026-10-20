@@ -238,6 +238,7 @@ const EMPTY_PAYLOAD = {
 
     @if (pending(); as p) {
       <app-status-dialog [issue]="p.issue" [transition]="p.t" [pid]="ctx.pid()" [members]="ctx.members()"
+        [effort]="!!ctx.project()?.settings?.features?.effort"
         (done)="onDialogDone()" (cancel)="pending.set(null)" />
     }
     @if (pendingDue(); as p) {

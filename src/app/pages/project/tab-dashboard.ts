@@ -6,7 +6,7 @@ import { IssueService } from '../../core/issue/issue.service';
 import { Clock } from '../../core/time/clock';
 import { DEFAULT_SETTINGS, Issue, Level, OPEN_STATUSES } from '../../core/models';
 import {
-  Period, avgResolveDays, byCause, matrix, memberRows, nowStats, periodRange, resolvedIn,
+  Period, avgResolveDays, byCause, effortTotals, matrix, memberRows, nowStats, periodRange, resolvedIn,
 } from '../../core/dashboard/stats';
 import { ProjectContext } from './project-context';
 import { HelpTip } from '../../shared/help-tip';
@@ -103,6 +103,19 @@ import { I18nService, TPipe } from '../../i18n/i18n';
           </div>
         </div>
 
+        @if (effortOn()) {
+          <div class="box effort">
+            <h3>{{ 'dashboard.effort' | t }} <app-help-tip [keys]="['dashboard.effortHelp']" /></h3>
+            @if (effort().n) {
+              <p class="big">{{ 'effort.hours' | t: { n: '' + effort().actual } }}</p>
+              <p class="help">{{ 'dashboard.effortVs' | t: { e: '' + effort().estimate, d: effortDiff() } }}
+                ・{{ 'dashboard.basedOn' | t: { n: '' + effort().n } }}</p>
+            } @else {
+              <p class="help">{{ 'dashboard.noData' | t }}</p>
+            }
+          </div>
+        }        
+
         @if (rows().length) {
           <h3>{{ 'dashboard.members' | t }} <app-help-tip [keys]="['dashboard.membersHelp']" /></h3>
           <div class="table-wrap">
@@ -172,6 +185,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .range { font-size: 13px; color: var(--text-muted); }
     .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
     .box { padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+    .box.effort { margin-bottom: 20px; }
     .big { font-size: 28px; font-weight: bold; margin: 0; }
     .bar-row { display: grid; grid-template-columns: 9em 1fr 2em; align-items: center; gap: 8px; margin: 4px 0;
       font-size: 13px; }
@@ -243,6 +257,13 @@ export class TabDashboard implements OnInit {
   avgDays = computed(() => avgResolveDays(this.resolved()));
   causes = computed(() => byCause(this.resolved()));
   causeMax = computed(() => Math.max(1, ...this.causes().map((c) => c.n)));
+  effortOn = computed(() => !!this.settings().features?.effort);
+  effort = computed(() => effortTotals(this.resolved()));
+  /** 見積との差（+ は見積より多くかかった） */
+  effortDiff = computed(() => {
+    const d = this.effort().actual - this.effort().estimate;
+    return (d > 0 ? '+' : '') + d;
+  });
   /** メンバー別：管理者は全員、それ以外は自分の行だけ（制約【1】） */
   rows = computed(() => {
     const a = this.all();
