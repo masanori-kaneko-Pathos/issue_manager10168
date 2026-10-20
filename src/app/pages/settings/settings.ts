@@ -10,12 +10,13 @@ import { Router } from '@angular/router';
 import { auth } from '../../core/firebase';
 import { ProjectService } from '../../core/project/project.service';
 import { SampleService } from '../../core/project/sample.service';
+import { Avatar } from '../../shared/avatar';
 
 type Section = 'general' | 'password';
 
 @Component({
   selector: 'app-settings',
-  imports: [FormsModule, RouterLink, TPipe, HelpTip],
+  imports: [FormsModule, RouterLink, TPipe, HelpTip, Avatar],
   host: { '(window:beforeunload)': 'onBeforeUnload($event)' },
   template: `
     <header class="bar"><a routerLink="/" class="link">{{ 'common.back' | t }}</a></header>
@@ -47,6 +48,23 @@ type Section = 'general' | 'password';
 
       <section>
         <h2>{{ 'settings.profile' | t }}</h2>
+        <div class="avatar-row">
+          <app-avatar [name]="displayName()" [uid]="uid" [photo]="photo()" [size]="64" />
+          <div class="avatar-ops">
+            <div class="row-start">
+              <label class="ghost-btn" [class.disabled]="photoBusy()">{{ 'settings.photoChange' | t }}
+                <input type="file" accept="image/png,image/jpeg,image/webp,image/heic" hidden [disabled]="photoBusy()"
+                  (change)="onPhoto($event)" />
+              </label>
+              @if (photo()) {
+                <button type="button" class="link" [disabled]="photoBusy()" (click)="removePhoto()">
+                  {{ 'settings.photoRemove' | t }}</button>
+              }
+            </div>
+            <p class="help">{{ 'settings.photoHelp' | t }}</p>
+            @if (photoMsg()) { <p class="msg" [class.ng]="photoMsg() !== 'settings.photoSaved'">{{ photoMsg() | t }}</p> }
+          </div>
+        </div>
         <label class="field">{{ 'settings.displayName' | t }}
           <input [ngModel]="displayName()" (ngModelChange)="displayName.set($event)" maxlength="50" />
         </label>
@@ -151,6 +169,12 @@ type Section = 'general' | 'password';
     .danger-link { align-self: flex-start; display: inline-flex; align-items: center; min-height: 44px;
       color: var(--danger-text); text-decoration: none; font-size: 14px; }
     .danger-link:hover { text-decoration: underline; }
+    .avatar-row { display: flex; align-items: center; gap: 16px; }
+    .avatar-ops { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .ghost-btn { display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border: 1px solid var(--primary);
+      border-radius: 8px; color: var(--primary); font-size: 14px; cursor: pointer; }
+    .ghost-btn:hover { background: var(--primary-bg); }
+    .ghost-btn.disabled { opacity: 0.5; pointer-events: none; }
   `,
 })
 export class Settings implements OnInit {
@@ -193,6 +217,44 @@ export class Settings implements OnInit {
     }
   }  
   protected i18n = inject(I18nService);
+
+  readonly uid = auth.currentUser!.uid;
+  /** 自分のアイコンの写真（入れたもの → なければ Google の写真） */
+  photo = computed(() => this.authService.myPhoto());
+  photoBusy = signal(false);
+  photoMsg = signal('');
+
+  async onPhoto(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = ''; // 同じ写真をもう一度選んでも、選んだことになるように
+    if (!file) return;
+    this.photoBusy.set(true);
+    this.photoMsg.set('');
+    try {
+      await this.authService.setPhoto(file);
+      this.photoMsg.set('settings.photoSaved');
+    } catch (err) {
+      console.error(err);
+      this.photoMsg.set((err as Error).message === 'image' || err instanceof DOMException
+        ? 'settings.photoBad' : 'common.saveError');
+    } finally {
+      this.photoBusy.set(false);
+    }
+  }
+
+  async removePhoto() {
+    this.photoBusy.set(true);
+    this.photoMsg.set('');
+    try {
+      await this.authService.removePhoto();
+    } catch (err) {
+      console.error(err);
+      this.photoMsg.set('common.saveError');
+    } finally {
+      this.photoBusy.set(false);
+    }
+  }
 
   readonly isPasswordUser = this.authService.isPasswordUser();
   readonly commonZones = COMMON_TIMEZONES.map((z) => ({ value: z, label: `${z}（${tzOffset(z)}）` }));

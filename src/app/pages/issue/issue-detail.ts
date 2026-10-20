@@ -40,6 +40,7 @@ import { ReminderDialog } from './reminder-dialog';
 import { AttachmentService } from '../../core/attachment/attachment.service';
 import { AttachmentList } from './attachment-list';
 import { DraftService, fieldPlace } from '../../core/draft/draft.service';
+import { Avatar } from '../../shared/avatar';
 
 
 /** 経緯の「編集した欄」の項目名 → 翻訳キー（issue.〇〇）。名前が違うものだけ書く */
@@ -67,7 +68,7 @@ function sameField(k: keyof IssueEdits, a: Issue, b: Issue): boolean {
   selector: 'app-issue-detail',
   imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, StatusDialog, PriorityMark, LinkDialog,
     MergeDialog, LabelPicker, MemberSelect, SubtaskList, CommentBox, RequestDialog, DeleteDialog, ReminderDialog,
-    AttachmentList],
+    AttachmentList, Avatar],
   host: {
     '(document:keydown.escape)':
       'menuOpen.set(false); statusMenu.set(false); prioMenu.set(false); typeMenu.set(false); closeField()',
@@ -966,6 +967,10 @@ export class IssueDetail implements OnInit {
       console.error(e);
       this.showFlash('comment.issueNotFound');
     }
+  }
+
+  memberPhoto(uid: string) {
+    return this.members().find((m) => m.uid === uid)?.photoURL ?? null;
   }
 
   memberName(uid: string) {

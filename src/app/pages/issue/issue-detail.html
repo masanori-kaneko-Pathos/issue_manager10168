@@ -367,12 +367,17 @@
                   </div>
                 </div>
               } @else if (canEdit()) {
-                <button type="button" class="text-btn" (click)="openField('assignee')">{{ memberName(i.assigneeId) }}</button>
+                <button type="button" class="text-btn" (click)="openField('assignee')">
+                  <span class="who"><app-avatar [name]="memberName(i.assigneeId)" [uid]="i.assigneeId"
+                    [photo]="memberPhoto(i.assigneeId)" [size]="20" />{{ memberName(i.assigneeId) }}</span></button>
               } @else {
-                {{ memberName(i.assigneeId) }}
+                <span class="who"><app-avatar [name]="memberName(i.assigneeId)" [uid]="i.assigneeId"
+                  [photo]="memberPhoto(i.assigneeId)" [size]="20" />{{ memberName(i.assigneeId) }}</span>
               }
             </dd>
-            <dt>{{ 'detail.reporter' | t }}</dt><dd>{{ memberName(i.reporterId) }}</dd>
+            <dt>{{ 'detail.reporter' | t }}</dt>
+            <dd><span class="who"><app-avatar [name]="memberName(i.reporterId)" [uid]="i.reporterId"
+              [photo]="memberPhoto(i.reporterId)" [size]="20" />{{ memberName(i.reporterId) }}</span></dd>
             <dt>{{ 'issue.importance' | t }}</dt>
             <dd>
               @if (canEdit()) {
@@ -773,6 +778,9 @@
                 } @else {
                 <li [class.comment]="item.kind === 'comment'">
                   <div class="meta">
+                    @if (item.kind === 'comment') {
+                      <app-avatar [name]="memberName(item.by)" [uid]="item.by" [photo]="memberPhoto(item.by)" [size]="18" />
+                    }
                     {{ item.kind === 'comment' ? memberName(item.by) : eventText(item) }} · {{ when(item) }}
                     @if (item.editedAt && !item.deleted) {
                       <span class="edited" [title]="fmt(item.editedAt)">（{{ 'comment.edited' | t }}）</span>

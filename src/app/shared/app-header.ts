@@ -15,10 +15,11 @@ import { SearchBox } from './search-box';
 import { ProjectNewDialog } from './project-new-dialog';
 import { InboxPop } from './inbox-pop';
 import { DraftService } from '../core/draft/draft.service';
+import { Avatar } from './avatar';
 
 @Component({
   selector: 'app-header',
-  imports: [RouterLink, TPipe, HelpTip, SearchBox, ProjectNewDialog, InboxPop],
+  imports: [RouterLink, TPipe, HelpTip, SearchBox, ProjectNewDialog, InboxPop, Avatar],
   host: {
     '(document:keydown.escape)':
       'open.set(false); addOpen.set(false); bellOpen.set(false); rowMenu.set(null); penOpen.set(false)',
@@ -141,11 +142,7 @@ import { DraftService } from '../core/draft/draft.service';
       <div class="account">
         <button type="button" class="account-btn" [attr.aria-expanded]="open()"
           [attr.aria-label]="'menu.account' | t" (click)="toggleAccount()">
-          @if (photo()) {
-            <img [src]="photo()" alt="" referrerpolicy="no-referrer" />
-          } @else {
-            <span class="initial">{{ initial() }}</span>
-          }
+          <app-avatar [name]="name()" [uid]="myUid" [photo]="photo()" [size]="28" />
           <span class="gear" aria-hidden="true">⚙</span>
         </button>
 
@@ -332,8 +329,9 @@ export class AppHeader {
   open = signal(false);
   name = computed(() => this.authService.profile()?.displayName || this.authService.user()?.email || '');
   email = computed(() => this.authService.user()?.email ?? '');
-  photo = computed(() => this.authService.user()?.photoURL ?? null);
-  initial = computed(() => this.name().slice(0, 1) || '?');
+  /** 自分のアイコン（設定で入れた写真 → なければ Google の写真 → なければ頭文字） */
+  photo = computed(() => this.authService.myPhoto());
+  readonly myUid = auth.currentUser?.uid ?? '';
 
   async logout() {
     this.open.set(false);

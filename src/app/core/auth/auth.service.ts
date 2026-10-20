@@ -1,4 +1,5 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
+import { squareImage } from './avatar-image';
 import {
   User, onAuthStateChanged, signInWithEmailAndPassword,
   createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut,
@@ -26,6 +27,7 @@ export interface UserProfile {
   dailyGroup?: DailyGroup;          // 毎朝のまとめの形（無ければ期限別）
   dailyTime?: number;               // 毎朝のまとめの時刻（0時からの分・10分刻み。無ければ 10:00）
   introHidden?: boolean;            // 「ようこそ」の箱を「後で見る」で閉じた
+  photoURL?: string | null;         // アイコンの写真（無い＝入れたことがない、null＝本人が外した）
 }
 
 @Injectable({ providedIn: 'root' })
@@ -117,21 +119,60 @@ export class AuthService {
   async updateProfile(
     changes: Partial<Pick<UserProfile,
     'displayName' | 'timeZone' | 'language' | 'defaultView' | 'dueReminders' | 'dailyGroup' | 'dailyTime'
-    | 'introHidden'>>,
+    | 'introHidden' | 'photoURL'>>,
   ) {
     const u = auth.currentUser!;
     await updateDoc(doc(db, 'users', u.uid), changes);
     this.profile.update((p) => (p ? { ...p, ...changes } : p));
     if (changes.language) this.i18n.lang.set(changes.language);
 
-    if (changes.displayName !== undefined) {
+    // 表示名と写真は、所属する全プロジェクトのメンバーの写しにも書く（ほかの人の画面に出るのは、こちら）
+    if (changes.displayName !== undefined || changes.photoURL !== undefined) {
       const s = await getDocs(query(collectionGroup(db, 'members'), where('uid', '==', u.uid)));
       if (!s.empty) {
+        const copy = {
+          ...(changes.displayName !== undefined ? { displayName: changes.displayName } : {}),
+          ...(changes.photoURL !== undefined ? { photoURL: changes.photoURL } : {}),
+        };
         const batch = writeBatch(db);
-        s.docs.forEach((d) => batch.update(d.ref, { displayName: changes.displayName }));
+        s.docs.forEach((d) => batch.update(d.ref, copy));
         await batch.commit();
       }
     }
+  }
+
+  /** 自分のアイコンの写真：入れたもの（null＝外した）→ 入れたことがなければ Google の写真 */
+  readonly myPhoto = computed(() => {
+    const p = this.profile();
+    return p && p.photoURL !== undefined ? p.photoURL : this.user()?.photoURL ?? null;
+  });
+
+  /** 写真を変える：正方形に縮めて上げ、プロフィールとメンバーの写しに書き、前の写真を消す */
+  async setPhoto(file: File) {
+    const u = auth.currentUser!;
+    const blob = await squareImage(file);
+    const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+    const st = getStorage(firebaseApp);
+    const old = this.profile()?.photoURL;
+    // 名前に時刻を入れる：同じ名前で上書きすると、ブラウザが前の写真を覚えていて、替わらないことがあるため
+    const r = ref(st, `users/${u.uid}/avatar-${Date.now()}.jpg`);
+    await uploadBytes(r, blob, { contentType: 'image/jpeg' });
+    await this.updateProfile({ photoURL: await getDownloadURL(r) });
+    await this.deleteOwnPhoto(old);
+  }
+
+  /** 写真を外す（頭文字の丸に戻す。Google の写真にも戻さない） */
+  async removePhoto() {
+    const old = this.profile()?.photoURL;
+    await this.updateProfile({ photoURL: null });
+    await this.deleteOwnPhoto(old);
+  }
+
+  /** 自分で上げた写真だけを消す（Google の写真は、こちらの倉庫のものではないので触らない） */
+  private async deleteOwnPhoto(url: string | null | undefined) {
+    if (!url || !url.includes('firebasestorage')) return;
+    const { getStorage, ref, deleteObject } = await import('firebase/storage');
+    await deleteObject(ref(getStorage(firebaseApp), url)).catch(() => undefined);
   }
 
   /** パスワード変更。安全のため、今のパスワードで本人確認してから変える */

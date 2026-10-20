@@ -192,6 +192,8 @@ a.add-link { display: inline-flex; align-items: center; text-decoration: none; }
 .pill.remind { border-color: var(--primary); background: var(--primary-bg); color: var(--primary); }
 .hours { display: flex; align-items: center; gap: 6px; }
 .inline-edit .hours input { width: 110px; }
+.who { display: inline-flex; align-items: center; gap: 6px; }
+.timeline .meta app-avatar { margin-right: 4px; }
 @media (min-width: 861px) {
   .side .inline-edit input, .side .inline-edit textarea, .side select { font-size: 14px; padding: 6px 8px; }
 }

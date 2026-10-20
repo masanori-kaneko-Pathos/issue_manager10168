@@ -887,6 +887,9 @@ export const imDeleteAccount = onCall({ region: 'asia-northeast1' }, async (req)
   }
   // ⑥ 自分の置き場（受信箱・お知らせ・端末・リマインド）
   await db.recursiveDelete(db.doc(`users/${uid}`));
+  // アイコンの写真も消す
+  await getStorage().bucket(BUCKET).deleteFiles({ prefix: `users/${uid}/` })
+    .catch((e) => logger.error('avatar delete failed', { uid, error: String(e) }));
   // ⑦ 最後にログインを消す（途中で失敗しても、ログインが残っていれば、本人がもう一度押してやり直せる）
   await getAuth().deleteUser(uid);
 

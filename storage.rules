@@ -48,5 +48,14 @@ service firebase.storage {
       allow create: if newFileOk(pid) && roleIn(pid, ['admin', 'member', 'viewer']);
       allow delete: if request.auth != null && resource.metadata.by == request.auth.uid;
     }
+        // アイコンの写真：見るのはログインしている人なら誰でも（ほかのプロジェクトの画面にも出るため）。
+    // 置く・消すのは本人だけ。画像だけ・2MB まで（画面で 256px の JPEG に縮めてから上げる）
+    match /users/{uid}/{file} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.size <= 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/(png|jpeg|webp)');
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
   }
 }

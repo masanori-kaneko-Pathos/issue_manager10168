@@ -11,7 +11,10 @@ service cloud.firestore {
       allow update: if request.auth != null && request.auth.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['displayName', 'timeZone', 'language', 'defaultView', 'dueReminders', 'dailyGroup',
-                       'dailyTime', 'introHidden'])
+                       'dailyTime', 'introHidden', 'photoURL'])
+        // アイコンの写真：URL か、外したときの null
+        && (!('photoURL' in request.resource.data) || request.resource.data.photoURL == null
+            || (request.resource.data.photoURL is string && request.resource.data.photoURL.size() <= 2000))
         // 「ようこそ」の箱を「後で見る」で閉じた印
         && (!('introHidden' in request.resource.data) || request.resource.data.introHidden is bool)
         && (!('defaultView' in request.resource.data) || request.resource.data.defaultView in ['list', 'board'])

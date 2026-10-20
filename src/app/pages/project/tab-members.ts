@@ -12,10 +12,11 @@ import { HandoverDialog, HandoverMode } from './handover-dialog';
 import { ProjectContext } from './project-context';
 import { ProjectService } from '../../core/project/project.service';
 import { I18nService, TPipe } from '../../i18n/i18n';
+import { Avatar } from '../../shared/avatar';
 
 @Component({
   selector: 'app-tab-members',
-  imports: [TPipe, HelpTip, HandoverDialog, InviteDialog],
+  imports: [TPipe, HelpTip, HandoverDialog, InviteDialog, Avatar],
   host: { '(document:keydown.escape)': 'menuFor.set(null)' },
   template: `
     <section>
@@ -31,6 +32,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
         @for (m of ctx.members(); track m.uid) {
           @let n = assignedCount()[m.uid] ?? 0;
           <li class="member">
+            <app-avatar [name]="m.displayName" [uid]="m.uid" [photo]="m.photoURL" [size]="28" />
             <span class="name">{{ m.displayName }}{{ m.uid === myUid ? ('issueNew.you' | t) : '' }}</span>
             @if (manageable(m)) {
               <div class="role-menu">

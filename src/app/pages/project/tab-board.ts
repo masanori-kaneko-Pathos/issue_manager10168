@@ -23,6 +23,7 @@ import { HelpTip } from '../../shared/help-tip';
 import { StatusDialog } from '../../shared/status-dialog';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { PeopleFilter, whoFromQuery, whoQuery } from '../../shared/people-filter';
+import { Avatar } from '../../shared/avatar';
 
 type ColKey = 'open' | 'in_progress' | 'resolved' | 'done' | 'on_hold';
 type DueFilter = 'today' | 'week' | 'overdue';
@@ -56,7 +57,8 @@ const EMPTY_PAYLOAD = {
 @Component({
   selector: 'app-tab-board',
   imports: [CdkDropListGroup, CdkDropList, CdkDrag, NgTemplateOutlet,
-    CdkScrollable, RouterLink, TPipe, HelpTip, StatusDialog, LabelChip, PriorityMark, DueDialog, PeopleFilter],
+    CdkScrollable, RouterLink, TPipe, HelpTip, StatusDialog, LabelChip, PriorityMark, DueDialog, PeopleFilter,
+    Avatar],
   template: `
     <div class="quick">
       <app-people-filter [members]="ctx.assignable()" [counts]="ctx.activeCount()" [value]="who()"
@@ -218,12 +220,8 @@ const EMPTY_PAYLOAD = {
             <span aria-hidden="true">☑ {{ i.subtaskDone ?? 0 }}/{{ i.subtaskTotal }}</span></span>
         }
         <div class="meta">
-          <span class="avatar" [title]="memberName(i.assigneeId)">
-            @if (memberPhoto(i.assigneeId); as src) {
-              <img [src]="src" alt="" referrerpolicy="no-referrer" />
-            } @else {
-              {{ memberName(i.assigneeId).slice(0, 1) }}
-            }
+          <span [title]="memberName(i.assigneeId)">
+            <app-avatar [name]="memberName(i.assigneeId)" [uid]="i.assigneeId" [photo]="memberPhoto(i.assigneeId)" [size]="24" />
           </span>
           @if (isActive(i) && isOverdue(i)) {
             <span class="due overdue" [title]="remaining(i)">{{ dueLabel(i) }}</span>
@@ -296,9 +294,6 @@ const EMPTY_PAYLOAD = {
     .labels { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
     .more-labels { font-size: 11px; color: var(--text-muted); }
     .meta { display: flex; align-items: center; justify-content: space-between; }
-    .avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--primary-bg); overflow: hidden;
-      display: flex; align-items: center; justify-content: center; font-size: 12px; }
-    .avatar img { width: 100%; height: 100%; object-fit: cover; }
     .due { font-size: 12px; color: var(--text-muted); }
     .due.overdue { color: var(--danger); font-weight: bold; }
     .moves { display: flex; flex-wrap: wrap; gap: 6px; border-top: 1px solid var(--border); padding-top: 6px; }

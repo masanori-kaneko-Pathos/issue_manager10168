@@ -11,6 +11,7 @@ import { Clock } from '../../core/time/clock';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { AttachmentList } from '../issue/attachment-list';
 import { ProjectContext } from './project-context';
+import { Avatar } from '../../shared/avatar';
 
 /** 説明の中の URL（押せるようにする）。閉じかっこや「」は URL に含めない */
 const URL_RE = /(https?:\/\/[^\s<>"'）」]+)/g;
@@ -19,7 +20,7 @@ const DAY = 24 * 60 * 60 * 1000;
 /** プロジェクトの概要：説明・添付・今の様子・メンバー。説明と添付を変えるのは管理者 */
 @Component({
   selector: 'app-tab-overview',
-  imports: [FormsModule, RouterLink, TPipe, AttachmentList],
+  imports: [FormsModule, RouterLink, TPipe, AttachmentList, Avatar],
   template: `
     <div class="layout">
       <div class="main">
@@ -96,7 +97,10 @@ const DAY = 24 * 60 * 60 * 1000;
           <h2>{{ 'overview.members' | t: { n: '' + members().length } }}</h2>
           <ul class="members">
             @for (m of members(); track m.uid) {
-              <li><span class="nm">{{ m.displayName }}</span><span class="role">{{ 'roles.' + m.role | t }}</span></li>
+              <li>
+                <app-avatar [name]="m.displayName" [uid]="m.uid" [photo]="m.photoURL" [size]="22" />
+                <span class="nm">{{ m.displayName }}</span><span class="role">{{ 'roles.' + m.role | t }}</span>
+              </li>
             }
           </ul>
           <a class="link" [routerLink]="['/p', ctx.pid(), 'members']">{{ 'overview.toMembers' | t }}</a>
@@ -148,6 +152,7 @@ const DAY = 24 * 60 * 60 * 1000;
     .act-text { font-size: 13px; color: var(--text-secondary); }
     .act-body { font-size: 12px; color: var(--text-muted); padding-left: 8px; border-left: 2px solid var(--border-strong);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .nm { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   `,
 })
 export class TabOverview {

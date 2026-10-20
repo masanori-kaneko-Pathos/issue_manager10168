@@ -3,6 +3,7 @@ import { ParamMap } from '@angular/router';
 import { auth } from '../core/firebase';
 import { Member } from '../core/models';
 import { I18nService, TPipe } from '../i18n/i18n';
+import { Avatar } from './avatar';
 
 /**
  * URL から「選んだ人」を読む。読む順は who → mine=1（自分）→ assignee（その人）。
@@ -27,7 +28,7 @@ export function whoQuery(who: string[]) {
  */
 @Component({
   selector: 'app-people-filter',
-  imports: [TPipe],
+  imports: [TPipe, Avatar],
   host: { '(document:keydown.escape)': 'close()' },
   template: `
     <div class="wrap">
@@ -59,6 +60,7 @@ export function whoQuery(who: string[]) {
               @let n = counts()[m.uid] ?? 0;
               <button type="button" role="menuitemcheckbox" class="row" [attr.aria-checked]="on" (click)="toggleOne(m.uid)">
                 <span class="check" aria-hidden="true">{{ on ? '✓' : '' }}</span>
+                <app-avatar [name]="m.displayName" [uid]="m.uid" [photo]="m.photoURL" [size]="22" />
                 <span class="name">{{ m.displayName }}{{ m.uid === myUid ? ('issueNew.you' | t) : '' }}</span>
                 <span class="n" [title]="'who.count' | t: { n: '' + n }">{{ n }}</span>
               </button>
