@@ -397,11 +397,16 @@ service cloud.firestore {
         && request.resource.data.name.size() > 0
 
         && request.resource.data.name.size() <= 100
+        && (!('description' in request.resource.data)
+            || (request.resource.data.description is string && request.resource.data.description.size() <= 5000))
         && getAfter(memberPath(pid)).data.role == 'admin';
       allow update: if (isAdmin(pid)
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['name', 'archived', 'labels', 'settings', 'formerMembers',
-                      'archiveKind', 'archiveReason', 'archivedAt', 'archivedBy'])
+                      'archiveKind', 'archiveReason', 'archivedAt', 'archivedBy', 'description'])
+          // 説明を変えたときだけ、文字列で5000字までかを確かめる
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['description'])
+              || (request.resource.data.description is string && request.resource.data.description.size() <= 5000))
           && request.resource.data.labels is list
           && request.resource.data.labels.size() <= 30
           // 設定を変えたときだけ、形と範囲を確かめる（ラベルだけの保存は、設定の中身に左右されない）
@@ -528,6 +533,29 @@ service cloud.firestore {
           && request.resource.data.createdAt == resource.data.createdAt;
         // 消すのは、機能をオフにしたあとやアーカイブ中でも（片づけられるように）
         allow delete: if isAdmin(pid);
+      }
+
+      // 動きの帳面（概要の「直近の経緯」）。書くのは関数だけ。見るのはメンバー全員
+      match /activity/{aid} {
+        allow read: if isMember(pid);
+        allow write: if false;
+      }
+
+      // プロジェクトの概要の添付（ファイル本体は Storage の projects/{pid}/overview/{fid}）。
+      // 見るのはメンバー全員、置く・消すのは管理者（アーカイブ中は不可）。消すとファイル本体は関数が消す
+      match /files/{fid} {
+        allow read: if isMember(pid);
+        allow create: if isAdmin(pid) && get(projectPath(pid)).data.archived == false
+          && request.resource.data.keys().hasOnly(['name', 'size', 'type', 'path', 'by', 'at'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 200
+          && request.resource.data.size is int
+          && request.resource.data.size > 0 && request.resource.data.size <= 10 * 1024 * 1024
+          && request.resource.data.type is string && request.resource.data.type.size() <= 200
+          && request.resource.data.path == 'projects/' + pid + '/overview/' + fid
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.at == request.time;
+        allow delete: if isAdmin(pid) && get(projectPath(pid)).data.archived == false;
       }
 
       // 依頼（削除・統合・再開）：メンバーが管理者に頼む。管理者が「対応済み・見送り」にし、
@@ -796,7 +824,12 @@ service cloud.firestore {
               && (resource.data.by == request.auth.uid || isAdmin(pid)))
             || purgeChildAllowed(pid, iid);
         }
-
+    // プロジェクトの概要の添付：管理者
+    match /projects/{pid}/overview/{fid} {
+      allow read: if isMember(pid);
+      allow create: if newFileOk(pid) && roleIn(pid, ['admin']);
+      allow delete: if request.auth != null && resource.metadata.by == request.auth.uid;
+    }
       }
     }
 

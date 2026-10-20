@@ -934,6 +934,57 @@ export const imOnSubtaskChanged = onDocumentWritten(
   },
 );
 
+// ---- プロジェクトの動きの帳面（概要の「直近の経緯」） ----
+
+/** 帳面の行を残す日数（TTL で自動で消える） */
+const ACTIVITY_KEEP_DAYS = 30;
+/** 経緯から帳面へ写す項目（表示に使うものだけ） */
+const ACTIVITY_FIELDS = ['type', 'from', 'to', 'fields', 'link', 'sub', 'file', 'merged'] as const;
+
+/**
+ * 帳面に1行写す。課題の番号と題名は、その時点のものを写しておく（一覧で課題を読み直さずに出すため）。
+ * 削除の最中・もう無いプロジェクトや課題には書かない（消したあとに、帳面だけが残らないように）
+ */
+async function writeActivity(pid: string, iid: string, id: string, data: DocumentData) {
+  const projectRef = db.doc(`projects/${pid}`);
+  const [project, issue] = await db.getAll(projectRef, projectRef.collection('issues').doc(iid));
+  if (!project.exists || project.get('deleting') || !issue.exists) return;
+  try {
+    // 名札（経緯・コメントの id）＋ create：関数が2回動いても、2行にならない
+    await projectRef.collection('activity').doc(id).create({
+      ...data, iid, number: issue.get('number') ?? null, title: String(issue.get('title') ?? '').slice(0, 200),
+      expireAt: Timestamp.fromMillis(Date.now() + ACTIVITY_KEEP_DAYS * DAY),
+    });
+  } catch (e) {
+    if ((e as { code?: number }).code !== 6) throw e; // ALREADY_EXISTS：もう写してある
+  }
+}
+
+/** 経緯が1つ増えたら、帳面に写す（ステータス・編集・関連・サブタスク・添付など、全部ここを通る） */
+export const imOnEventCreated = onDocumentCreated(
+  { document: 'projects/{pid}/issues/{iid}/events/{eid}', database: 'issuemanager', region: 'asia-northeast1' },
+  async (event) => {
+    const d = event.data?.data();
+    if (!d) return;
+    const data: DocumentData = { kind: 'event', by: d.by ?? '', at: d.at ?? FieldValue.serverTimestamp() };
+    for (const k of ACTIVITY_FIELDS) if (d[k] !== undefined) data[k] = d[k];
+    await writeActivity(event.params.pid, event.params.iid, 'e_' + event.params.eid, data);
+  },
+);
+
+/** コメントが書かれたら、帳面に写す（コメントでは課題の更新日時が変わらないので、ここで拾う） */
+export const imOnCommentCreated = onDocumentCreated(
+  { document: 'projects/{pid}/issues/{iid}/comments/{cid}', database: 'issuemanager', region: 'asia-northeast1' },
+  async (event) => {
+    const d = event.data?.data();
+    if (!d) return;
+    await writeActivity(event.params.pid, event.params.iid, 'c_' + event.params.cid, {
+      kind: 'comment', by: d.by ?? '', at: d.at ?? FieldValue.serverTimestamp(),
+      body: String(d.body ?? '').slice(0, 120),
+    });
+  },
+);
+
 // ---- 添付 ----
 
 /**
@@ -949,6 +1000,20 @@ export const imOnAttachmentDeleted = onDocumentDeleted(
       await getStorage().bucket(BUCKET).file(path).delete({ ignoreNotFound: true });
     } catch (e) {
       logger.error('attachment file delete failed', { path, error: String(e) });
+    }
+  },
+);
+
+/** プロジェクトの概要の添付の一覧が消えたら、ファイル本体も消す（課題の添付と同じ） */
+export const imOnProjectFileDeleted = onDocumentDeleted(
+  { document: 'projects/{pid}/files/{fid}', database: 'issuemanager', region: 'asia-northeast1' },
+  async (event) => {
+    const path = event.data?.get('path') as string | undefined;
+    if (!path) return;
+    try {
+      await getStorage().bucket(BUCKET).file(path).delete({ ignoreNotFound: true });
+    } catch (e) {
+      logger.error('project file delete failed', { path, error: String(e) });
     }
   },
 );

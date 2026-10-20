@@ -120,7 +120,10 @@ export function sizeText(n: number) {
 })
 export class AttachmentList {
   pid = input.required<string>();
-  iid = input.required<string>();
+  /** 課題の id。プロジェクトの概要の添付のときは null */
+  iid = input.required<string | null>();
+  /** 添付できる数（課題は10、プロジェクトの概要は20） */
+  limit = input(MAX_ATTACHMENTS);
   /** この課題への添付（コメントへの添付は含まない） */
   items = input<Attachment[]>([]);
   /** 足せるか（管理者・メンバーで、課題がまだ動いている） */
@@ -135,7 +138,9 @@ export class AttachmentList {
   private authService = inject(AuthService);
   private i18n = inject(I18nService);
   private readonly myUid = auth.currentUser!.uid;
-  readonly max = MAX_ATTACHMENTS;
+  get max() {
+    return this.limit();
+  }
   private tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
 
   over = signal(false);

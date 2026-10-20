@@ -993,7 +993,7 @@ export class IssueDetail implements OnInit {
       });
     }
     if (item.type === 'attachment' && item.file) {
-      return this.i18n.t('detail.events.attachment.' + item.file.action, { name, file: item.file.name });
+      return this.i18n.t('attachment.' + item.file.action, { name, file: item.file.name });
     }
     if (item.type === 'created') return this.i18n.t('detail.events.created', { name });
     if (item.type === 'recurring') return this.i18n.t('detail.events.recurring');

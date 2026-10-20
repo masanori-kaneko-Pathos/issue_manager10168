@@ -62,8 +62,11 @@ export async function shrinkImage(f: File): Promise<File> {
 /** 添付：上げる・一覧を見張る・消す・開く */
 @Injectable({ providedIn: 'root' })
 export class AttachmentService {
-  private col(pid: string, iid: string) {
-    return collection(db, 'projects', pid, 'issues', iid, 'attachments');
+  /** 添付の一覧の置き場所：課題（iid あり）か、プロジェクトの概要（iid が null） */
+  private col(pid: string, iid: string | null) {
+    return iid
+      ? collection(db, 'projects', pid, 'issues', iid, 'attachments')
+      : collection(db, 'projects', pid, 'files');
   }
 
   /** Storage の道具を、使うときだけ読み込む */
@@ -73,7 +76,7 @@ export class AttachmentService {
   }
 
   /** この課題の添付を見張る（課題への添付も、コメントへの添付も。古い順） */
-  watch(pid: string, iid: string, onData: (list: Attachment[]) => void, onError: (e: FirestoreError) => void): Unsubscribe {
+  watch(pid: string, iid: string | null, onData: (list: Attachment[]) => void, onError: (e: FirestoreError) => void): Unsubscribe {
     return onSnapshot(query(this.col(pid, iid), orderBy('at')),
       (s) => onData(s.docs.map((d) => ({ ...(d.data({ serverTimestamps: 'estimate' }) as Omit<Attachment, 'id'>), id: d.id }))),
       onError);
@@ -84,16 +87,17 @@ export class AttachmentService {
    * 一覧に書けなかったら、上げたファイルを消して、エラーを投げ直す（一覧にないファイルを残さない）
    */
   async upload(
-    pid: string, iid: string, file: File, uid: string, tz: string,
+    pid: string, iid: string | null, file: File, uid: string, tz: string,
     opts: { cid?: string; onProgress?: (p: number) => void } = {},
   ) {
     // 画像は縮めてから上げる。縮めても10MBを超えるものは止める（ルールでも断られる）
     file = await shrinkImage(file);
     if (file.size > MAX_FILE_BYTES) throw new Error('tooBig');
     const ref = doc(this.col(pid, iid));
-    const path = opts.cid
-      ? `projects/${pid}/issues/${iid}/c/${opts.cid}/${ref.id}`
-      : `projects/${pid}/issues/${iid}/${ref.id}`;
+    // 倉庫の道：プロジェクトの概要・コメント・課題で分ける（ルールの道と同じ）
+    const path = !iid ? `projects/${pid}/overview/${ref.id}`
+      : opts.cid ? `projects/${pid}/issues/${iid}/c/${opts.cid}/${ref.id}`
+        : `projects/${pid}/issues/${iid}/${ref.id}`;
     const s = await this.storage();
     const fileRef = s.ref(s.st, path);
     const task = s.uploadBytesResumable(fileRef, file, { contentType: file.type, customMetadata: { by: uid } });
@@ -105,7 +109,8 @@ export class AttachmentService {
       batch.set(ref, {
         name, size: file.size, type: file.type, path, ...(opts.cid ? { cid: opts.cid } : {}), by: uid, at: serverTimestamp(),
       });
-      if (!opts.cid) {
+      // 経緯に残すのは、課題への添付だけ（プロジェクトには経緯がない。コメントはコメント自体が残る）
+      if (iid && !opts.cid) {
         batch.set(doc(collection(db, 'projects', pid, 'issues', iid, 'events')), {
           type: 'attachment', file: { action: 'add', name }, by: uid, tz, at: serverTimestamp(),
         });
@@ -118,10 +123,10 @@ export class AttachmentService {
   }
 
   /** 消す：一覧の文書を消す（ファイル本体は関数が消す）。課題への添付は、経緯にも残す */
-  async remove(pid: string, iid: string, a: Attachment, uid: string, tz: string) {
+  async remove(pid: string, iid: string | null, a: Attachment, uid: string, tz: string) {
     const batch = writeBatch(db);
     batch.delete(doc(this.col(pid, iid), a.id));
-    if (!a.cid) {
+    if (iid && !a.cid) {
       batch.set(doc(collection(db, 'projects', pid, 'issues', iid, 'events')), {
         type: 'attachment', file: { action: 'remove', name: a.name }, by: uid, tz, at: serverTimestamp(),
       });

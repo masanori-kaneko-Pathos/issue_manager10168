@@ -19,6 +19,8 @@ export const routes: Routes = [
       children: [
         // 初期表示のタブ（設定で選べるようにする。未設定ならリスト）
         { path: '', pathMatch: 'full', redirectTo: () => inject(AuthService).profile()?.defaultView ?? 'list' },
+        { path: 'overview',
+          loadComponent: () => import('./pages/project/tab-overview').then((m) => m.TabOverview) },
         { path: 'list',
           loadComponent: () => import('./pages/project/tab-list').then((m) => m.TabList) },
         { path: 'board',

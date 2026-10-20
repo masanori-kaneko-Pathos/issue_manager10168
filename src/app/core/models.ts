@@ -46,6 +46,7 @@ export interface Project {
   archivedBy?: string;
   deleting?: boolean;           // 削除の最中（関数が最初に立てる。開いている画面はこれを見てホームへ戻る）
   sample?: boolean;             // 見本のプロジェクト（イントロダクションで作ったもの）
+  description?: string;         // 概要の説明（何のためのプロジェクトか・いつまで・決まりごと）。書くのは管理者
 }
 
 export interface ProjectWithRole extends Project { role: Role; }
@@ -381,6 +382,8 @@ export interface Attachment {
 }
 /** 1つの課題に添付できる数・1ファイルの大きさ（ルールでは数えられないので、数は画面で止める） */
 export const MAX_ATTACHMENTS = 10;
+/** プロジェクトの概要に添付できる数（資料が多めなので、課題より多く） */
+export const MAX_PROJECT_FILES = 20;
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 /** 定期課題の繰り返し方（daily＝毎日、weekly＝毎週、monthly＝毎月） */
@@ -418,6 +421,28 @@ export interface RecurringTemplate extends RecurSpec {
 /** 1つのプロジェクトで作れる定期課題の数（ルールでは数えられないので、画面で止める） */
 export const MAX_RECURRING = 20;
 export const RECUR_DUE_DAYS = [0, 1, 3, 7];
+
+/**
+ * プロジェクトの動きの帳面の1行（projects/{pid}/activity）。経緯・コメントができると、関数が写す。30日で消える
+ */
+export interface Activity {
+  id: string;
+  kind: 'event' | 'comment';
+  iid: string;
+  number: number | null;   // 写したときの課題の番号
+  title: string;           // 写したときの課題の題名
+  type?: TimelineItem['type'];
+  from?: IssueStatus;
+  to?: IssueStatus;
+  fields?: string[];
+  link?: TimelineItem['link'];
+  sub?: TimelineItem['sub'];
+  file?: TimelineItem['file'];
+  merged?: TimelineItem['merged'];
+  body?: string;           // コメントの書き出し
+  by: string;
+  at: Timestamp;
+}
 
 /** 工数の入力を、0.5刻みの時間にそろえる。空なら null、数でない・範囲の外なら undefined（保存しない） */
 export function toHours(v: unknown): number | null | undefined {

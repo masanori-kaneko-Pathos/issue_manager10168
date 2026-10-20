@@ -259,7 +259,7 @@ export class ProjectHome {
 
   /** タブの並び。設定は管理者だけに出す */
   tabs = computed(() => [
-    'list', 'board', 'calendar',
+    'overview', 'list', 'board', 'calendar',
     // ガント風表示は、管理者が設定でオンにしたときだけ（仕様メモ【14】）
     ...(this.ctx.project()?.settings?.features?.gantt ? ['gantt'] : []),
     'dashboard', 'members',

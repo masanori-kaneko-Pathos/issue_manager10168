@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { User } from 'firebase/auth';
 import {
     FirestoreError, Unsubscribe, collection, collectionGroup, doc, getDoc, getDocs, onSnapshot, query, where,
+    orderBy, limit,
     serverTimestamp, writeBatch, setDoc, deleteDoc, updateDoc, runTransaction, deleteField,
 } from 'firebase/firestore';
 import { db, firebaseApp } from '../firebase';
@@ -9,7 +10,7 @@ import { AuthService } from '../auth/auth.service';
 import { NotificationService } from '../notification/notification.service';
 import { I18nService } from '../../i18n/i18n';
 import {
-    DEFAULT_LABEL_IDS, DEFAULT_SETTINGS, Invitation, IssueStatus, Label, Member, OPEN_STATUSES, Project,
+    Activity, DEFAULT_LABEL_IDS, DEFAULT_SETTINGS, Invitation, IssueStatus, Label, Member, OPEN_STATUSES, Project,
     ProjectSettings, ProjectWithRole, Role, labelColor, ArchiveKind
 } from '../models';
 
@@ -23,7 +24,7 @@ export class ProjectService {
     private notifications = inject(NotificationService);
 
     /** プロジェクトと「自分が管理者」のメンバー文書を、1回でまとめて作る */
-    async create(name: string, user: User, opts: { sample?: boolean } = {}): Promise<string> {
+    async create(name: string, user: User, opts: { sample?: boolean; description?: string } = {}): Promise<string> {
         const projectRef = doc(collection(db, 'projects'));
         const batch = writeBatch(db);
         batch.set(projectRef, {
@@ -38,6 +39,7 @@ export class ProjectService {
             settings: DEFAULT_SETTINGS,
             issueSeq: 0,
             ...(opts.sample ? { sample: true } : {}),
+            ...(opts.description ? { description: opts.description } : {}),
         });
         batch.set(doc(projectRef, 'members', user.uid), {
             uid: user.uid,
@@ -104,6 +106,17 @@ export class ProjectService {
             (s) => onData(s.exists()
                 ? { ...(s.data({ serverTimestamps: 'estimate' }) as Omit<Project, 'id'>), id: s.id }
                 : null),
+            onError,
+        );
+    }
+
+    /** 動きの帳面の新しい n 件を見張る（概要の「直近の経緯」） */
+    watchActivity(
+        pid: string, n: number, onData: (list: Activity[]) => void, onError: (e: FirestoreError) => void,
+    ): Unsubscribe {
+        return onSnapshot(
+            query(collection(db, 'projects', pid, 'activity'), orderBy('at', 'desc'), limit(n)),
+            (s) => onData(s.docs.map((d) => ({ ...(d.data({ serverTimestamps: 'estimate' }) as Omit<Activity, 'id'>), id: d.id }))),
             onError,
         );
     }
@@ -191,6 +204,11 @@ export class ProjectService {
     /** プロジェクト名を変える（管理者のみ。1〜100文字の文字列かはルールで確認） */
     rename(pid: string, name: string) {
         return updateDoc(doc(db, 'projects', pid), { name });
+    }
+
+    /** 概要の説明を変える（管理者のみ。5000字までかはルールで確認） */
+    setDescription(pid: string, description: string) {
+        return updateDoc(doc(db, 'projects', pid), { description });
     }
 
     /** アーカイブ（管理者のみ）：全員が閲覧専用になり、通知も止まる。管理ログにも残す（追加の取り決め） */

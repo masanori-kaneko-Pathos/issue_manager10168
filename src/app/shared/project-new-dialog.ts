@@ -6,13 +6,15 @@ import { auth } from '../core/firebase';
 import { ProjectService } from '../core/project/project.service';
 import { SearchService } from '../core/search/search.service';
 import { InvitePicker, Invitee } from './invite-picker';
-import { TPipe } from '../i18n/i18n';
+import { I18nService, TPipe } from '../i18n/i18n';
 
 /** プロジェクトの作成の下書きにしまう中身 */
 interface ProjectDraft {
   name: string;
   inviteOpen: boolean;
   invitees: Invitee[];
+  descOpen?: boolean;
+  description?: string;
 }
 
 /** プロジェクトの作成（名前だけで作れる。作るときに招待もできる） */
@@ -31,6 +33,14 @@ interface ProjectDraft {
           <input name="name" [(ngModel)]="name" maxlength="100" autocomplete="off"
             [placeholder]="'projectNew.namePlaceholder' | t" />
         </label>
+
+        <button type="button" class="toggle" [attr.aria-expanded]="descOpen()" (click)="toggleDesc()">
+          {{ (descOpen() ? 'projectNew.hideDesc' : 'projectNew.showDesc') | t }}</button>
+        @if (descOpen()) {
+          <label class="field">{{ 'overview.description' | t }}
+            <textarea name="description" [(ngModel)]="description" rows="6" maxlength="5000"></textarea>
+          </label>
+        }
 
         <button type="button" class="toggle" [attr.aria-expanded]="inviteOpen()" (click)="inviteOpen.set(!inviteOpen())">
           {{ (inviteOpen() ? 'projectNew.hideInvite' : 'projectNew.showInvite') | t }}</button>
@@ -62,6 +72,7 @@ interface ProjectDraft {
     .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
       border-radius: 8px; font-size: 14px; cursor: pointer; }
     .primary:disabled { background: var(--disabled); cursor: default; }
+    textarea { font-size: 16px; padding: 8px 12px; font-weight: normal; line-height: 1.6; }
   `,
 })
 export class ProjectNewDialog implements OnInit {
@@ -90,12 +101,17 @@ export class ProjectNewDialog implements OnInit {
       this.name = v.name;
       this.inviteOpen.set(v.inviteOpen);
       this.invitees.set(v.invitees);
+      this.descOpen.set(!!v.descOpen);
+      this.description = v.description ?? '';
     }
     this.lastSaved = JSON.stringify(this.snapshot());
   }
 
   private snapshot(): ProjectDraft {
-    return { name: this.name, inviteOpen: this.inviteOpen(), invitees: this.invitees() };
+    return {
+      name: this.name, inviteOpen: this.inviteOpen(), invitees: this.invitees(),
+      descOpen: this.descOpen(), description: this.description,
+    };
   }
 
   /** 何か触ったら、少し待ってから下書きにしまう */
@@ -112,7 +128,7 @@ export class ProjectNewDialog implements OnInit {
     const v = this.snapshot();
     const json = JSON.stringify(v);
     if (json === this.lastSaved) return;
-    if (!v.name.trim() && !v.invitees.length) this.drafts.remove(this.id);
+    if (!v.name.trim() && !v.invitees.length && !this.descText()) this.drafts.remove(this.id);
     else this.drafts.save({ id: this.id, kind: 'project', title: v.name.trim(), pid: null, data: v });
     this.lastSaved = json;
   }
@@ -131,6 +147,21 @@ export class ProjectNewDialog implements OnInit {
   private picker = viewChild(InvitePicker);
 
   name = '';
+  descOpen = signal(false);
+  description = '';
+  private i18n = inject(I18nService);
+
+  /** 説明の欄を開くと、雛形（【目的】【期間】【決まりごと】）が入る */
+  toggleDesc() {
+    if (!this.descOpen() && !this.description.trim()) this.description = this.i18n.t('overview.template');
+    this.descOpen.set(!this.descOpen());
+  }
+
+  /** 保存する説明。雛形のまま何も書いていなければ空 */
+  private descText() {
+    const t = this.description.trim();
+    return t === this.i18n.t('overview.template').trim() ? '' : t;
+  }
   inviteOpen = signal(false);
   invitees = signal<Invitee[]>([]);
   busy = signal(false);
@@ -149,7 +180,7 @@ export class ProjectNewDialog implements OnInit {
     this.error.set('');
     try {
       const user = auth.currentUser!;
-      const pid = await this.ps.create(name, user);
+      const pid = await this.ps.create(name, user, { description: this.descOpen() ? this.descText() : '' });
       // 作れたので、下書きは要らない（このあと閉じても、しまい直さない）
       this.done = true;
       clearTimeout(this.draftTimer);
