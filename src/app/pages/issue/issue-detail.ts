@@ -39,6 +39,7 @@ import { ReminderService } from '../../core/reminder/reminder.service';
 import { ReminderDialog } from './reminder-dialog';
 import { AttachmentService } from '../../core/attachment/attachment.service';
 import { AttachmentList } from './attachment-list';
+import { DraftService, fieldPlace } from '../../core/draft/draft.service';
 
 
 /** 経緯の「編集した欄」の項目名 → 翻訳キー（issue.〇〇）。名前が違うものだけ書く */
@@ -365,6 +366,7 @@ export class IssueDetail implements OnInit {
     this.requestError.set('');
     try {
       await this.requests.decline(this.pid, rq, this.declineNote.trim());
+      this.drafts.clearText(this.place('decline:' + rq.id));
       this.declineFor.set(null);
     } catch (e) {
       console.error(e);
@@ -1073,11 +1075,57 @@ export class IssueDetail implements OnInit {
     }
   }
 
+  // ---- 書きかけ（原因・対策、回避策、見送りの一言） ----
+  private drafts = inject(DraftService);
+
+  private place(slot: string) {
+    return fieldPlace(this.pid, this.iid, slot);
+  }
+
+  stashCause() {
+    this.drafts.setText(this.place('cause'), this.causeText);
+    this.drafts.setText(this.place('countermeasure'), this.counterText);
+  }
+
+  private clearCause() {
+    this.drafts.clearText(this.place('cause'));
+    this.drafts.clearText(this.place('countermeasure'));
+  }
+
+  /** やめる：書きかけを捨てて閉じる */
+  discardCause() {
+    this.clearCause();
+    this.causePanel.set(false);
+  }
+
+  stashWa() {
+    this.drafts.setText(this.place('workaround'), this.waText);
+  }
+
+  discardWa() {
+    this.drafts.clearText(this.place('workaround'));
+    this.waPanel.set(false);
+  }
+
+  openDecline(rq: IssueRequest) {
+    this.declineNote = this.drafts.getText(this.place('decline:' + rq.id));
+    this.declineFor.set(rq);
+  }
+
+  stashDecline(rq: IssueRequest) {
+    this.drafts.setText(this.place('decline:' + rq.id), this.declineNote);
+  }
+
+  cancelDecline(rq: IssueRequest) {
+    this.drafts.clearText(this.place('decline:' + rq.id));
+    this.declineFor.set(null);
+  }
+
   openCause() {
     const i = this.issue()!;
     this.causeBase.set(i);
-    this.causeText = i.cause ?? '';
-    this.counterText = i.countermeasure ?? '';
+    this.causeText = this.drafts.getText(this.place('cause')) || (i.cause ?? '');
+    this.counterText = this.drafts.getText(this.place('countermeasure')) || (i.countermeasure ?? '');
     this.causeCat.set(i.causeCategory ?? null);
     this.causeConflict.set(null);
     this.error.set('');
@@ -1092,6 +1140,7 @@ export class IssueDetail implements OnInit {
       await this.issueService.updateCause(this.pid, this.causeBase()!, {
         cause: this.causeText.trim(), countermeasure: this.counterText.trim(), causeCategory: this.causeCat(),
       }, this.myUid, this.tz());
+      this.clearCause();
       this.causePanel.set(false);
     } catch (e) {
       if (e instanceof ConflictError) {
@@ -1111,7 +1160,7 @@ export class IssueDetail implements OnInit {
   openWorkaround() {
     const i = this.issue()!;
     this.waBase.set(i);
-    this.waText = i.workaroundEnded ? '' : (i.workaround ?? '');
+    this.waText = this.drafts.getText(this.place('workaround')) || (i.workaroundEnded ? '' : (i.workaround ?? ''));
     this.waConflict.set(null);
     this.waSaved.set(false);
     this.error.set('');
@@ -1125,6 +1174,7 @@ export class IssueDetail implements OnInit {
     this.waConflict.set(null);
     try {
       await this.issueService.updateWorkaround(this.pid, this.waBase()!, text, this.myUid, this.tz());
+      this.drafts.clearText(this.place('workaround'));
       this.waPanel.set(false);
       this.waSaved.set(!!text && this.issue()?.importance !== 'low');
     } catch (e) {

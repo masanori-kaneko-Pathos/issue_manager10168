@@ -295,15 +295,15 @@
             <p class="pre">{{ rq.reason }}</p>
             @if (role() === 'admin') {
               @if (declineFor()?.id === rq.id) {
-                <textarea [(ngModel)]="declineNote" rows="2" maxlength="1000"
-                  [placeholder]="'request.notePlaceholder' | t"></textarea>
+                <textarea [ngModel]="declineNote" (ngModelChange)="declineNote = $event; stashDecline(rq)" rows="2"
+                  maxlength="1000" [placeholder]="'request.notePlaceholder' | t"></textarea>
                 <div class="row">
-                  <button type="button" class="link" (click)="declineFor.set(null)">{{ 'workflow.cancel' | t }}</button>
+                  <button type="button" class="link" (click)="cancelDecline(rq)">{{ 'workflow.cancel' | t }}</button>
                   <button type="button" class="primary" (click)="confirmDecline(rq)">{{ 'request.decline' | t }}</button>
                 </div>
               } @else {
                 <div class="row">
-                  <button type="button" class="link" (click)="declineNote = ''; declineFor.set(rq)">
+                  <button type="button" class="link" (click)="openDecline(rq)">
                     {{ 'request.decline' | t }}</button>
                     <button type="button" class="primary" [class.danger]="rq.kind === 'delete'" (click)="approve(rq)">
                     {{ 'request.approve.' + rq.kind | t }}</button>
@@ -631,10 +631,12 @@
                 <h2>{{ 'causeEdit.title' | t }}</h2>
                 <p class="help">{{ 'causeEdit.help' | t }}</p>
                 <label class="field">{{ 'workflow.cause' | t }}
-                  <textarea [(ngModel)]="causeText" rows="3" maxlength="2000"></textarea>
+                  <textarea [ngModel]="causeText" (ngModelChange)="causeText = $event; stashCause()" rows="3"
+                    maxlength="2000"></textarea>
                 </label>
                 <label class="field">{{ 'workflow.countermeasure' | t }}
-                  <textarea [(ngModel)]="counterText" rows="3" maxlength="2000"></textarea>
+                  <textarea [ngModel]="counterText" (ngModelChange)="counterText = $event; stashCause()" rows="3"
+                    maxlength="2000"></textarea>
                 </label>
                 <fieldset>
                   <legend>{{ 'workflow.causeCategory' | t }}</legend>
@@ -658,7 +660,7 @@
                 }
                 @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
                 <div class="row">
-                  <button type="button" class="link" (click)="causePanel.set(false)">{{ 'workflow.cancel' | t }}</button>
+                  <button type="button" class="link" (click)="discardCause()">{{ 'workflow.cancel' | t }}</button>
                   <button type="button" class="primary" [disabled]="busy() || !!causeConflict()?.blocked"
                     (click)="confirmCause()">{{ 'edit.save' | t }}</button>
                 </div>
@@ -669,7 +671,8 @@
               <section class="panel">
                 <h2>{{ 'workaround.title' | t }}</h2>
                 <p class="help">{{ 'workaround.help' | t }}</p>
-                <textarea [(ngModel)]="waText" rows="3" maxlength="2000" [placeholder]="'workaround.placeholder' | t"></textarea>
+                <textarea [ngModel]="waText" (ngModelChange)="waText = $event; stashWa()" rows="3" maxlength="2000"
+                  [placeholder]="'workaround.placeholder' | t"></textarea>
                 @if (waConflict(); as c) {
                   @let w = who(c.latest);
                   <div class="conflict" role="alert">
@@ -683,7 +686,7 @@
                 }
                 @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
                 <div class="row">
-                  <button type="button" class="link" (click)="waPanel.set(false)">{{ 'workflow.cancel' | t }}</button>
+                  <button type="button" class="link" (click)="discardWa()">{{ 'workflow.cancel' | t }}</button>
                   <button type="button" class="primary" [disabled]="busy() || !!waConflict()?.blocked"
                     (click)="confirmWorkaround()">{{ 'edit.save' | t }}</button>
                 </div>

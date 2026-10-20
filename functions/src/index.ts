@@ -1,14 +1,18 @@
 import { initializeApp } from 'firebase-admin/app';
-import { DocumentData, FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
+import { DocumentData, DocumentReference, FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { logger } from 'firebase-functions';
-import { onDocumentCreated, onDocumentUpdated, onDocumentWritten } from 'firebase-functions/v2/firestore';
+import { onDocumentCreated, onDocumentDeleted, onDocumentUpdated, onDocumentWritten } from 'firebase-functions/v2/firestore';
+import { getStorage } from 'firebase-admin/storage';
+import { getAuth } from 'firebase-admin/auth';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 
 initializeApp();
 /** 課題管理アプリのデータベース。名前を指定しないと (default) を読んでしまう */
 const db = getFirestore('issuemanager');
+/** 添付のファイルを置くバケット（US-CENTRAL1。無料の枠がある場所） */
+const BUCKET = 'kensyu10168.firebasestorage.app';
 
 const DAY = 24 * 60 * 60 * 1000;
 /** 通知が自動で消えるまでの日数（アプリ側の NOTIFY_KEEP_DAYS と同じ） */
@@ -359,6 +363,8 @@ export const imHourly = onSchedule(
   { schedule: '*/10 * * * *', timeZone: 'Asia/Tokyo', region: 'asia-northeast1' },
   async () => {
     const now = new Date();
+    // 添付のための写しが、まだ一度もまとめて作られていなければ作る（2回目からは印を見て何もしない）
+    await backfillMirror().catch((e) => logger.error('mirror backfill failed', { error: String(e) }));
     // 片方が失敗しても、もう片方は動かす
     await sendMorningSummaries(now).catch((e) => logger.error('morning summaries failed', { error: String(e) }));
     await sendReminders(now).catch((e) => logger.error('reminders failed', { error: String(e) }));
@@ -595,7 +601,18 @@ export const imDeleteProject = onCall({ region: 'asia-northeast1' }, async (req)
   const name = (project.get('name') as string) ?? '';
   if (typed !== name) throw new HttpsError('failed-precondition', 'name mismatch');
   const byName = (me.get('displayName') as string) ?? '';
+  const r = await purgeProject(pid, name, uid, byName);
+  // 管理ログも消えるので、だれが・いつ・何を消したかは、関数のログに残す
+  logger.info('project deleted', { pid, name, by: uid, byName, ...r });
+  return { ok: true };
+});
 
+/**
+ * プロジェクトを中身ごと消す（プロジェクトの削除と、アカウントの削除で使う）。
+ * 「消してよいか」の確かめは、呼ぶ側で済ませておくこと
+ */
+async function purgeProject(pid: string, name: string, by: string, byName: string) {
+  const projectRef = db.doc(`projects/${pid}`);
   // ① 「削除の最中」の旗を立てる。開いている画面は、これを見てホームへ戻る（「外されました」と区別するため）
   await projectRef.update({ deleting: true });
 
@@ -614,17 +631,129 @@ export const imDeleteProject = onCall({ region: 'asia-northeast1' }, async (req)
   // ③ ほかのメンバーに知らせる（届いた通知は、今ある imOnNotification がプッシュにする）
   const members = await projectRef.collection('members').get();
   const expireAt = Timestamp.fromMillis(Date.now() + NOTIFY_KEEP_DAYS * DAY);
-  await Promise.allSettled(members.docs.filter((m) => m.id !== uid).map((m) =>
+  await Promise.allSettled(members.docs.filter((m) => m.id !== by).map((m) =>
     db.collection(`users/${m.id}/notifications`).add({
       type: 'projectDeleted', pid, projectName: name, iid: null, issueNumber: null, issueTitle: '',
-      by: uid, byName, detail: '', at: FieldValue.serverTimestamp(), read: false, expireAt,
+      by, byName, detail: '', at: FieldValue.serverTimestamp(), read: false, expireAt,
     })));
 
   // ④ プロジェクトと、その下の全部（課題・経緯・コメント・関連課題・メンバー・招待・管理ログ）を消す
   await db.recursiveDelete(projectRef);
+  // 一覧の文書が消えれば関数がファイルも消すが、取りこぼしがないよう、置き場所ごと片づける
+  await getStorage().bucket(BUCKET).deleteFiles({ prefix: `projects/${pid}/` })
+    .catch((e) => logger.error('project files delete failed', { pid, error: String(e) }));
+  return { members: members.size, issues: issueRefs.length };
+}
 
-  // 管理ログも消えるので、だれが・いつ・何を消したかは、関数のログに残す
-  logger.info('project deleted', { pid, name, by: uid, byName, members: members.size, issues: issueRefs.length });
+// ---- アカウントの削除 ----
+
+/** 引き継ぎの対象になる、まだ終わっていない課題（画面の changeMember の OPEN_STATUSES と同じ） */
+const OPEN = ['open', 'in_progress', 'on_hold', 'resolved'];
+/** ログインし直してから、削除を受け付ける時間（秒） */
+const RECENT_LOGIN_SEC = 5 * 60;
+
+/** 所属するプロジェクトごとの扱い。purge＝一緒に削除、leave＝抜ける、blocked＝ほかに管理者がいないので止める */
+interface AccountPlan {
+  pid: string;
+  name: string;
+  kind: 'purge' | 'leave' | 'blocked';
+  myName: string;
+  myRole: string;
+  others: { uid: string; role: string }[];
+  issues: DocumentReference[];   // 自分が担当の、未完了の課題
+}
+
+/**
+ * アカウントを削除する（画面から呼ぶ）。
+ * 他人の課題の担当を書き換える・他人のプロジェクトに記録を残す・ログインを消す、はどれも画面のルールでは許していないので、
+ * ここで行う。Admin はルールを通らないので、条件はすべてここで確かめる
+ */
+export const imDeleteAccount = onCall({ region: 'asia-northeast1' }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'sign-in required');
+  // ① ログインし直してから5分以内か（画面の確認だけだと、関数を直接呼ばれたときに素通りになるため）
+  const authTime = Number(req.auth?.token.auth_time ?? 0);
+  if (Date.now() / 1000 - authTime > RECENT_LOGIN_SEC) throw new HttpsError('failed-precondition', 'recent-login');
+  const handovers = (req.data?.handovers ?? {}) as Record<string, string>;
+  const reason = String(req.data?.reason ?? '').slice(0, 1000);
+  const tz = safeTz((await db.doc(`users/${uid}`).get()).get('timeZone'));
+
+  // ② 所属するプロジェクトを3つに分ける（画面と同じ決まりを、ここでもう一度。開いたあとに状況が変わりうるため）
+  const mine = await db.collectionGroup('members').where('uid', '==', uid).get();
+  const plans = await Promise.all(mine.docs.map(async (m): Promise<AccountPlan> => {
+    const projectRef = m.ref.parent.parent!;
+    const [project, members, assigned] = await Promise.all([
+      projectRef.get(),
+      projectRef.collection('members').get(),
+      projectRef.collection('issues').where('assigneeId', '==', uid).get(),
+    ]);
+    const others = members.docs.filter((d) => d.id !== uid).map((d) => ({ uid: d.id, role: d.get('role') as string }));
+    const kind = !others.length ? 'purge'
+      : m.get('role') === 'admin' && !others.some((o) => o.role === 'admin') ? 'blocked' : 'leave';
+    return {
+      pid: projectRef.id, name: (project.get('name') as string) ?? '', kind,
+      myName: (m.get('displayName') as string) ?? '', myRole: m.get('role') as string, others,
+      issues: assigned.docs.filter((d) => OPEN.includes(d.get('status'))).map((d) => d.ref),
+    };
+  }));
+
+  // ③ 先に全部確かめる（途中まで消してから止まると、半端な状態が残るため）
+  if (plans.some((p) => p.kind === 'blocked')) throw new HttpsError('failed-precondition', 'blocked');
+  for (const p of plans) {
+    if (p.kind !== 'leave' || !p.issues.length) continue;
+    const to = handovers[p.pid];
+    // 引き継ぐ人は、そのプロジェクトの管理者かメンバー（閲覧者は担当者になれない）
+    if (!p.others.some((o) => o.uid === to && o.role !== 'viewer')) {
+      throw new HttpsError('failed-precondition', 'handover');
+    }
+  }
+
+  // ④ 抜けるプロジェクト：1つずつトランザクションで（引き継ぎ・名前を残す・メンバーから外す・記録・知らせ）
+  for (const p of plans.filter((x) => x.kind === 'leave')) {
+    const projectRef = db.doc(`projects/${p.pid}`);
+    const to = handovers[p.pid];
+    await db.runTransaction(async (tx) => {
+      // 読むのが先、書くのが後
+      const snaps = p.issues.length ? await tx.getAll(...p.issues) : [];
+      let moved = 0;
+      for (const s of snaps) {
+        // ③のあとに、ほかの人が担当を変えた・終わらせたものは触らない
+        if (!s.exists || s.get('assigneeId') !== uid || !OPEN.includes(s.get('status'))) continue;
+        tx.update(s.ref, { assigneeId: to, updatedAt: FieldValue.serverTimestamp(), updatedBy: uid });
+        tx.create(s.ref.collection('events').doc(), {
+          type: 'edit', fields: ['assigneeId'], changes: { assigneeId: { from: uid, to } },
+          reason, by: uid, tz, at: FieldValue.serverTimestamp(),
+        });
+        moved++;
+      }
+      // 名前を残してから消す（コメントや経緯で「—」にしないため。抜けるときと同じ）
+      tx.update(projectRef, { [`formerMembers.${uid}`]: p.myName });
+      tx.delete(projectRef.collection('members').doc(uid));
+      tx.create(projectRef.collection('adminLogs').doc(), {
+        type: 'account', by: uid, target: uid, from: p.myRole, to: null, moved, at: FieldValue.serverTimestamp(),
+      });
+      if (moved) {
+        tx.create(db.collection(`users/${to}/notifications`).doc(), {
+          type: 'handover', pid: p.pid, projectName: p.name, iid: null, issueNumber: moved, issueTitle: '',
+          by: uid, byName: p.myName, detail: reason.slice(0, 200), at: FieldValue.serverTimestamp(), read: false,
+          expireAt: Timestamp.fromMillis(Date.now() + NOTIFY_KEEP_DAYS * DAY),
+        });
+      }
+    });
+  }
+
+  // ⑤ 自分しかいないプロジェクト：プロジェクトの削除と同じ片づけ
+  for (const p of plans.filter((x) => x.kind === 'purge')) {
+    await purgeProject(p.pid, p.name, uid, p.myName);
+  }
+  // ⑥ 自分の置き場（受信箱・お知らせ・端末・リマインド）
+  await db.recursiveDelete(db.doc(`users/${uid}`));
+  // ⑦ 最後にログインを消す（途中で失敗しても、ログインが残っていれば、本人がもう一度押してやり直せる）
+  await getAuth().deleteUser(uid);
+
+  logger.info('account deleted', {
+    uid, left: plans.filter((p) => p.kind === 'leave').length, purged: plans.filter((p) => p.kind === 'purge').length,
+  });
   return { ok: true };
 });
 
@@ -665,3 +794,95 @@ export const imOnSubtaskChanged = onDocumentWritten(
     });
   },
 );
+
+// ---- 添付 ----
+
+/**
+ * 添付の一覧の文書が消えたら、ファイル本体も消す。
+ * 1つずつの削除・コメントの削除・課題の完全削除・プロジェクトの削除（recursiveDelete）は、どれもここを通る
+ */
+export const imOnAttachmentDeleted = onDocumentDeleted(
+  { document: 'projects/{pid}/issues/{iid}/attachments/{aid}', database: 'issuemanager', region: 'asia-northeast1' },
+  async (event) => {
+    const path = event.data?.get('path') as string | undefined;
+    if (!path) return;
+    try {
+      await getStorage().bucket(BUCKET).file(path).delete({ ignoreNotFound: true });
+    } catch (e) {
+      logger.error('attachment file delete failed', { path, error: String(e) });
+    }
+  },
+);
+
+// ---- 添付のための写し（(default) のデータベースへ） ----
+
+/**
+ * Storage のルールは、名前付きのデータベース（issuemanager）を見に行けない（10/20 に確かめた）。
+ * そのため、「だれが、どのプロジェクトの、どの役割か」と「アーカイブ中か」だけを、(default) に写しておく。
+ * 置き場所：imProjects/{pid}（archived）、imProjects/{pid}/members/{uid}（role）。画面からは読み書きしない
+ */
+const mirrorDb = getFirestore(); // (default)。ここだけは、わざとデータベースの名前を書かない
+/** 最初のまとめての写しが済んだかの印（中身を変えたら、数を上げると、もう一度まとめて写す） */
+const MIRROR_VERSION = 1;
+
+/** メンバーが増えた・役割が変わった・抜けたら、写しを直す */
+export const imMirrorMember = onDocumentWritten(
+  { document: 'projects/{pid}/members/{uid}', database: 'issuemanager', region: 'asia-northeast1' },
+  async (event) => {
+    const { pid, uid } = event.params;
+    const after = event.data?.after.data();
+    const ref = mirrorDb.doc(`imProjects/${pid}/members/${uid}`);
+    if (!after) {
+      await ref.delete(); // 外れた・抜けた
+      return;
+    }
+    // 役割が変わったときだけ書く（表示名などの変更では書かない）
+    if (event.data?.before.data()?.role === after.role) return;
+    await ref.set({ role: after.role });
+  },
+);
+
+/** プロジェクトを作った・アーカイブした・解除した・削除したら、写しを直す */
+export const imMirrorProject = onDocumentWritten(
+  { document: 'projects/{pid}', database: 'issuemanager', region: 'asia-northeast1' },
+  async (event) => {
+    const { pid } = event.params;
+    const before = event.data?.before.data();
+    const after = event.data?.after.data();
+    const ref = mirrorDb.doc(`imProjects/${pid}`);
+    if (!after) {
+      await mirrorDb.recursiveDelete(ref); // プロジェクトの削除：写しもメンバーごと消す
+      return;
+    }
+    // アーカイブの状態が変わったとき（と、作ったとき）だけ書く。課題の番号の採番などでは書かない
+    if (before && !!before.archived === !!after.archived) return;
+    await ref.set({ archived: !!after.archived });
+  },
+);
+
+/** 最初に1回だけ、今いる全プロジェクト・全メンバーを写す（印があれば何もしない） */
+async function backfillMirror() {
+  const meta = mirrorDb.doc('imMeta/mirror');
+  if ((await meta.get()).get('version') === MIRROR_VERSION) return;
+  const [projects, members] = await Promise.all([
+    db.collection('projects').get(),
+    db.collectionGroup('members').get(),
+  ]);
+  const writes: { ref: DocumentReference; data: DocumentData }[] = [
+    ...projects.docs.map((p) => ({ ref: mirrorDb.doc(`imProjects/${p.id}`), data: { archived: !!p.get('archived') } })),
+    ...members.docs
+      .filter((m) => m.ref.parent.parent)
+      .map((m) => ({
+        ref: mirrorDb.doc(`imProjects/${m.ref.parent.parent!.id}/members/${m.id}`),
+        data: { role: m.get('role') },
+      })),
+  ];
+  // まとめ書きは1回500件まで。余裕をみて400件ずつ
+  for (let i = 0; i < writes.length; i += 400) {
+    const batch = mirrorDb.batch();
+    writes.slice(i, i + 400).forEach((w) => batch.set(w.ref, w.data));
+    await batch.commit();
+  }
+  await meta.set({ version: MIRROR_VERSION, at: FieldValue.serverTimestamp() });
+  logger.info('mirror backfilled', { projects: projects.size, members: members.size });
+}

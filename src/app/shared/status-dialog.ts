@@ -6,11 +6,13 @@ import { ConflictError, IssueService, conflictWho } from '../core/issue/issue.se
 import { CAUSE_CATEGORIES, CauseCategory, Effect, Issue, Member, hasWorkaround, toHours } from '../core/models';
 import { Transition } from '../core/issue/workflow';
 import { I18nService, TPipe } from '../i18n/i18n';
+import { DraftService, fieldPlace } from '../core/draft/draft.service';
 
 @Component({
   selector: 'app-status-dialog',
   imports: [FormsModule, TPipe],
-  host: { '(document:keydown.escape)': 'cancel.emit()' },
+  // 日本語の変換は、確定したときに ngModel の値が入る（その瞬間には input が来ない）ので、確定のときにもしまう
+  host: { '(document:keydown.escape)': 'cancel.emit()', '(input)': 'stash()', '(compositionend)': 'stash()' },
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
     <section class="dialog" role="dialog" aria-modal="true">
@@ -95,7 +97,7 @@ import { I18nService, TPipe } from '../i18n/i18n';
       }
       @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
       <div class="row">
-        <button type="button" class="link" (click)="cancel.emit()">{{ 'workflow.cancel' | t }}</button>
+        <button type="button" class="link" (click)="discard()">{{ 'workflow.cancel' | t }}</button>
         <button type="button" class="primary" [disabled]="busy() || !canConfirm() || !!conflict()?.blocked"
           (click)="confirm()">
           {{ 'workflow.confirm' | t }}</button>
@@ -185,11 +187,13 @@ export class StatusDialog implements OnInit {
   private tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
 
   ngOnInit() {
-    this.reason = this.presetReason();
-    // 対応中に書いた原因・対策があれば、最初から入れておく
+    // 依頼から開いたときは依頼の理由、なければ書きかけ
+    this.reason = this.presetReason() || this.drafts.getText(this.place('status:' + this.transition().key));
+    // 書きかけがあればそれを、なければ対応中に書いた原因・対策を、最初から入れておく
     const i = this.issue();
-    this.cause = i.cause ?? '';
-    this.countermeasure = i.countermeasure ?? '';
+    this.cause = this.drafts.getText(this.place('cause')) || (i.cause ?? '');
+    this.countermeasure = this.drafts.getText(this.place('countermeasure')) || (i.countermeasure ?? '');
+    this.learning = this.drafts.getText(this.place('learning'));
     this.causeCategory.set(i.causeCategory ?? null);
     this.actual = i.actualHours ?? null;
     if (this.transition().needs === 'resolve') this.loadSubtaskNote();
@@ -235,6 +239,7 @@ export class StatusDialog implements OnInit {
         workaroundEnded: this.needsWaCheck() && this.waEnded(),
         actualHours: this.effort() && this.transition().needs === 'resolve' ? toHours(this.actual) ?? null : null,
       }, auth.currentUser!.uid, this.tz());
+      this.clearDrafts();
       this.done.emit();
     } catch (e) {
       if (e instanceof ConflictError) {
@@ -253,6 +258,37 @@ export class StatusDialog implements OnInit {
     const blocked = latest.status !== this.current().status;
     if (!blocked) this.base.set(latest);
     this.conflict.set({ latest, blocked });
+  }
+
+  private drafts = inject(DraftService);
+
+  private place(slot: string) {
+    return fieldPlace(this.pid(), this.issue().id, slot);
+  }
+
+  /** この窓で書く欄（名札と今の値）。理由は操作ごとに別、原因・対策・学びは詳細のパネルと同じ名札 */
+  private fields(): [string, string][] {
+    switch (this.transition().needs) {
+      case 'reason': return [[this.place('status:' + this.transition().key), this.reason]];
+      case 'resolve': return [[this.place('cause'), this.cause], [this.place('countermeasure'), this.countermeasure]];
+      case 'close': return [[this.place('learning'), this.learning]];
+      default: return [];
+    }
+  }
+
+  /** 打つたびにしまう（入力は窓の外側まで上がってくるので、ここ1か所で受ける） */
+  stash() {
+    for (const [k, v] of this.fields()) this.drafts.setText(k, v);
+  }
+
+  private clearDrafts() {
+    for (const [k] of this.fields()) this.drafts.clearText(k);
+  }
+
+  /** やめる：書きかけを捨てて閉じる */
+  discard() {
+    this.clearDrafts();
+    this.cancel.emit();
   }
 
   who(latest: Issue) {

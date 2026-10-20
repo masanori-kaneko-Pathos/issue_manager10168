@@ -4,6 +4,10 @@ import { AuthService } from '../auth/auth.service';
 const DAY = 24 * 60 * 60 * 1000;
 /** 既にあるものへの書きかけ（コメント・理由など）を残す日数 */
 export const FIELD_DRAFT_DAYS = 7;
+/** 書きかけの名札：「プロジェクト/課題/欄」（同じ課題・同じ欄なら、どの画面から開いても同じ書きかけが出る） */
+export function fieldPlace(pid: string, iid: string, slot: string) {
+  return `${pid}/${iid}/${slot}`;
+}
 
 /** 下書きの種類（新しく作るもの） */
 export type DraftKind = 'issue' | 'project';

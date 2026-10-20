@@ -1,4 +1,4 @@
-import { Component, ElementRef, computed, inject, input, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, OnInit, computed, inject, input, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth/auth.service';
@@ -8,6 +8,7 @@ import { normalize } from '../../core/search/match';
 import { Member } from '../../core/models';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { AttachmentService, checkFile } from '../../core/attachment/attachment.service';
+import { DraftService, fieldPlace } from '../../core/draft/draft.service';
 
 /** 1つのコメントに添付できる数 */
 const MAX_COMMENT_FILES = 5;
@@ -27,7 +28,7 @@ interface Cand { key: string; label: string; sub: string; insert: string; uid?: 
       <textarea #ta [(ngModel)]="body" rows="3" [placeholder]="'detail.commentPlaceholder' | t"
         [attr.aria-label]="'detail.commentPlaceholder' | t" role="combobox" aria-controls="cb-list"
         [attr.aria-expanded]="cands().length > 0" [attr.aria-activedescendant]="cands().length ? 'cb-' + active() : null"
-        (input)="detect()" (click)="detect()" (keydown)="onKey($event)" (focus)="search.load()"
+        (input)="detect(); stash()" (click)="detect()" (keydown)="onKey($event)" (focus)="search.load()"
         (blur)="trigger.set(null)" (paste)="onPaste($event)" (dragover)="onDragOver($event)"
         (dragleave)="over.set(false)" (drop)="onDrop($event)" [class.over]="over()"></textarea>
       @if (cands().length) {
@@ -103,7 +104,7 @@ interface Cand { key: string; label: string; sub: string; insert: string; uid?: 
     .clip:hover { background: var(--surface-alt); color: var(--text); }
   `,
 })
-export class CommentBox {
+export class CommentBox implements OnInit {
   pid = input.required<string>();
   iid = input.required<string>();
   /** メンションできる人（閲覧者も含むメンバー全員・赤X） */
@@ -156,6 +157,19 @@ export class CommentBox {
     }
     return [];
   });
+
+  private drafts = inject(DraftService);
+  private place = computed(() => fieldPlace(this.pid(), this.iid(), 'comment'));
+
+  ngOnInit() {
+    this.body = this.drafts.getText(this.place());
+  }
+
+  /** 打つたびにしまう。同じ (input) の中でまだ body が入れ替わっていないこともあるので、欄の文字を直接読む */
+  stash() {
+    this.drafts.setText(this.place(), this.ta()?.nativeElement.value ?? this.body);
+  }
+
 
   // ---- 添付（送信まで手元にためる） ----
   onPick(e: Event) {
@@ -245,6 +259,7 @@ export class CommentBox {
     this.body = this.body.slice(0, this.start) + c.insert + this.body.slice(caret);
     if (c.uid) this.picked.set(c.label, c.uid);
     this.trigger.set(null);
+    this.stash();
     const at = this.start + c.insert.length;
     setTimeout(() => {
       el.focus();
@@ -265,6 +280,7 @@ export class CommentBox {
       const cid = await this.issueService.addComment(this.pid(), this.iid(), body, this.myUid, this.tz(), mentions);
       this.body = '';
       this.picked.clear();
+      this.drafts.clearText(this.place());
       // コメントができたら、ためておいたファイルを、そのコメントの下に上げる（同時に進む）
       const list = this.pending();
       if (list.length) {

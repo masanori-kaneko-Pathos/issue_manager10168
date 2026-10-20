@@ -1,4 +1,4 @@
-import { Component, computed, inject, output, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { auth } from '../../core/firebase';
 import { ArchiveKind } from '../../core/models';
@@ -68,7 +68,10 @@ import { TPipe } from '../../i18n/i18n';
     .primary:disabled { background: var(--disabled); cursor: default; }
   `,
 })
-export class ArchiveDialog {
+export class ArchiveDialog implements OnInit {
+  /** 最初から入れておく種類と理由（見本を終えるときに使う。どちらも書き換えられる） */
+  presetKind = input<ArchiveKind>('completed');
+  presetReason = input('');
   done = output<void>();
   cancel = output<void>();
 
@@ -82,6 +85,11 @@ export class ArchiveDialog {
   error = signal('');
   /** 凍結される未完了の課題（解決済みも含む。かんばん・リストに出ているもの） */
   openCount = computed(() => this.ctx.openIssues().length);
+
+  ngOnInit() {
+    this.kind.set(this.presetKind());
+    this.reason = this.presetReason();
+  }
 
   async confirm() {
     this.busy.set(true);
