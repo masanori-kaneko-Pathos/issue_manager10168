@@ -4,13 +4,20 @@ export const MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 /** 取り込みの失敗（code は翻訳キー importPage.errors.〇〇） */
 export class ImportError extends Error {
-  constructor(readonly code: 'tooBig' | 'badType' | 'empty') {
+  constructor(readonly code: 'tooBig' | 'badType' | 'empty' | 'noText' | 'tooManyPages') {
     super(code);
   }
 }
 
-/** 読んだ表。CSV は1つ、Excel はシートの数だけ（課題の行がないシートは除く） */
-export interface SheetTable { name: string; rows: string[][]; }
+/** 読んだ表。CSV・PDF は1つ、Excel はシートの数だけ（課題の行がないシートは除く）。pdf＝読み取りの確認が要る */
+export interface SheetTable { name: string; rows: string[][]; pdf?: boolean; }
+
+/** 2つの文字をつなぐ。英数字どうしなら空白を挟み、日本語なら詰める（折り返した文の続きをつなぐため） */
+export function joinText(a: string, b: string): string {
+  if (!a) return b;
+  if (!b) return a;
+  return /[ -~]$/.test(a) && /^[ -~]/.test(b) ? `${a} ${b}` : a + b;
+}
 
 export async function readTables(file: File): Promise<SheetTable[]> {
   if (file.size > MAX_FILE_BYTES) throw new ImportError('tooBig');
@@ -21,6 +28,10 @@ export async function readTables(file: File): Promise<SheetTable[]> {
     tables = [{ name: file.name, rows: parseDelimited(text, ext === 'tsv' || looksTabbed(text) ? '\t' : ',') }];
   } else if (ext === 'xlsx' || ext === 'xls') {
     tables = await readExcel(await file.arrayBuffer());
+  } else if (ext === 'pdf') {
+    // PDF の読み取りは、PDF を選んだときに初めて読み込む（pdf.js が大きいため）
+    const { readPdf } = await import('./pdf');
+    tables = [{ name: file.name, rows: await readPdf(await file.arrayBuffer()), pdf: true }];
   } else {
     throw new ImportError('badType');
   }
