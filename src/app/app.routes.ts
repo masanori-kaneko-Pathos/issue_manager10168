@@ -47,8 +47,8 @@ export const routes: Routes = [
         ] },
         { path: 'inbox', canActivate: [authGuard],
           loadComponent: () => import('./pages/inbox/inbox').then((m) => m.Inbox) },
-        { path: 'inbox/new', canActivate: [authGuard],
-          loadComponent: () => import('./pages/inbox/inbox-new').then((m) => m.InboxNew) },
+        // メモを書くページはやめた（書くのはペンの吹き出しだけ）。古いリンクは受信箱へ
+        { path: 'inbox/new', redirectTo: 'inbox' },
         // メモのページはやめた。古いリンク（/inbox/メモのid）は、受信箱でそのメモを開いた状態に回す
         // （':id' は 'new' より後に置く。先に置くと、'new' がメモの id として扱われてしまう）
         { path: 'inbox/:id',

@@ -28,6 +28,8 @@ export class InboxService {
   flash = signal<string | null>(null);
   /** ペンの吹き出しの書きかけ（閉じても、アプリを開いている間は残す。キャンセルか保存で空にする） */
   draft = signal('');
+  /** ペンの吹き出しが開いているか（ヘッダーだけでなく、ホームや受信箱のページからも開けるように、ここに置く） */
+  penOpen = signal(false);
   private flashTimer: ReturnType<typeof setTimeout> | undefined;
 
   /** 未整理のメモ（更新が新しい順。直したメモが上に来る） */
@@ -42,6 +44,10 @@ export class InboxService {
       .sort((a, b) => b.discardedAt!.toMillis() - a.discardedAt!.toMillis());
   });
   count = computed(() => this.active().length);
+  /** ペンの吹き出しを開く（メモを書く入口は、この吹き出しの1か所だけ） */
+  openPen() {
+    this.penOpen.set(true);
+  }
   /** id でメモを引く（ゴミ箱の中も含む。なければ null） */
   find(id: string) {
     return this.items().find((m) => m.id === id) ?? null;

@@ -1,5 +1,5 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
 import { INBOX_TRASH_DAYS, InboxService, stableOrder } from '../../core/inbox/inbox.service';
 import { InboxMemo } from '../../core/models';
 import { MemoRow } from '../../shared/memo-row';
@@ -9,12 +9,12 @@ import { I18nService, TPipe } from '../../i18n/i18n';
 /** 受信箱：未整理のメモの一覧。直す・課題にする・ゴミ箱へ。ゴミ箱は30日で自動で消える */
 @Component({
   selector: 'app-inbox',
-  imports: [RouterLink, TPipe, MemoRow],
+  imports: [TPipe, MemoRow],
   template: `
     <main>
       <div class="head">
         <h1>{{ 'inbox.title' | t }}</h1>
-        <a routerLink="/inbox/new" class="primary">{{ 'inbox.write' | t }}</a>
+        <button type="button" class="primary" (click)="inbox.openPen()">{{ 'inbox.write' | t }}</button>
       </div>
       <p class="help">{{ 'inbox.onlyYou' | t }}</p>
       @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
@@ -60,7 +60,8 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .help { font-size: 12px; color: var(--text-muted); margin: 8px 0; }
     .error { color: var(--danger-text); }
     .primary { display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px; border-radius: 8px;
-      background: var(--primary); color: var(--on-primary); text-decoration: none; font-size: 14px; }
+      border: none; background: var(--primary); color: var(--on-primary); text-decoration: none; font-size: 14px;
+      cursor: pointer; }
     .list { list-style: none; padding: 0; margin: 8px 0 16px; }
     .list li { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 10px 4px;
       border-bottom: 1px solid var(--border); }

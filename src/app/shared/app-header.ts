@@ -288,8 +288,8 @@ export class AppHeader {
   private clock = inject(Clock);
   private i18n = inject(I18nService);
   bellOpen = signal(false);
-  /** ペンの吹き出し */
-  penOpen = signal(false);
+  /** ペンの吹き出し（開け閉めは受信箱のサービスが持つ。ホームや受信箱のページからも開くため） */
+  penOpen = this.inbox.penOpen;
 
   togglePen() {
     this.open.set(false);

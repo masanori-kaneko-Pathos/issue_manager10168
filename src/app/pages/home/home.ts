@@ -94,7 +94,7 @@ import { SampleService } from '../../core/project/sample.service';
       <section class="inbox">
         <div class="mine-head">
           <h2>{{ 'inbox.title' | t }}</h2>
-          <a routerLink="/inbox/new" class="link">{{ 'inbox.write' | t }}</a>
+          <button type="button" class="link write" (click)="inbox.openPen()">{{ 'inbox.write' | t }}</button>
         </div>
         <ul class="list">
           @for (m of inbox.active().slice(0, 3); track m.id) {
@@ -264,6 +264,7 @@ import { SampleService } from '../../core/project/sample.service';
     .memo { min-height: 44px !important; }
     .old { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: var(--warning-bg); color: var(--warning-text); }
     .see-all { font-size: 13px; }
+    .write { min-height: 40px; font-size: 14px; cursor: pointer; }
     .mine-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
     .check { display: flex; align-items: center; gap: 6px; font-size: 13px; min-height: 40px; }
     .mine-item { flex-wrap: wrap; }
