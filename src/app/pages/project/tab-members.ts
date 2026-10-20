@@ -186,7 +186,7 @@ export class ProjectMembers {
     this.busy.set(true);
     this.roleError.set('');
     try {
-      await this.ps.changeMember(this.ctx.pid(), m, [], null, '', { kind: 'role', role: r }, this.myUid, this.tz());
+      await this.ps.changeMember(this.ctx.pid(), m, {}, '', { kind: 'role', role: r }, this.myUid, this.tz());
     } catch (e) {
       console.error(e);
       this.roleError.set('common.saveError');

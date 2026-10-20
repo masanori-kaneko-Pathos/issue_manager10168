@@ -226,33 +226,39 @@ export class ProjectService {
         await call({ pid, name });
     }
 
-    /*途中で止まって「担当者がプロジェクトにいない課題」が残らないようにするため*/
-
+    /**
+     * 担当の引き継ぎと、役割の変更・外す・抜けるを、1つのトランザクションで行う（全部か無か）。
+     * dests は「課題id → 引き継ぐ人」。課題ごとに渡す人を分けられる（渡さない課題は入れない）
+     */
     async changeMember(
-        pid: string, target: Member, issueIds: string[], to: string | null, reason: string,
+        pid: string, target: Member, dests: Record<string, string>, reason: string,
         change: MemberChange, by: string, tz: string,
     ) {
         const projectRef = doc(db, 'projects', pid);
         const memberRef = doc(projectRef, 'members', target.uid);
+        const ids = Object.keys(dests);
         await runTransaction(db, async (tx) => {
             // トランザクションは「読むのが先、書くのは後」の決まり
             const [project, ...snaps] = await Promise.all([
                 tx.get(projectRef),
-                ...issueIds.map((id) => tx.get(doc(projectRef, 'issues', id))),
+                ...ids.map((id) => tx.get(doc(projectRef, 'issues', id))),
             ]);
-            let moved = 0;
-            for (const s of snaps) {
-                if (!s.exists() || !to) continue;
+            /** 受け取った人ごとの件数（通知を1人1通にまとめるため） */
+            const movedTo: Record<string, number> = {};
+            snaps.forEach((s, k) => {
+                const to = dests[ids[k]];
+                if (!s.exists() || !to) return;
                 const d = s.data();
                 // 開いてから今までに、ほかの人が担当を変えた・クローズしたものは触らない
-                if (d['assigneeId'] !== target.uid || !OPEN_STATUSES.includes(d['status'] as IssueStatus)) continue;
+                if (d['assigneeId'] !== target.uid || !OPEN_STATUSES.includes(d['status'] as IssueStatus)) return;
                 tx.update(s.ref, { assigneeId: to, updatedAt: serverTimestamp(), updatedBy: by });
                 tx.set(doc(collection(s.ref, 'events')), {
                     type: 'edit', fields: ['assigneeId'], changes: { assigneeId: { from: target.uid, to } },
                     reason, by, tz, at: serverTimestamp(),
                 });
-                moved++;
-            }
+                movedTo[to] = (movedTo[to] ?? 0) + 1;
+            });
+            const moved = Object.values(movedTo).reduce((a, b) => a + b, 0);
             if (change?.kind === 'role') tx.update(memberRef, { role: change.role });
             if (change?.kind === 'remove' || change?.kind === 'leave') {
                 // 名前を残してから消す（コメントや経緯で「—」にしないため）
@@ -263,12 +269,12 @@ export class ProjectService {
                 type: change?.kind ?? 'handover', by, target: target.uid, from: target.role,
                 to: change?.kind === 'role' ? change.role : null, moved, at: serverTimestamp(),
             });
-            // 引き継いだ人に、まとめて1通（件数は issueNumber に入れる）
-            if (to && moved > 0) {
-                const n = this.notifications.notice(to, 'handover', {
-                    pid, projectName: project.data()?.['name'] ?? '', iid: null, issueNumber: moved, issueTitle: '',
+            // 引き継いだ人に、1人1通（件数は issueNumber に入れる）
+            for (const [to, n] of Object.entries(movedTo)) {
+                const notice = this.notifications.notice(to, 'handover', {
+                    pid, projectName: project.data()?.['name'] ?? '', iid: null, issueNumber: n, issueTitle: '',
                 }, reason);
-                if (n) tx.set(n.ref, n.data);
+                if (notice) tx.set(notice.ref, notice.data);
             }
         });
     }
