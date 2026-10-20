@@ -1,6 +1,7 @@
 import { Component, DestroyRef, OnInit, WritableSignal, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router, RouterLink } from '@angular/router';
+import { SavedFilters } from './saved-filters';
 import { ConflictError, IssueEdits, IssueService } from '../../core/issue/issue.service';
 import { auth } from '../../core/firebase';
 import { ProjectContext } from './project-context';
@@ -36,7 +37,7 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
 
 @Component({
   selector: 'app-tab-list',
-  imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, PriorityMark, BulkBar, MemberSelect, PeopleFilter],
+  imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, PriorityMark, BulkBar, MemberSelect, PeopleFilter, SavedFilters],
   host: { '(document:keydown.escape)': 'showFilters.set(false)' },
   template: `
     <section>
@@ -74,6 +75,7 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
       <div class="people">
         <app-people-filter [members]="assignable()" [counts]="ctx.activeCount()" [value]="who()"
           (picked)="setWho($event)" />
+        <app-saved-filters [pid]="pid()" [current]="currentQuery()" (applied)="applySaved($event)" />
       </div>
 
       <div class="toolbar">
@@ -318,7 +320,7 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
     .qchip { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 8px;
       padding: 4px 12px; border-radius: 8px; background: var(--primary-bg); font-size: 13px; }
     .qchip span { flex: 1; min-width: 50%; overflow-wrap: anywhere; }
-    .people { margin: 8px 0; }
+    .people { margin: 8px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
     .toolbar { display: flex; align-items: center; gap: 8px; }
     .filter-wrap { position: relative; flex: 1; min-width: 0; }
     .summary { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; width: 100%;
@@ -529,7 +531,15 @@ export class TabList implements OnInit {
     const { deleted, ...rest } = (history.state ?? {}) as Record<string, unknown>;
     if (deleted !== undefined) history.replaceState(rest, '');
     // URLから条件を復元する
-    const p = this.route.snapshot.queryParamMap;
+    this.readQuery(this.route.snapshot.queryParamMap);
+    await this.ensureAll();
+  }
+
+  /**
+   * 条件を読んで、全部の欄に入れる（書いていない欄は初期値に戻す）。
+   * 開いたときと、保存した絞り込みを当てたときの両方で使う
+   */
+  private readQuery(p: ParamMap) {
     this.q.set(p.get('q') ?? '');
     this.scope.set(p.get('scope') === 'all' ? 'all' : 'open');
     this.whoRaw.set(whoFromQuery(p, this.myUid));
@@ -538,14 +548,19 @@ export class TabList implements OnInit {
     this.overdueOnly.set(p.get('overdue') === '1');
     this.staleOnly.set(p.get('stale') === '1');
     this.label.set(p.get('label'));
-    const s = p.get('sort') as SortKey | null;
-    if (s && this.sortKeys.includes(s)) {
-      this.sort.set(s);
-      const d = p.get('dir');
-      this.dir.set(d === 'asc' || d === 'desc' ? d : DEFAULT_DIR[s]);
-    }
-    await this.ensureAll();
+    const raw = p.get('sort') as SortKey | null;
+    const s: SortKey = raw && this.sortKeys.includes(raw) ? raw : 'priority';
+    this.sort.set(s);
+    const d = p.get('dir');
+    this.dir.set(d === 'asc' || d === 'desc' ? d : DEFAULT_DIR[s]);
   }
+
+  /** 保存した絞り込みを当てる。同じ道のまま条件だけ変わるので、画面は作り直されない → ここで読み直す */
+  applySaved(query: string) {
+    this.readQuery(this.router.parseUrl('/?' + query).queryParamMap);
+    this.changed();
+  }
+
   /** 必要になったときに1回だけ、クローズ済みも含めて読み込む */
   private async ensureAll() {
     if (this.allIssues() || (!this.q().trim() && this.scope() === 'open')) return;
@@ -569,24 +584,30 @@ export class TabList implements OnInit {
     }
   }
 
+  /** URL に書く条件（初期値のものは null にして、URL から消す） */
+  private queryParams = computed(() => ({
+    q: this.q().trim() || null,
+    scope: this.scope() === 'all' ? 'all' : null,
+    ...whoQuery(this.who()),
+    type: this.type(),
+    priority: this.priority(),
+    overdue: this.overdueOnly() ? '1' : null,
+    stale: this.staleOnly() ? '1' : null,
+    label: this.label(),
+    sort: this.sort() === 'priority' ? null : this.sort(),
+    dir: this.dir() === DEFAULT_DIR[this.sort()] ? null : this.dir(),
+  }));
+
+  /** 今の条件を文字列にしたもの（保存する形。条件がなければ空） */
+  currentQuery = computed(() => {
+    const u = new URLSearchParams();
+    for (const [k, v] of Object.entries(this.queryParams())) if (v != null && v !== '') u.set(k, String(v));
+    return u.toString();
+  });
+
   /** 条件が変わったら、URLを書き換えて、必要なら全件を読む */
   private changed() {
-    this.router.navigate([], {
-      relativeTo: this.route,
-      replaceUrl: true,
-      queryParams: {
-        q: this.q().trim() || null,
-        scope: this.scope() === 'all' ? 'all' : null,
-        ...whoQuery(this.who()),
-        type: this.type(),
-        priority: this.priority(),
-        overdue: this.overdueOnly() ? '1' : null,
-        stale: this.staleOnly() ? '1' : null,
-        label: this.label(),
-        sort: this.sort() === 'priority' ? null : this.sort(),
-        dir: this.dir() === DEFAULT_DIR[this.sort()] ? null : this.dir(),
-      },
-    });
+    this.router.navigate([], { relativeTo: this.route, replaceUrl: true, queryParams: this.queryParams() });
     this.ensureAll();
   }
 

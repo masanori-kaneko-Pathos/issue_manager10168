@@ -48,6 +48,13 @@ service firebase.storage {
       allow create: if newFileOk(pid) && roleIn(pid, ['admin', 'member', 'viewer']);
       allow delete: if request.auth != null && resource.metadata.by == request.auth.uid;
     }
+  
+    // プロジェクトの概要の添付：管理者
+    match /projects/{pid}/overview/{fid} {
+      allow read: if isMember(pid);
+      allow create: if newFileOk(pid) && roleIn(pid, ['admin']);
+      allow delete: if request.auth != null && resource.metadata.by == request.auth.uid;
+    }
         // アイコンの写真：見るのはログインしている人なら誰でも（ほかのプロジェクトの画面にも出るため）。
     // 置く・消すのは本人だけ。画像だけ・2MB まで（画面で 256px の JPEG に縮めてから上げる）
     match /users/{uid}/{file} {

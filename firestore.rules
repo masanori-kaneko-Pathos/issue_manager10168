@@ -113,6 +113,21 @@ service cloud.firestore {
           // 自分がメンバーのプロジェクトの課題にだけ置ける
           && exists(/databases/$(database)/documents/projects/$(request.resource.data.pid)/members/$(uid));
       }
+      // 保存した絞り込み：本人だけ。条件は URL の ? より後ろの文字列をそのまま持つ。
+      // 1プロジェクト20個まで・同じ名前は上書き、は画面で守る（ルールは数えられないため）
+      match /filters/{fid} {
+        allow read, delete: if request.auth != null && request.auth.uid == uid;
+        allow create, update: if request.auth != null && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['name', 'pid', 'query', 'createdAt', 'updatedAt'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 50
+          && request.resource.data.pid is string
+          && request.resource.data.query is string && request.resource.data.query.size() <= 2000
+          && request.resource.data.createdAt is timestamp
+          && request.resource.data.updatedAt == request.time
+          // 自分がメンバーのプロジェクトの分だけ
+          && exists(/databases/$(database)/documents/projects/$(request.resource.data.pid)/members/$(uid));
+      }
     }
     function signedIn() { return request.auth != null; }
     function projectPath(pid) { return /databases/$(database)/documents/projects/$(pid); }
@@ -827,12 +842,7 @@ service cloud.firestore {
               && (resource.data.by == request.auth.uid || isAdmin(pid)))
             || purgeChildAllowed(pid, iid);
         }
-    // プロジェクトの概要の添付：管理者
-    match /projects/{pid}/overview/{fid} {
-      allow read: if isMember(pid);
-      allow create: if newFileOk(pid) && roleIn(pid, ['admin']);
-      allow delete: if request.auth != null && resource.metadata.by == request.auth.uid;
-    }
+
       }
     }
 

@@ -369,6 +369,16 @@ export interface Reminder {
   createdAt: Timestamp;
 }
 
+/** 保存した絞り込み（users/{uid}/filters）。query は URL の ? より後ろの文字列 */
+export interface SavedFilter {
+  id: string;
+  name: string;
+  pid: string;
+  query: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
 /** 添付（projects/{pid}/issues/{iid}/attachments）。ファイル本体は Storage の path に置く */
 export interface Attachment {
   id: string;
