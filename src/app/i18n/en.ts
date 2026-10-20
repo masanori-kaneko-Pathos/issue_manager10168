@@ -496,6 +496,9 @@ export const en: Dict = {
     today: 'Today',
     prev: 'Previous',
     next: 'Next',
+    pick: 'Choose month and year',
+    prevYear: 'Previous year',
+    nextYear: 'Next year',
     addOn: 'New issue due {{date}}',
   },
   dueDialog: {

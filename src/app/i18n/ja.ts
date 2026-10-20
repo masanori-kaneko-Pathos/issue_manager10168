@@ -493,6 +493,9 @@ export const ja = {
     today: '今日',
     prev: '前へ',
     next: '次へ',
+    pick: '年月を選ぶ',
+    prevYear: '前の年',
+    nextYear: '次の年',
     addOn: '{{date}}に課題を登録',
   },
   dueDialog: {

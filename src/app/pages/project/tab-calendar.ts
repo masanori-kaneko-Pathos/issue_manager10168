@@ -35,16 +35,42 @@ function addDays(dt: Date, n: number): Date {
 @Component({
   selector: 'app-tab-calendar',
   imports: [RouterLink, TPipe, CdkDropListGroup, CdkDropList, CdkDrag, DueDialog, PriorityMark, PeopleFilter],
+  host: { '(document:keydown.escape)': 'pickerOpen.set(false)' },
   template: `
     <div class="toolbar">
       <app-people-filter [members]="ctx.assignable()" [counts]="ctx.activeCount()" [value]="who()"
         (picked)="setWho($event)" />
-      <div class="nav">
-        <button type="button" (click)="move(-1)" [attr.aria-label]="'calendar.prev' | t">‹</button>
-        <button type="button" (click)="goToday()">{{ 'calendar.today' | t }}</button>
-        <button type="button" (click)="move(1)" [attr.aria-label]="'calendar.next' | t">›</button>
+      <div class="center">
+        <button type="button" class="arrow" (click)="move(-1)" [attr.aria-label]="'calendar.prev' | t">‹</button>
+        <div class="title-wrap">
+          <h2 class="title-h">
+            <button type="button" class="title" aria-haspopup="dialog" [attr.aria-expanded]="pickerOpen()"
+              [attr.aria-label]="('calendar.pick' | t) + '：' + title()" (click)="togglePicker()">
+              {{ title() }} <span class="caret" aria-hidden="true">▾</span></button>
+          </h2>
+          @if (pickerOpen()) {
+            <div class="backdrop" (click)="pickerOpen.set(false)"></div>
+            <div class="picker" role="dialog" [attr.aria-label]="'calendar.pick' | t">
+              <div class="picker-head">
+                <button type="button" class="arrow" [attr.aria-label]="'calendar.prevYear' | t"
+                  (click)="pickerYear.set(pickerYear() - 1)">‹</button>
+                <strong>{{ yearLabel() }}</strong>
+                <button type="button" class="arrow" [attr.aria-label]="'calendar.nextYear' | t"
+                  (click)="pickerYear.set(pickerYear() + 1)">›</button>
+              </div>
+              <div class="months">
+                @for (m of monthNames(); track $index; let k = $index) {
+                  <button type="button" [class.on]="isShownMonth(k)" [class.now]="isThisMonth(k)"
+                    [attr.aria-current]="isShownMonth(k) ? 'date' : null" (click)="pickMonth(k)">{{ m }}</button>
+                }
+              </div>
+            </div>
+          }
+        </div>
+        <button type="button" class="arrow" (click)="move(1)" [attr.aria-label]="'calendar.next' | t">›</button>
+        <button type="button" class="today-btn" [disabled]="showingToday()" (click)="goToday()">
+          {{ 'calendar.today' | t }}</button>
       </div>
-      <h2>{{ title() }}</h2>
       <div class="modes">
         <button type="button" [class.on]="mode() === 'month'" (click)="setMode('month')">{{ 'calendar.month' | t }}</button>
         <button type="button" [class.on]="mode() === 'week'" (click)="setMode('week')">{{ 'calendar.week' | t }}</button>
@@ -103,12 +129,36 @@ function addDays(dt: Date, n: number): Date {
     }
   `,
   styles: `
-    .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-    .toolbar h2 { flex: 1; font-size: 16px; margin: 0; text-align: center; min-width: 120px; }
-    .nav, .modes { display: flex; gap: 4px; }
-    .toolbar button { min-height: 36px; min-width: 36px; padding: 0 10px; border: 1px solid var(--border-strong);
+    /* 左（人）・真ん中（‹ 年月 › 今日）・右（月｜週）。左右が同じ幅を取り合うので、真ん中はいつも真ん中 */
+    .toolbar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .toolbar app-people-filter { justify-self: start; }
+    .center { display: flex; align-items: center; gap: 2px; }
+    .modes { justify-self: end; display: flex; gap: 4px; }
+    .modes button, .today-btn { min-height: 36px; min-width: 36px; padding: 0 10px; border: 1px solid var(--border-strong);
       background: var(--surface); border-radius: 8px; font-size: 13px; cursor: pointer; }
     .modes button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+    .today-btn { margin-left: 8px; }
+    .today-btn:disabled { color: var(--text-disabled); border-color: var(--border); cursor: default; }
+    .arrow { width: 36px; height: 36px; border: none; border-radius: 50%; background: none; color: var(--text);
+      font-size: 20px; line-height: 1; cursor: pointer; }
+    .arrow:hover { background: var(--surface-alt); }
+    .title-wrap { position: relative; }
+    .title-h { margin: 0; font-size: 16px; }
+    .title { min-height: 36px; padding: 0 10px; border: none; border-radius: 8px; background: none; color: var(--text);
+      font: inherit; font-weight: bold; white-space: nowrap; cursor: pointer; }
+    .title:hover { background: var(--surface-alt); }
+    .caret { font-size: 11px; color: var(--text-muted); }
+    .backdrop { position: fixed; inset: 0; z-index: 51; }
+    .picker { position: absolute; top: calc(100% + 4px); left: 50%; transform: translateX(-50%); z-index: 52;
+      width: 264px; padding: 10px; background: var(--surface); border-radius: 10px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2); }
+    .picker-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .months { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+    .months button { min-height: 40px; border: none; border-radius: 8px; background: none; color: var(--text);
+      font-size: 13px; cursor: pointer; }
+    .months button:hover { background: var(--surface-alt); }
+    .months button.now { color: var(--primary); font-weight: bold; }
+    .months button.on { background: var(--primary); color: var(--on-primary); }
 
     .grid { display: grid; grid-template-columns: repeat(7, 1fr); border-top: 1px solid var(--border);
       border-left: 1px solid var(--border); }
@@ -151,6 +201,9 @@ function addDays(dt: Date, n: number): Date {
 
     /* スマホ：月はマスに件数だけ出し、押すとその週を開く。週は縦に1日ずつ並べる */
     @media (max-width: 600px) {
+      /* スマホ：1段目に人と月｜週、2段目の真ん中に ‹ 年月 › 今日 */
+      .toolbar { grid-template-columns: 1fr auto; }
+      .center { grid-column: 1 / -1; grid-row: 2; justify-content: center; }
       .cell { min-height: 52px; }
       .grid:not(.week) .items { display: none; }
       .grid:not(.week) .cell-head .count { display: inline-flex; margin-left: auto; font-size: 11px; padding: 0 6px;
@@ -249,6 +302,48 @@ export class ProjectCalendar implements OnInit {
     return new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'long', timeZone: 'UTC' })
       .format(toUTC(this.cursor() || this.todayKey()));
   });
+
+  // ---- 年月の選び窓 ----
+  pickerOpen = signal(false);
+  /** 選び窓で見ている年（窓の中で ‹ › で動かす。開くたびに、今見ている年に戻す） */
+  pickerYear = signal(2026);
+  private locale = computed(() => (this.i18n.lang() === 'ja' ? 'ja-JP' : 'en-US'));
+
+  /** 1月〜12月の名前（日本語なら「1月」、英語なら「Jan」） */
+  monthNames = computed(() => {
+    const fmt = new Intl.DateTimeFormat(this.locale(), { month: 'short', timeZone: 'UTC' });
+    return Array.from({ length: 12 }, (_, k) => fmt.format(new Date(Date.UTC(2026, k, 1))));
+  });
+
+  yearLabel = computed(() => new Intl.DateTimeFormat(this.locale(), { year: 'numeric', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(this.pickerYear(), 0, 1))));
+
+  /** 今日が、今の表示の中に見えているか（見えているときは「今日」を押せなくする） */
+  showingToday = computed(() => this.days().some((d) => d.key === this.todayKey() && d.inRange));
+
+  togglePicker() {
+    if (!this.pickerOpen()) this.pickerYear.set(toUTC(this.cursor()).getUTCFullYear());
+    this.pickerOpen.set(!this.pickerOpen());
+  }
+
+  /** 今見ている月か（選び窓で塗る） */
+  isShownMonth(k: number) {
+    const b = toUTC(this.cursor());
+    return b.getUTCFullYear() === this.pickerYear() && b.getUTCMonth() === k;
+  }
+
+  /** 今日の月か（選び窓で太字に） */
+  isThisMonth(k: number) {
+    const t = toUTC(this.todayKey());
+    return t.getUTCFullYear() === this.pickerYear() && t.getUTCMonth() === k;
+  }
+
+  /** 月を選ぶ：その月の1日へ（週の表示なら、1日を含む週へ） */
+  pickMonth(k: number) {
+    this.cursor.set(keyOf(new Date(Date.UTC(this.pickerYear(), k, 1))));
+    this.pickerOpen.set(false);
+    this.updateUrl();
+  }
 
   async ngOnInit() {
     // URLから表示を復元する（戻るボタンや共有で、同じ月・週が開くように）
