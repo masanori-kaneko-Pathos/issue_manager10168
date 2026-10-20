@@ -292,11 +292,76 @@ async function sendEffectChecks(
   logger.info('effect checks', { written });
 }
 
+// ---- 課題のリマインド ----
+
+/** これらのステータスの課題には、リマインドを届けない（もう取りかかることがない） */
+const FINISHED = ['closed', 'deleted', 'merged', 'rejected'];
+
+/**
+ * 時刻が来たリマインドを、お知らせにして届け、リマインドは消す。
+ * Admin はルールを通らないので、「課題がまだ動いているか」「本人が今もメンバーか」「アーカイブ中でないか」をここで確かめる
+ */
+async function sendReminders(now: Date) {
+  const due = await db.collectionGroup('reminders').where('at', '<=', Timestamp.fromDate(now)).get();
+  if (due.empty) return;
+  let written = 0;
+  await Promise.all(due.docs.map(async (r) => {
+    const uid = r.ref.parent.parent?.id;
+    if (!uid) return;
+    const d = r.data();
+    try {
+      const [issue, member, project] = await Promise.all([
+        db.doc(`projects/${d.pid}/issues/${d.iid}`).get(),
+        db.doc(`projects/${d.pid}/members/${uid}`).get(),
+        db.doc(`projects/${d.pid}`).get(),
+      ]);
+      const i = issue.data();
+      // サブタスクのリマインドなら、サブタスクも読む（完了・切り出し済み・削除済みなら届けない）
+      const sub = d.sid ? (await db.doc(`projects/${d.pid}/issues/${d.iid}/subtasks/${d.sid}`).get()).data() : null;
+      const subOk = !d.sid || (!!sub && sub.status !== 'done' && !sub.splitTo);
+      // 課題がない・終わった・本人が抜けた・アーカイブ中なら、届けずに消すだけ
+      if (i && member.exists && !FINISHED.includes(i.status) && !project.get('archived') && subOk) {
+        const n = i.number ?? d.number ?? null;
+        const issueTitle = (i.title ?? d.title ?? '') as string;
+        try {
+          // 名札：同じリマインドが2回届かないように（関数が重なって動いても）
+          await db.doc(`users/${uid}/notifications/reminder-${r.id}-${d.at.toMillis()}`).create({
+            type: d.sid ? 'subtaskReminder' : 'reminder',
+            pid: d.pid, projectName: project.get('name') ?? d.projectName ?? '', iid: d.iid, issueNumber: n,
+            // サブタスクのときは、1行目に出す名前をサブタスク名に、2行目（detail）に「#番号 課題名」を入れる
+            // （課題名が長くても、サブタスク名が読み切れるように）
+            issueTitle: d.sid ? ((sub?.title ?? d.subTitle ?? '') as string).slice(0, 200) : issueTitle,
+            detail: d.sid ? `#${n} ${issueTitle}`.slice(0, 200) : '',
+            by: '', byName: '',
+            at: FieldValue.serverTimestamp(), read: false,
+            expireAt: Timestamp.fromMillis(now.getTime() + NOTIFY_KEEP_DAYS * DAY),
+          });
+          written++;
+        } catch (e) {
+          if ((e as { code?: number }).code !== 6) throw e; // ALREADY_EXISTS：もう届けてある
+        }
+      }
+      // 消すのは届けたあと（先に消すと、届けるのに失敗したとき何も残らない）。
+      // 待っている間に本人が時刻を変えていたら、消さない（変えた時刻に、改めて届く）
+      await db.runTransaction(async (tx) => {
+        const cur = await tx.get(r.ref);
+        if (cur.exists && cur.get('at')?.toMillis() === d.at.toMillis()) tx.delete(r.ref);
+      });
+    } catch (e) {
+      logger.error('reminder failed', { uid, rid: r.id, error: String(e) });
+    }
+  }));
+  logger.info('reminders', { due: due.size, written });
+}
+
 /** 10分ごとに起きて、毎朝のまとめの時刻になった人の分を作る（名前は以前のまま。変えると作り直しになるため） */
 export const imHourly = onSchedule(
   { schedule: '*/10 * * * *', timeZone: 'Asia/Tokyo', region: 'asia-northeast1' },
   async () => {
-    await sendMorningSummaries(new Date());
+    const now = new Date();
+    // 片方が失敗しても、もう片方は動かす
+    await sendMorningSummaries(now).catch((e) => logger.error('morning summaries failed', { error: String(e) }));
+    await sendReminders(now).catch((e) => logger.error('reminders failed', { error: String(e) }));
   },
 );
 
@@ -329,6 +394,8 @@ const PUSH_TEXT: Record<'ja' | 'en', Record<string, string>> = {
     request: '{{name}} さんから、#{{n}}「{{title}}」について依頼が届きました',
     requestDone: '{{name}} さんが、#{{n}}「{{title}}」の依頼に対応しました',
     requestDeclined: '{{name}} さんが、#{{n}}「{{title}}」の依頼を見送りました',
+    reminder: 'リマインド：#{{n}}「{{title}}」',
+    subtaskReminder: 'リマインド：{{title}}',
   },
   en: {
     assigned: '{{name}} assigned you to #{{n}} "{{title}}"',
@@ -352,6 +419,8 @@ const PUSH_TEXT: Record<'ja' | 'en', Record<string, string>> = {
     request: '{{name}} sent a request about #{{n}} "{{title}}"',
     requestDone: '{{name}} acted on your request about #{{n}} "{{title}}"',
     requestDeclined: '{{name}} declined your request about #{{n}} "{{title}}"',
+    reminder: 'Reminder: #{{n}} "{{title}}"',
+    subtaskReminder: 'Reminder: {{title}}',
   },
 };
 const DAILY_PARTS: Record<'ja' | 'en', Record<string, string>> = {

@@ -109,7 +109,7 @@ export function validDailyTime(v: unknown): DailyTime | null {
 export type NotificationType =
   'assigned' | 'comment' | 'dueChanged' | 'resolved' | 'sentBack' | 'closed' | 'rejected' | 'restored' | 'joined'
   | 'handover' | 'daily' | 'effectCheck' | 'unblocked' | 'merged' | 'projectDeleted' | 'subtaskAssigned'
-  | 'mention' | 'watchResolved' | 'request' | 'requestDone' | 'requestDeclined';
+  | 'mention' | 'watchResolved' | 'request' | 'requestDone' | 'requestDeclined' | 'reminder' | 'subtaskReminder';
 
 /**
  * 画面内の通知（users/{uid}/notifications）。本人だけが読める。
@@ -341,4 +341,21 @@ export interface IssueRequest {
   handledBy?: string;
   handledAt?: Timestamp;
   note?: string;                // 見送るときの一言（任意）
+}
+
+/**
+ * 課題のリマインド（users/{uid}/reminders/{pid_iid}）。本人だけが読み書きする。1つの課題に1つ。
+ * 届けたら関数が消す（記録はお知らせに残る）
+ */
+export interface Reminder {
+  id: string;
+  pid: string;
+  iid: string;
+  number: number;        // 写し（お知らせと一覧のため）
+  title: string;         // 写し
+  projectName: string;   // 写し
+  sid?: string;          // サブタスクのリマインドのときだけ
+  subTitle?: string;     // サブタスク名の写し（サブタスクのときだけ）
+  at: Timestamp;         // 届ける時刻
+  createdAt: Timestamp;
 }

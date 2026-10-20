@@ -14,7 +14,7 @@ import { enterKey, focusById } from '../../core/dom';
 import { LabelPicker } from '../../shared/label-picker';
 import {
   CAUSE_CATEGORIES, CauseCategory, DEFAULT_SETTINGS, Issue, IssueRelation, Label, Level, Member, Project, Role,
-  TimelineItem, labelsOf, OPEN_STATUSES, hasWorkaround, ISSUE_TYPES, watchersOf, IssueRequest, RequestKind
+  TimelineItem, labelsOf, OPEN_STATUSES, hasWorkaround, ISSUE_TYPES, watchersOf, IssueRequest, RequestKind, Reminder,
 } from '../../core/models';
 import { LinkDialog } from './link-dialog';
 import { StatusDialog } from '../../shared/status-dialog';
@@ -34,6 +34,8 @@ import { RequestDialog } from './request-dialog';
 import { DeleteDialog } from './delete-dialog';
 import { RequestService } from '../../core/request/request.service';
 import { commentSegments } from '../../core/issue/comment';
+import { ReminderService } from '../../core/reminder/reminder.service';
+import { ReminderDialog } from './reminder-dialog';
 
 
 /** 経緯の「編集した欄」の項目名 → 翻訳キー（issue.〇〇）。名前が違うものだけ書く */
@@ -60,7 +62,7 @@ function sameField(k: keyof IssueEdits, a: Issue, b: Issue): boolean {
 @Component({
   selector: 'app-issue-detail',
   imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, StatusDialog, PriorityMark, LinkDialog,
-    MergeDialog, LabelPicker, MemberSelect, SubtaskList, CommentBox, RequestDialog, DeleteDialog],
+    MergeDialog, LabelPicker, MemberSelect, SubtaskList, CommentBox, RequestDialog, DeleteDialog, ReminderDialog],
   host: {
     '(document:keydown.escape)':
       'menuOpen.set(false); statusMenu.set(false); prioMenu.set(false); typeMenu.set(false); closeField()',
@@ -252,6 +254,25 @@ export class IssueDetail implements OnInit {
   /** ウォッチしている人の名前（ボタンにマウスを乗せたときに出す） */
   watcherNames = computed(() => this.watcherIds().map((u) => this.memberName(u)).join('、'));
   watchError = signal('');
+  // ---- リマインド（自分だけ） ----
+  private reminders = inject(ReminderService);
+  /** この課題の、自分のリマインド（なければ null） */
+  reminder = signal<Reminder | null>(null);
+  reminderOpen = signal(false);
+  /** 置けるか：メンバーなら閲覧者も。課題がまだ動いていて、アーカイブ中でないとき */
+  canRemind = computed(() => {
+    const s = this.issue()?.status;
+    return !!this.role() && !this.projectArchived() && !!s && !['closed', 'deleted', 'merged', 'rejected'].includes(s);
+  });
+  remindLabel = computed(() => {
+    const r = this.reminder();
+    return r ? this.fmt(r.at) : '';
+  });
+
+  onReminderDone(at: Date | null) {
+    this.reminderOpen.set(false);
+    this.showFlash(at ? 'reminder.saved' : 'reminder.removed');
+  }
   // ---- 依頼 ----
   private requests = inject(RequestService);
   /** この課題の、対応待ちの依頼 */
@@ -491,6 +512,7 @@ export class IssueDetail implements OnInit {
         this.syncLinked(rels);
       }, (e) => console.error(e)),
       this.requests.watchOpenFor(this.pid, this.iid, (list) => this.openRequests.set(list), (e) => console.error(e)),
+      this.reminders.watch(this.pid, this.iid, (r) => this.reminder.set(r), (e) => console.error(e)),
     );
   }
 

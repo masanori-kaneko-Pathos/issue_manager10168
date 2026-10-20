@@ -55,7 +55,8 @@ service cloud.firestore {
           return d.keys().hasOnly(keys) && d.keys().hasAll(keys)
             && d.type in ['assigned', 'comment', 'dueChanged', 'resolved', 'sentBack',
                           'closed', 'rejected', 'restored', 'joined', 'handover', 'merged', 'subtaskAssigned',
-                          'mention', 'watchResolved', 'request', 'requestDone', 'requestDeclined']
+                          'mention', 'watchResolved', 'request', 'requestDone', 'requestDeclined', 'reminder',
+                          'subtaskReminder']
             && d.pid is string
             && d.projectName is string && d.projectName.size() <= 100
             && (d.iid == null || d.iid is string)
@@ -87,6 +88,25 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(['fid', 'createdAt'])
           && request.resource.data.fid == fid
           && request.resource.data.createdAt is timestamp;
+      }
+      // 課題のリマインド：本人だけ。文書の名前は「プロジェクトid_課題id」（1つの課題に1つ。置き直すと上書き）
+      match /reminders/{rid} {
+        allow read, delete: if request.auth != null && request.auth.uid == uid;
+        allow create, update: if request.auth != null && request.auth.uid == uid
+          && request.resource.data.keys()
+               .hasOnly(['pid', 'iid', 'sid', 'subTitle', 'number', 'title', 'projectName', 'at', 'createdAt'])
+          // 課題のリマインドは「pid_iid」、サブタスクのリマインドは「pid_iid_sid」
+          && (rid == request.resource.data.pid + '_' + request.resource.data.iid
+              || (request.resource.data.get('sid', null) is string
+                  && rid == request.resource.data.pid + '_' + request.resource.data.iid + '_' + request.resource.data.sid))
+          && request.resource.data.get('subTitle', '') is string && request.resource.data.get('subTitle', '').size() <= 200
+          && request.resource.data.number is int
+          && request.resource.data.title is string && request.resource.data.title.size() <= 200
+          && request.resource.data.projectName is string && request.resource.data.projectName.size() <= 100
+          && request.resource.data.at is timestamp
+          && request.resource.data.createdAt is timestamp
+          // 自分がメンバーのプロジェクトの課題にだけ置ける
+          && exists(/databases/$(database)/documents/projects/$(request.resource.data.pid)/members/$(uid));
       }
     }
     function signedIn() { return request.auth != null; }
