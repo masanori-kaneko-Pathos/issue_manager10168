@@ -1,0 +1,52 @@
+rules_version = '2';
+
+/*
+ * 添付のファイルの門番。
+ * 名簿は、名前付きのデータベース（issuemanager）を読めないため、(default) の写し（imProjects）を見る。
+ * 写しは関数（imMirrorMember・imMirrorProject）が作る。1回の判定で読める文書は2つまで
+ */
+service firebase.storage {
+  match /b/{bucket}/o {
+    function mirror(pid) {
+      return /databases/(default)/documents/imProjects/$(pid);
+    }
+    function memberDoc(pid) {
+      return /databases/(default)/documents/imProjects/$(pid)/members/$(request.auth.uid);
+    }
+    function isMember(pid) {
+      return request.auth != null && firestore.exists(memberDoc(pid));
+    }
+    // 置ける種類（attachment.service.ts の TYPE_RE と同じにすること）
+    function typeOk() {
+      return request.resource.contentType.matches(
+        '^(image/(png|jpeg|gif|webp|heic|heif)|application/pdf|text/plain|text/csv|application/msword|application/vnd[.]ms-excel|application/vnd[.]ms-powerpoint|application/vnd[.]openxmlformats-officedocument[.].*)$');
+    }
+    // 新しく置くファイルの共通の決まり：上書きしない・10MB まで・決まった種類・上げた人の名札・アーカイブ中は不可
+    function newFileOk(pid) {
+      return request.auth != null
+        && resource == null
+        && request.resource.size > 0 && request.resource.size <= 10 * 1024 * 1024
+        && typeOk()
+        && request.resource.metadata.by == request.auth.uid
+        && firestore.get(mirror(pid)).data.archived == false;
+    }
+    function roleIn(pid, roles) {
+      return firestore.get(memberDoc(pid)).data.role in roles;
+    }
+
+    // 課題への添付：管理者・メンバー
+    match /projects/{pid}/issues/{iid}/{aid} {
+      allow read: if isMember(pid);
+      allow create: if newFileOk(pid) && roleIn(pid, ['admin', 'member']);
+      // 一覧に書けなかったときの片づけ（上げた本人だけ）。ふだんは、一覧の文書が消えたら関数が消す
+      allow delete: if request.auth != null && resource.metadata.by == request.auth.uid;
+    }
+
+    // コメントへの添付：閲覧者も
+    match /projects/{pid}/issues/{iid}/c/{cid}/{aid} {
+      allow read: if isMember(pid);
+      allow create: if newFileOk(pid) && roleIn(pid, ['admin', 'member', 'viewer']);
+      allow delete: if request.auth != null && resource.metadata.by == request.auth.uid;
+    }
+  }
+}
