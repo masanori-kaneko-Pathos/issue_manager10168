@@ -24,6 +24,7 @@ export interface UserProfile {
   dueReminders?: ReminderBucket[];  // 期限前の通知で数える区分
   dailyGroup?: DailyGroup;          // 毎朝のまとめの形（無ければ期限別）
   dailyTime?: number;               // 毎朝のまとめの時刻（0時からの分・10分刻み。無ければ 10:00）
+  introHidden?: boolean;            // 「ようこそ」の箱を「後で見る」で閉じた
 }
 
 @Injectable({ providedIn: 'root' })
@@ -114,7 +115,8 @@ export class AuthService {
   /** プロフィールの更新。表示名は、所属する全プロジェクトのメンバー情報の写しも書き換える */
   async updateProfile(
     changes: Partial<Pick<UserProfile,
-    'displayName' | 'timeZone' | 'language' | 'defaultView' | 'dueReminders' | 'dailyGroup' | 'dailyTime'>>,
+    'displayName' | 'timeZone' | 'language' | 'defaultView' | 'dueReminders' | 'dailyGroup' | 'dailyTime'
+    | 'introHidden'>>,
   ) {
     const u = auth.currentUser!;
     await updateDoc(doc(db, 'users', u.uid), changes);

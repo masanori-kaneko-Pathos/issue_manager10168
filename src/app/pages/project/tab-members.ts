@@ -21,8 +21,10 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     <section>
       <div class="head">
         <h2>{{ 'project.members' | t }}</h2>
-        @if (ctx.role() === 'admin' && !ctx.archived()) {
+        @if (ctx.role() === 'admin' && !ctx.archived() && !isSample()) {
           <button type="button" class="primary small" (click)="openInvite()">{{ 'invite.open' | t }}</button>
+        } @else if (isSample()) {
+          <span class="sample-note">{{ 'sample.noInvite' | t }}</span>
         }
       </div>
       <ul class="list">
@@ -129,6 +131,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .danger { color: var(--danger-text); }
     .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .primary.small { min-height: 40px; padding: 0 16px; font-size: 14px; }
+    .sample-note { font-size: 12px; color: var(--text-muted); }
   `,
 })
 export class ProjectMembers {
@@ -146,6 +149,8 @@ export class ProjectMembers {
   private authService = inject(AuthService);
   readonly myUid = auth.currentUser!.uid;
   roleError = signal('');
+  /** 見本のプロジェクトか（招待できない） */
+  isSample = computed(() => !!this.ctx.project()?.sample);
   /** 開いている招待のモーダル（retry＝作成のときに送れなかった人を、もう一度送る） */
   inviteOpen = signal<{ list: Invitee[]; retry: boolean } | null>(null);
   /** 開いている引き継ぎのモーダル */
@@ -199,7 +204,7 @@ export class ProjectMembers {
     }
     // ヘッダーの「メンバーを招待」から来たら、招待を開く
     this.route.fragment.pipe(takeUntilDestroyed()).subscribe((f) => {
-      if (f === 'invite' && !this.inviteOpen()) this.openInvite();
+      if (f === 'invite' && !this.inviteOpen() && !this.isSample()) this.openInvite();
     });
   }
 

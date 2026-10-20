@@ -23,7 +23,7 @@ export class ProjectService {
     private notifications = inject(NotificationService);
 
     /** プロジェクトと「自分が管理者」のメンバー文書を、1回でまとめて作る */
-    async create(name: string, user: User): Promise<string> {
+    async create(name: string, user: User, opts: { sample?: boolean } = {}): Promise<string> {
         const projectRef = doc(collection(db, 'projects'));
         const batch = writeBatch(db);
         batch.set(projectRef, {
@@ -37,6 +37,7 @@ export class ProjectService {
             }),
             settings: DEFAULT_SETTINGS,
             issueSeq: 0,
+            ...(opts.sample ? { sample: true } : {}),
         });
         batch.set(doc(projectRef, 'members', user.uid), {
             uid: user.uid,

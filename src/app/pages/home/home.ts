@@ -18,6 +18,8 @@ import { DueBucket, dueBucket, remainingOf, shortDue } from '../../core/time/tim
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { DeleteProjectDialog } from '../project/delete-project-dialog';
 import { RequestService } from '../../core/request/request.service';
+import { Router } from '@angular/router';
+import { SampleService } from '../../core/project/sample.service';
 
 @Component({
   selector: 'app-home',
@@ -53,6 +55,26 @@ import { RequestService } from '../../core/request/request.service';
           <button type="button" class="link" (click)="checkVerified()">{{ 'verify.done' | t }}</button>
           @if (info()) { <p>{{ info() | t }}</p> }
         </div>
+      }
+
+      @if (showIntro()) {
+        <section class="intro" [attr.aria-label]="'intro.title' | t">
+          <h2>{{ 'intro.title' | t }}</h2>
+          <p class="lead">{{ 'intro.lead' | t }}</p>
+          <ol class="steps">
+            <li>{{ 'intro.step1' | t }}</li>
+            <li>{{ 'intro.step2' | t }}</li>
+            <li>{{ 'intro.step3' | t }}</li>
+          </ol>
+          <div class="intro-actions">
+            <button type="button" class="primary" [disabled]="sampleBusy()" (click)="trySample()">
+              {{ (sampleBusy() ? 'intro.making' : 'intro.trySample') | t }}</button>
+            <button type="button" class="ghost" [disabled]="sampleBusy()" (click)="newOpen.set(true)">
+              {{ 'projectNew.title' | t }}</button>
+            <button type="button" class="link" [disabled]="sampleBusy()" (click)="later()">{{ 'intro.later' | t }}</button>
+          </div>
+          <p class="small">{{ 'intro.laterHelp' | t }}</p>
+        </section>
       }
 
       @if (invitations().length) {
@@ -211,7 +233,7 @@ import { RequestService } from '../../core/request/request.service';
     </main>
     @if (newOpen()) { <app-project-new-dialog (close)="newOpen.set(false)" /> }
         @if (deleteTarget(); as p) {
-      <app-delete-project-dialog [pid]="p.id" [name]="p.name" (done)="onDeleted($event)"
+      <app-delete-project-dialog [pid]="p.id" [name]="p.name" [prefill]="!!p.sample" (done)="onDeleted($event)"
         (cancel)="deleteTarget.set(null)" />
     }
   `,
@@ -280,6 +302,14 @@ import { RequestService } from '../../core/request/request.service';
     .sub-head { font-size: 13px; color: var(--text-muted); margin: 16px 0 0; }  
     .req-chip { font-size: 12px; padding: 2px 10px; border-radius: 12px; text-decoration: none; white-space: nowrap;
       background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
+    .intro { margin-bottom: 24px; padding: 16px; border-radius: 12px; border: 1px solid var(--primary);
+      background: var(--primary-bg); }
+    .intro h2 { margin: 0 0 6px; }
+    .intro .lead { margin: 0 0 8px; }
+    .steps { margin: 0 0 12px; padding-left: 1.4em; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+    .intro-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .ghost { padding: 0 16px; border: 1px solid var(--primary); border-radius: 8px; background: var(--surface);
+      color: var(--primary); }
     `,
 })
 export class Projects implements OnInit {
@@ -427,6 +457,41 @@ export class Projects implements OnInit {
   /** プロジェクトが1つもないときの「プロジェクトを作成」 */
   newOpen = signal(false);
   private search = inject(SearchService);
+  private sample = inject(SampleService);
+  private router = inject(Router);
+  sampleBusy = signal(false);
+  /**
+   * ようこその箱：進行中のプロジェクトが0件（全部アーカイブした・外れた人も）で、届いている招待もなく、
+   * 「後で見る」を押していないとき（招待が届いている人は、まず参加してもらう）
+   */
+  showIntro = computed(() => !this.loading() && !this.activeProjects().length && !this.invitations().length
+    && !this.authService.profile()?.introHidden);
+
+  /** 見本を作って、かんばんを開く */
+  async trySample() {
+    this.sampleBusy.set(true);
+    this.error.set('');
+    try {
+      const pid = await this.sample.create();
+      await this.router.navigate(['/p', pid, 'board']);
+    } catch (e) {
+      console.error(e);
+      this.error.set('common.saveError');
+      await this.load(); // 途中までできていれば、一覧に出す
+    } finally {
+      this.sampleBusy.set(false);
+    }
+  }
+
+  /** 後で見る：箱を閉じる（設定の「イントロダクション」から、いつでも戻せる） */
+  async later() {
+    try {
+      await this.authService.updateProfile({ introHidden: true });
+    } catch (e) {
+      console.error(e);
+      this.error.set('common.saveError');
+    }
+  }
 
   ngOnInit() {
     // 外されたときの知らせは1回だけ。読んだら履歴から消し、再読み込みで出し直さない

@@ -11,7 +11,9 @@ service cloud.firestore {
       allow update: if request.auth != null && request.auth.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['displayName', 'timeZone', 'language', 'defaultView', 'dueReminders', 'dailyGroup',
-                       'dailyTime'])
+                       'dailyTime', 'introHidden'])
+        // 「ようこそ」の箱を「後で見る」で閉じた印
+        && (!('introHidden' in request.resource.data) || request.resource.data.introHidden is bool)
         && (!('defaultView' in request.resource.data) || request.resource.data.defaultView in ['list', 'board'])
         && (!('dailyGroup' in request.resource.data) || request.resource.data.dailyGroup in ['due', 'priority', 'assignee'])
         // 毎朝のまとめの時刻：0時からの分で、10分刻み（関数は === で比べるので、ずれると届かなくなる）
@@ -464,7 +466,9 @@ service cloud.firestore {
           && request.resource.data.invitedBy == request.auth.uid
           && request.resource.data.keys().hasOnly(
                ['email', 'role', 'projectName', 'invitedBy', 'invitedByName', 'createdAt'])
-          && get(projectPath(pid)).data.archived == false;
+          && get(projectPath(pid)).data.archived == false
+          // 見本のプロジェクトには招待できない（自分だけの練習場なので）
+          && get(projectPath(pid)).data.get('sample', false) == false;
         // 取り消し（管理者）と、承諾・辞退（招待された本人）
         allow delete: if isAdmin(pid)
           || (emailVerified() && email == request.auth.token.email.lower());

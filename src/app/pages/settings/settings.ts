@@ -6,6 +6,10 @@ import { COMMON_TIMEZONES, formatDateTime, tzOffset } from '../../core/time/time
 import { I18nService, Lang, TPipe } from '../../i18n/i18n';
 import { HelpTip } from '../../shared/help-tip';
 import { PASSWORD_RULE } from '../login/login';
+import { Router } from '@angular/router';
+import { auth } from '../../core/firebase';
+import { ProjectService } from '../../core/project/project.service';
+import { SampleService } from '../../core/project/sample.service';
 
 type Section = 'general' | 'password';
 
@@ -24,6 +28,22 @@ type Section = 'general' | 'password';
         </span>
         <span aria-hidden="true">›</span>
       </a>
+
+      <section>
+        <h2>{{ 'intro.settingsTitle' | t }}</h2>
+        <p class="help">{{ 'intro.settingsHelp' | t }}</p>
+        <div class="row-start">
+          @if (activeSample(); as pid) {
+            <button type="button" class="primary" (click)="openSample(pid)">{{ 'intro.openSample' | t }}</button>
+          } @else {
+            <button type="button" class="primary" [disabled]="sampleBusy()" (click)="makeSample()">
+              {{ (sampleBusy() ? 'intro.making' : 'intro.makeSample') | t }}</button>
+          }
+          <button type="button" class="link" [disabled]="!introHidden()" (click)="showIntroAgain()">
+            {{ (introHidden() ? 'intro.showAgain' : 'intro.shown') | t }}</button>
+        </div>
+        @if (introMsg()) { <p class="msg" [class.ng]="introMsg() === 'common.saveError'">{{ introMsg() | t }}</p> }
+      </section>
 
       <section>
         <h2>{{ 'settings.profile' | t }}</h2>
@@ -122,10 +142,48 @@ type Section = 'general' | 'password';
       border: 1px solid var(--border); border-radius: 10px; color: var(--text); text-decoration: none; font-size: 18px; }
     .to-notify:hover { background: var(--surface-alt); }
     .to-body { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 15px; }
+    .row-start { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
   `,
 })
 export class Settings implements OnInit {
   private authService = inject(AuthService);
+  private ps = inject(ProjectService);
+  private sample = inject(SampleService);
+  private router = inject(Router);
+  /** 進行中の見本（あれば、作り直さずに開く。見本が増えすぎないように） */
+  activeSample = signal<string | null>(null);
+  sampleBusy = signal(false);
+  introMsg = signal('');
+  introHidden = computed(() => !!this.authService.profile()?.introHidden);
+
+  async makeSample() {
+    this.sampleBusy.set(true);
+    this.introMsg.set('');
+    try {
+      const pid = await this.sample.create();
+      await this.router.navigate(['/p', pid, 'board']);
+    } catch (e) {
+      console.error(e);
+      this.introMsg.set('common.saveError');
+    } finally {
+      this.sampleBusy.set(false);
+    }
+  }
+
+  openSample(pid: string) {
+    this.router.navigate(['/p', pid, 'board']);
+  }
+
+  /** ようこその箱を、ホームにもう一度出す */
+  async showIntroAgain() {
+    try {
+      await this.authService.updateProfile({ introHidden: false });
+      this.introMsg.set('intro.shownDone');
+    } catch (e) {
+      console.error(e);
+      this.introMsg.set('common.saveError');
+    }
+  }  
   protected i18n = inject(I18nService);
 
   readonly isPasswordUser = this.authService.isPasswordUser();
@@ -163,6 +221,12 @@ export class Settings implements OnInit {
         displayName: p.displayName, language: p.language, timeZone: p.timeZone, defaultView: p.defaultView ?? 'list',
       });
       this.discard();
+    }
+    try {
+      const list = await this.ps.listMyProjects(auth.currentUser!.uid);
+      this.activeSample.set(list.find((p) => p.sample && !p.archived && p.role === 'admin')?.id ?? null);
+    } catch (e) {
+      console.error(e);
     }
   }
   /** 変えた項目だけをまとめて保存する */

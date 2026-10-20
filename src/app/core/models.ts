@@ -45,6 +45,7 @@ export interface Project {
   archivedAt?: Timestamp;
   archivedBy?: string;
   deleting?: boolean;           // 削除の最中（関数が最初に立てる。開いている画面はこれを見てホームへ戻る）
+  sample?: boolean;             // 見本のプロジェクト（イントロダクションで作ったもの）
 }
 
 export interface ProjectWithRole extends Project { role: Role; }
@@ -227,6 +228,8 @@ export interface Issue {
   subtaskAssignees?: string[]; // 未完了のサブタスクの担当者（ホームの見張り用）。関数だけが書く
   watchers?: string[];        // 自分でウォッチを付けた人（提起者・担当者は自動なので、ここには入れない）
   muted?: string[];           // 自動のウォッチ（提起者・担当者）を、自分で外した人
+  estimateHours?: number | null; // 工数の見積（時間）。工数がオンのプロジェクトだけ
+  actualHours?: number | null;   // 工数の実績（時間）
 }
 export const CAUSE_CATEGORIES = [
   'requirements', 'design', 'testing', 'operation', 'communication', 'external', 'other',
@@ -238,7 +241,9 @@ export type Effect = 'yes' | 'partial' | 'no';
 export interface TimelineItem {
   id: string;
   kind: 'event' | 'comment';
-  type?: 'created' | 'imported' | 'status' | 'edit' | 'priority' | 'link' | 'merge' | 'subtask';
+  type?: 'created' | 'imported' | 'status' | 'edit' | 'priority' | 'link' | 'merge' | 'subtask' | 'attachment';
+  /** 課題に添付した・消した（type が attachment のときだけ。コメントへの添付は残さない＝コメントそのものが残るため） */
+  file?: { action: 'add' | 'remove'; name: string };
   /** サブタスクを足した・消した・切り出した（type が subtask のときだけ。状態の切り替えは残さない） */
   sub?: { action: 'add' | 'remove' | 'split'; title: string; number?: number };
   /** 統合先の経緯に残す「どの課題を統合したか」（type が merge のときだけ） */
@@ -358,4 +363,27 @@ export interface Reminder {
   subTitle?: string;     // サブタスク名の写し（サブタスクのときだけ）
   at: Timestamp;         // 届ける時刻
   createdAt: Timestamp;
+}
+
+/** 添付（projects/{pid}/issues/{iid}/attachments）。ファイル本体は Storage の path に置く */
+export interface Attachment {
+  id: string;
+  name: string;
+  size: number;
+  type: string;      // ファイルの種類（image/png など）
+  path: string;      // Storage の置き場所
+  cid?: string;      // コメントへの添付のときだけ
+  by: string;
+  at: Timestamp;
+}
+/** 1つの課題に添付できる数・1ファイルの大きさ（ルールでは数えられないので、数は画面で止める） */
+export const MAX_ATTACHMENTS = 10;
+export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+/** 工数の入力を、0.5刻みの時間にそろえる。空なら null、数でない・範囲の外なら undefined（保存しない） */
+export function toHours(v: unknown): number | null | undefined {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0 || n > 999) return undefined;
+  return Math.round(n * 2) / 2;
 }
