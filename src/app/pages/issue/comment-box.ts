@@ -68,7 +68,7 @@ interface Cand { key: string; label: string; sub: string; insert: string; uid?: 
         <input type="file" multiple hidden (change)="onPick($event)" />
       </label>
       <p class="help">{{ 'comment.help' | t }}</p>
-      <button type="button" class="primary" [disabled]="busy() || !body.trim()" (click)="send()">
+      <button type="button" class="primary" [disabled]="busy() || (!body.trim() && !pending().length)" (click)="send()">
         {{ 'detail.send' | t }}</button>
     </div>
     @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
@@ -161,13 +161,32 @@ export class CommentBox implements OnInit {
   private drafts = inject(DraftService);
   private place = computed(() => fieldPlace(this.pid(), this.iid(), 'comment'));
 
+  /**
+   * 書きかけを戻す：本文と、選んだ人（メンションのまま戻すため）。
+   * 前の形（本文だけの文字）でしまったものも読めるように、JSON でなければ本文として扱う
+   */
   ngOnInit() {
-    this.body = this.drafts.getText(this.place());
+    const raw = this.drafts.getText(this.place());
+    try {
+      const v = JSON.parse(raw) as { b?: unknown; p?: [string, string][] };
+      if (typeof v?.b === 'string') {
+        this.body = v.b;
+        this.picked = new Map(v.p ?? []);
+        return;
+      }
+    } catch {
+      // JSON ではない＝前の形の書きかけ
+    }
+    this.body = raw;
   }
 
-  /** 打つたびにしまう。同じ (input) の中でまだ body が入れ替わっていないこともあるので、欄の文字を直接読む */
+  /**
+   * 打つたびにしまう。本文と「選んだ人」をまとめて1つの文字にする（しまう入れ物は文字だけなので）。
+   * 同じ (input) の中でまだ body が入れ替わっていないこともあるので、欄の文字を直接読む
+   */
   stash() {
-    this.drafts.setText(this.place(), this.ta()?.nativeElement.value ?? this.body);
+    const body = this.ta()?.nativeElement.value ?? this.body;
+    this.drafts.setText(this.place(), body.trim() ? JSON.stringify({ b: body, p: [...this.picked] }) : '');
   }
 
 
@@ -269,7 +288,8 @@ export class CommentBox implements OnInit {
 
   async send() {
     const body = this.body.trim();
-    if (!body || this.busy()) return;
+    // 本文かファイルのどちらかは要る（ファイルだけのコメントもできる）
+    if ((!body && !this.pending().length) || this.busy()) return;
     // 選んだ人のうち、送る時点で本文に「@名前」が残っている人だけ（あとで消した人には届けない）
     const mentions = [...new Set([...this.picked]
       .filter(([name]) => body.includes('@' + name))

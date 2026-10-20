@@ -62,6 +62,7 @@ interface IssueDraft {
     <main>
       <h1>{{ 'issueNew.title' | t }}</h1>
       @if (fromNumber(); as n) { <p class="notice">{{ 'prevention.creating' | t: { n: '' + n } }}</p> }
+      @if (copyNumber(); as n) { <p class="notice">{{ 'copy.creating' | t: { n: '' + n } }}</p> }
       @if (recurNumber(); as n) { <p class="notice">{{ 'links.recurCreating' | t: { n: '' + n } }}</p> }
       @if (splitNote(); as s) { <p class="notice">{{ 'subtask.splitCreating' | t: { n: '' + s.n, title: s.title } }}</p> }      
       <!-- 入力・選択・ボタンの操作は、どれも form まで上がってくるので、ここで1回だけ受けて下書きにしまう -->
@@ -299,6 +300,9 @@ export class IssueNew implements OnInit {
   /** 再発防止課題として作るときの、元の課題の id（詳細画面の「再発防止課題を作る」から来たとき） */
   private readonly fromIid = this.route.snapshot.queryParamMap.get('from');
   private relatedFrom: IssueLink | null = null;
+  /** 複製するときの、元の課題の id（詳細画面の ⋮「複製する」から来たとき） */
+  private readonly copyIid = this.route.snapshot.queryParamMap.get('copy');
+  copyNumber = signal<number | null>(null);
   /** 再発として登録するときの、元の課題の id（詳細画面の「再発として新しく登録」から来たとき） */
   private readonly recurIid = this.route.snapshot.queryParamMap.get('recur');
   private recurrenceOf: { iid: string; number: number } | null = null;
@@ -312,7 +316,7 @@ export class IssueNew implements OnInit {
   fromNumber = signal<number | null>(null);
   private drafts = inject(DraftService);
   /** 下書きにできるのは、ふつうの登録だけ（メモ・再発防止・再発・切り出しは、元から開き直せば同じ中身になるため） */
-  private readonly draftable = !this.memoId && !this.fromIid && !this.recurIid && !this.splitOf;
+  private readonly draftable = !this.memoId && !this.fromIid && !this.recurIid && !this.splitOf && !this.copyIid;
   /** この画面の下書きの id（下書きから開いたときはその id。新しく開いたときは、打ち始めたら下書きになる） */
   private readonly draftId = this.route.snapshot.queryParamMap.get('draft') ?? crypto.randomUUID();
   private draftTimer: ReturnType<typeof setTimeout> | undefined;
@@ -321,7 +325,7 @@ export class IssueNew implements OnInit {
   /** 登録できた（このあとは、もうしまわない） */
   private submitted = false;
   backLink = computed(() => {
-    const src = this.fromIid || this.recurIid || this.splitOf;
+    const src = this.fromIid || this.recurIid || this.splitOf || this.copyIid;
     return this.route.snapshot.queryParamMap.get('draft') ? ['/drafts']
       : this.memoId ? ['/inbox']
       : src && this.fromPid ? ['/p', this.fromPid, 'i', src]
@@ -454,6 +458,7 @@ export class IssueNew implements OnInit {
       if (this.fromIid && this.fromPid) await this.fillPrevention(this.fromPid, this.fromIid);
       if (this.recurIid && this.fromPid) await this.fillRecurrence(this.fromPid, this.recurIid);
       if (this.splitOf && this.splitSub && this.fromPid) await this.fillSplit(this.fromPid, this.splitOf, this.splitSub);
+      if (this.copyIid && this.fromPid) await this.fillCopy(this.fromPid, this.copyIid);
       // 受信箱のメモや再発などで題名が入ったときも、似た課題を出す
       this.titleQ.set(this.title);
     } catch (e) {
@@ -625,6 +630,27 @@ export class IssueNew implements OnInit {
       })));
       return results.flatMap((r, k) => (r.status === 'rejected' ? [list[k].file.name] : []));
   }  
+
+  /**
+   * 複製：中身を元の課題から入れる。期限は入れない（新しい課題の期限は、そのとき決めるもの）。
+   * 担当者は、今もメンバー（閲覧者以外）ならその人。ラベルは今もプロジェクトにあるものだけ
+   */
+  private async fillCopy(pid: string, iid: string) {
+    const src = await this.issues.get(pid, iid);
+    if (!src || this.pid() !== pid) return;
+    this.copyNumber.set(src.number);
+    this.title = this.i18n.t('copy.title', { title: src.title }).slice(0, 200);
+    this.type.set(src.type);
+    this.importance.set(src.importance);
+    if (this.members().some((m) => m.uid === src.assigneeId)) this.assigneeId.set(src.assigneeId);
+    this.doneCriteria = src.doneCriteria;
+    this.description = src.description;
+    const ok = new Set(this.currentLabels().map((l) => l.id));
+    this.labelIds.set((src.labelIds ?? []).filter((l) => ok.has(l)));
+    this.impact = src.impact ?? '';
+    this.estimate = src.estimateHours ?? null;
+    this.showDetail.set(true);
+  }
 
   /** 何か触ったら、少し待ってから下書きにしまう（1文字ごとに書き込まないように） */
   touch() {

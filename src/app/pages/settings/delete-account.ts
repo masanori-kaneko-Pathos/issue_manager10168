@@ -9,6 +9,7 @@ import { IssueStatus, Member, OPEN_STATUSES } from '../../core/models';
 import { MemberSelect } from '../../shared/member-select';
 import { HelpTip } from '../../shared/help-tip';
 import { I18nService, TPipe } from '../../i18n/i18n';
+import { PwField } from '../../shared/pw-field';
 
 /** purge＝一緒に削除、leave＝抜ける、blocked＝ほかに管理者がいないので止める（関数 imDeleteAccount と同じ決まり） */
 type Kind = 'purge' | 'leave' | 'blocked';
@@ -23,7 +24,7 @@ interface Row {
 
 @Component({
   selector: 'app-delete-account',
-  imports: [FormsModule, RouterLink, TPipe, MemberSelect, HelpTip],
+  imports: [FormsModule, RouterLink, TPipe, MemberSelect, HelpTip, PwField],
   template: `
     <header class="bar"><a routerLink="/settings" class="link">{{ 'notifySettings.back' | t }}</a></header>
     <main>
@@ -86,7 +87,7 @@ interface Row {
           <p class="help">{{ 'deleteAccount.keeps' | t }}</p>
           @if (isPasswordUser) {
             <label class="field">{{ 'deleteAccount.password' | t }}
-              <input type="password" name="current-password" autocomplete="current-password" [(ngModel)]="password" />
+              <app-pw-field><input type="password" name="current-password" autocomplete="current-password" [(ngModel)]="password" /></app-pw-field>
             </label>
           } @else {
             <p class="help">{{ 'deleteAccount.googleHelp' | t }}</p>

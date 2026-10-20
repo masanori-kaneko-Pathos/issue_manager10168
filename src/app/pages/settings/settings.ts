@@ -12,12 +12,13 @@ import { ProjectService } from '../../core/project/project.service';
 import { SampleService } from '../../core/project/sample.service';
 import { Avatar } from '../../shared/avatar';
 import { AvatarCropDialog } from '../../shared/avatar-crop-dialog';
+import { PwField } from '../../shared/pw-field';
 
 type Section = 'general' | 'password';
 
 @Component({
   selector: 'app-settings',
-  imports: [FormsModule, RouterLink, TPipe, HelpTip, Avatar, AvatarCropDialog],
+  imports: [FormsModule, RouterLink, TPipe, HelpTip, Avatar, AvatarCropDialog, PwField],
   host: { '(window:beforeunload)': 'onBeforeUnload($event)' },
   template: `
     <header class="bar"><a routerLink="/" class="link">{{ 'common.back' | t }}</a></header>
@@ -103,10 +104,10 @@ type Section = 'general' | 'password';
         <h2>{{ 'settings.password' | t }}</h2>
         @if (isPasswordUser) {
           <label class="field">{{ 'settings.currentPw' | t }}
-            <input type="password" [(ngModel)]="currentPw" autocomplete="current-password" />
+            <app-pw-field><input type="password" [(ngModel)]="currentPw" autocomplete="current-password" /></app-pw-field>
           </label>
           <label class="field">{{ 'settings.newPw' | t }}
-            <input type="password" [(ngModel)]="newPw" autocomplete="new-password" minlength="8" />
+            <app-pw-field><input type="password" [(ngModel)]="newPw" autocomplete="new-password" minlength="8" /></app-pw-field>
           </label>
           <div class="row">
             @if (msg()?.section === 'password') { <span class="msg" [class.ng]="!msg()!.ok">{{ msg()!.key | t }}</span> }

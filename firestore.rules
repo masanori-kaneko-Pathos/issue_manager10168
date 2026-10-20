@@ -660,8 +660,8 @@ service cloud.firestore {
             && (!('mentions' in request.resource.data)
                 || (request.resource.data.mentions is list && request.resource.data.mentions.size() <= 20))
             && request.resource.data.by == request.auth.uid
+            // 本文は空でもよい（ファイルだけのコメント。「本文かファイルのどちらかは要る」は画面で守る）
             && request.resource.data.body is string
-            && request.resource.data.body.size() > 0
             && request.resource.data.body.size() <= 5000
             && request.resource.data.at == request.time;
           // 直す・消す（消したコメントは対象外、アーカイブ中は不可）

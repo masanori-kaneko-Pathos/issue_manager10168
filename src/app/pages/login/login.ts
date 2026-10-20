@@ -3,12 +3,14 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { I18nService, TPipe } from '../../i18n/i18n';
+import { PwField } from '../../shared/pw-field';
+
 
 /** パスワードの決まり：8文字以上、英字と数字を両方含む（Firebaseの設定と同じ内容を、画面でも先に確かめる） */
 export const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
 @Component({
   selector: 'app-login',
-  imports: [FormsModule, TPipe],
+  imports: [FormsModule, TPipe, PwField],
   templateUrl: './login.html',
   styleUrl: './login.scss',
 })

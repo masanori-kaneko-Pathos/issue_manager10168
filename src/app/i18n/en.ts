@@ -272,6 +272,7 @@ export const en: Dict = {
     copied: 'Link copied.',
     copyFailed: "Couldn't copy. Copy the URL from the address bar instead.",
     recur: 'Register a recurrence',
+    duplicate: 'Duplicate',
     props: 'Details',
   },
   field: {
@@ -1070,6 +1071,11 @@ export const en: Dict = {
     help: 'Drag to move, and use the slider (or mouse wheel) to zoom. The area inside the circle becomes your photo.',
     zoom: 'Zoom',
     confirm: 'Done',
+  },
+  pw: { show: 'Show password', hide: 'Hide password' },
+  copy: {
+    title: '{{title}} (copy)',
+    creating: 'Creating a copy of #{{n}}. Set a due date, then press "Create". Comments, history, subtasks, attachments, and related issues are not copied.',
   },
   watch: {
     start: 'Watch ({{n}} watching)',

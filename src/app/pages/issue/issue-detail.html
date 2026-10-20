@@ -28,6 +28,10 @@
               <div class="sep" role="separator"></div>
             }
             <button type="button" role="menuitem" (click)="copyLink()">{{ 'detailMenu.copyLink' | t }}</button>
+            @if (canCreate()) {
+              <a role="menuitem" [routerLink]="['/p', pid, 'new']" [queryParams]="{ copy: i.id }"
+                (click)="menuOpen.set(false)">{{ 'detailMenu.duplicate' | t }}</a>
+            }
             @if (canCreate() && (i.status === 'resolved' || i.status === 'closed')) {
               <a role="menuitem" [routerLink]="['/p', pid, 'new']" [queryParams]="{ from: i.id }"
                 (click)="menuOpen.set(false)">{{ 'prevention.create' | t }}</a>

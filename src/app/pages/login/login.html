@@ -24,8 +24,8 @@
         <input type="email" name="email" [(ngModel)]="email" required autocomplete="email" />
       </label>
       <label>{{ 'login.password' | t }}
-        <input type="password" name="password" [(ngModel)]="password" required
-          [attr.autocomplete]="mode() === 'login' ? 'current-password' : 'new-password'" />
+        <app-pw-field><input type="password" name="password" [(ngModel)]="password" required
+          [attr.autocomplete]="mode() === 'login' ? 'current-password' : 'new-password'" /></app-pw-field>
       </label>
       @if (mode() === 'signup') {
         <p class="hint">{{ 'login.passwordRule' | t }}</p>
