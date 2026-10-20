@@ -102,6 +102,14 @@ const RANGES: Record<NumKey, [number, number]> = {
             <span class="help">{{ 'projectSettings.effortHelp' | t }}</span>
           </span>
         </label>
+        <label class="feature">
+          <input type="checkbox" [checked]="settings().features.recurring"
+            (change)="setFeature('recurring', $any($event.target).checked)" />
+          <span class="f-body">
+            <span class="f-name">{{ 'projectSettings.recurring' | t }}</span>
+            <span class="help">{{ 'projectSettings.recurringHelp' | t }}</span>
+          </span>
+        </label>
       </section>
 
       @if (dirty()) {

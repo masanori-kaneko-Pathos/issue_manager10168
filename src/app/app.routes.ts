@@ -38,6 +38,8 @@ export const routes: Routes = [
           loadComponent: () => import('./pages/project/trash').then((m) => m.Trash) },
         { path: 'requests',
           loadComponent: () => import('./pages/project/requests').then((m) => m.Requests) },
+        { path: 'recurring',
+          loadComponent: () => import('./pages/project/recurring').then((m) => m.Recurring) },
         { path: 'import',
           loadComponent: () => import('./pages/project/import').then((m) => m.ImportPage) },
         ] },

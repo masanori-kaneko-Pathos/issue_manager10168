@@ -62,6 +62,11 @@ import { DeleteProjectDialog } from './delete-project-dialog';
                 {{ 'importPage.open' | t }}</a>
             }
 
+            @if (ctx.project()!.settings?.features?.recurring) {
+              <a role="menuitem" [routerLink]="['/p', ctx.pid(), 'recurring']" (click)="menuOpen.set(false)">
+                {{ 'recurring.menu' | t }}</a>
+            }
+
             <!-- CSV はだれでも・アーカイブ中でも書き出せる -->
             <button type="button" role="menuitem" (click)="menuOpen.set(false); exportOpen.set(true)">
               {{ 'csv.export' | t }}</button>

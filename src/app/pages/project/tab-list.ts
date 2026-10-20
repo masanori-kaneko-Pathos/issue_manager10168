@@ -197,6 +197,13 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
                 <span class="prio-none"></span>
               }
               <span class="num">#{{ i.number }}</span>
+              @if (i.recurringId) {
+                <span class="recur" [title]="'recurring.badge' | t" role="img" [attr.aria-label]="'recurring.badge' | t">
+                  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m17 2 4 4-4 4" /><path d="M3 11V9a3 3 0 0 1 3-3h15" />
+                    <path d="m7 22-4-4 4-4" /><path d="M21 13v2a3 3 0 0 1-3 3H3" /></svg></span>
+              }
               <a class="name" [routerLink]="['/p', pid(), 'i', i.id]">{{ i.title }}</a>
           @for (l of rowLabels(i); track l.id) { <app-label-chip [label]="l" /> }
               @if (i.status !== 'open') { <span class="st">{{ 'status.' + i.status | t }}</span> }
@@ -378,6 +385,7 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
       background: var(--warning-bg); color: var(--warning-text); }    
     .subs { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
     .subs.all { color: var(--success-text); font-weight: bold; }
+    .recur { display: inline-flex; color: var(--text-muted); }
       `,
 })
 export class TabList implements OnInit {

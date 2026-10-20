@@ -233,6 +233,7 @@ export class ProjectService {
     async changeMember(
         pid: string, target: Member, dests: Record<string, string>, reason: string,
         change: MemberChange, by: string, tz: string,
+        recur: Record<string, { assigneeId?: string; createdBy?: string }> = {},
     ) {
         const projectRef = doc(db, 'projects', pid);
         const memberRef = doc(projectRef, 'members', target.uid);
@@ -259,6 +260,10 @@ export class ProjectService {
                 movedTo[to] = (movedTo[to] ?? 0) + 1;
             });
             const moved = Object.values(movedTo).reduce((a, b) => a + b, 0);
+            // 定期課題の雛形：次の回からの担当・作った人を、同じ封筒で替える（読む必要はないので、書くだけ）
+            for (const [rid, u] of Object.entries(recur)) {
+                tx.update(doc(projectRef, 'recurring', rid), { ...u, updatedAt: serverTimestamp() });
+            }
             if (change?.kind === 'role') tx.update(memberRef, { role: change.role });
             if (change?.kind === 'remove' || change?.kind === 'leave') {
                 // 名前を残してから消す（コメントや経緯で「—」にしないため）

@@ -146,6 +146,7 @@ export class NotificationService {
     if (n.type === 'daily') return { commands: ['/'], extras: { fragment: 'today' } };
     if (n.iid) return { commands: ['/p', n.pid, 'i', n.iid], extras: {} };
     if (n.type === 'projectDeleted') return { commands: ['/'], extras: {} };
+    if (n.type === 'recurringStopped') return { commands: ['/p', n.pid, 'recurring'], extras: {} };
     // 引き継いだ課題が見えるよう、自分の担当で絞ったリストへ
     if (n.type === 'handover') {
       return { commands: ['/p', n.pid, 'list'], extras: { queryParams: { assignee: auth.currentUser!.uid } } };

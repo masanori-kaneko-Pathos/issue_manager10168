@@ -486,6 +486,50 @@ service cloud.firestore {
                 && request.resource.data.target == request.auth.uid));
       }
 
+      // 定期課題の雛形：管理者だけが作る・直す・止める・消す（使う機能でオン・アーカイブ中でないとき）。
+      // 読むのはメンバー全員。課題を作るのは関数（Admin なので、このルールは通らない）
+      match /recurring/{rid} {
+        function recurringOn() {
+          return isAdmin(pid)
+            && get(projectPath(pid)).data.archived == false
+            && get(projectPath(pid)).data.settings.features.recurring == true;
+        }
+        function validRecurring() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['title', 'type', 'importance', 'assigneeId', 'doneCriteria', 'description',
+                   'labelIds', 'freq', 'weekdays', 'monthDay', 'time', 'tz', 'dueDays', 'active', 'stopped',
+                   'nextAt', 'lastAt', 'lastNumber', 'createdBy', 'createdAt', 'updatedAt'])
+            && d.title is string && d.title.size() > 0 && d.title.size() <= 200
+            && d.type in ['bug', 'request', 'question', 'task', 'risk']
+            && d.importance in ['high', 'mid', 'low']
+            && d.doneCriteria is string && d.doneCriteria.size() > 0 && d.doneCriteria.size() <= 2000
+            && d.description is string && d.description.size() <= 5000
+            && d.labelIds is list && d.labelIds.size() <= 5
+            && d.freq in ['daily', 'weekly', 'monthly']
+            && d.weekdays is list && d.weekdays.size() <= 7
+            && d.monthDay is int && d.monthDay >= 1 && d.monthDay <= 31
+            && d.time is int && d.time >= 0 && d.time < 1440 && d.time % 10 == 0
+            && d.tz is string && d.tz.size() <= 64
+            && d.dueDays in [0, 1, 3, 7]
+            && d.active is bool
+            && d.nextAt is timestamp
+            && d.updatedAt == request.time
+            // 担当者は、このプロジェクトの管理者かメンバー
+            && get(/databases/$(database)/documents/projects/$(pid)/members/$(d.assigneeId)).data.role in ['admin', 'member'];
+        }
+        allow read: if isMember(pid);
+        allow create: if recurringOn() && validRecurring()
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.createdAt == request.time;
+        // 作った人は、そのままか、直している管理者自身に替えるだけ（作った人が抜けた雛形を、引き取れるように）
+        allow update: if recurringOn() && validRecurring()
+          && (request.resource.data.createdBy == resource.data.createdBy
+              || request.resource.data.createdBy == request.auth.uid)
+          && request.resource.data.createdAt == resource.data.createdAt;
+        // 消すのは、機能をオフにしたあとやアーカイブ中でも（片づけられるように）
+        allow delete: if isAdmin(pid);
+      }
+
       // 依頼（削除・統合・再開）：メンバーが管理者に頼む。管理者が「対応済み・見送り」にし、
       // 依頼した本人は取り下げられる。記録として残すので、だれも消せない
       match /requests/{rid} {

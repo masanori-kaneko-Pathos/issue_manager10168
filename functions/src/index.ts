@@ -296,6 +296,139 @@ async function sendEffectChecks(
   logger.info('effect checks', { written });
 }
 
+// ---- 定期課題 ----
+// ※ src/app/core/recurring/schedule.ts と同じ計算にすること（片方を変えたら、もう片方も変える）
+
+interface RecurSpec { freq: 'daily' | 'weekly' | 'monthly'; weekdays: number[]; monthDay: number; time: number; tz: string; }
+
+function partsIn(ms: number, tz: string) {
+  const p = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(ms));
+  const g = (t: string) => Number(p.find((x) => x.type === t)?.value ?? 0);
+  return { y: g('year'), m: g('month'), d: g('day'), h: g('hour'), mi: g('minute'), s: g('second') };
+}
+
+function zonedMs(y: number, m: number, d: number, h: number, mi: number, tz: string): number {
+  const guess = Date.UTC(y, m - 1, d, h, mi);
+  const offset = (ms: number) => {
+    const p = partsIn(ms, tz);
+    return Date.UTC(p.y, p.m - 1, p.d, p.h, p.mi, p.s) - ms;
+  };
+  return guess - offset(guess - offset(guess));
+}
+
+function lastDayOf(y: number, m: number) {
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+function nextOccurrence(s: RecurSpec, afterMs: number): number {
+  const start = partsIn(afterMs, s.tz);
+  const h = Math.floor(s.time / 60);
+  const mi = s.time % 60;
+  for (let k = 0; k < 400; k++) {
+    const day = new Date(Date.UTC(start.y, start.m - 1, start.d + k));
+    const y = day.getUTCFullYear();
+    const m = day.getUTCMonth() + 1;
+    const d = day.getUTCDate();
+    const hit = s.freq === 'daily'
+      || (s.freq === 'weekly' && s.weekdays.includes(day.getUTCDay()))
+      || (s.freq === 'monthly' && d === Math.min(s.monthDay, lastDayOf(y, m)));
+    if (!hit) continue;
+    const t = zonedMs(y, m, d, h, mi, s.tz);
+    if (t > afterMs) return t;
+  }
+  return afterMs + 365 * DAY;
+}
+
+/** 時刻が来た雛形から、課題を作る（1つの雛形の失敗で、ほかを止めない） */
+async function sendRecurring(now: Date) {
+  const due = await db.collectionGroup('recurring')
+    .where('active', '==', true).where('nextAt', '<=', Timestamp.fromDate(now)).get();
+  if (due.empty) return;
+  let created = 0;
+  for (const r of due.docs) {
+    try {
+      if (await runRecurring(r.ref, r.get('nextAt') as Timestamp, now)) created++;
+    } catch (e) {
+      logger.error('recurring failed', { path: r.ref.path, error: String(e) });
+    }
+  }
+  logger.info('recurring', { due: due.size, created });
+}
+
+/**
+ * 1つの雛形から、課題を1件作り、次の回を決める（1つのトランザクション）。作ったら true。
+ * 何回分も過ぎていても1件だけ（赤2）。アーカイブ中・機能がオフなら、作らずに次の回へ（赤3）。
+ * 担当者か作った人が、もう担当できなければ、作らずに止めて管理者に知らせる（赤4・赤5）
+ */
+async function runRecurring(ref: DocumentReference, seenNext: Timestamp, now: Date): Promise<boolean> {
+  const projectRef = ref.parent.parent!;
+  return db.runTransaction(async (tx) => {
+    // ---- 読む（全部、書く前に） ----
+    const cur = await tx.get(ref);
+    const t = cur.data();
+    // ほかの動きが先に作って nextAt を進めていたら、何もしない（2件作らないため）
+    if (!t || !t.active || !(t.nextAt as Timestamp).isEqual(seenNext)) return false;
+    const spec: RecurSpec = {
+      freq: t.freq, weekdays: t.weekdays ?? [], monthDay: t.monthDay ?? 1, time: t.time ?? 540, tz: safeTz(t.tz),
+    };
+    // 次の回は「今より後」で決める（止まっていた間の回は飛ばす）
+    const next = Timestamp.fromMillis(nextOccurrence(spec, now.getTime()));
+    const [project, assignee, reporter] = await tx.getAll(projectRef,
+      projectRef.collection('members').doc(t.assigneeId), projectRef.collection('members').doc(t.createdBy));
+    const p = project.data();
+    if (!p || p.deleting) return false;
+    if (p.archived || !p.settings?.features?.recurring) {
+      tx.update(ref, { nextAt: next });
+      return false;
+    }
+    const canWork = (s: FirebaseFirestore.DocumentSnapshot) => s.exists && ['admin', 'member'].includes(s.get('role'));
+    const expireAt = Timestamp.fromMillis(now.getTime() + NOTIFY_KEEP_DAYS * DAY);
+    if (!canWork(assignee) || !canWork(reporter)) {
+      const admins = await tx.get(projectRef.collection('members').where('role', '==', 'admin'));
+      tx.update(ref, { active: false, stopped: 'member' });
+      admins.docs.forEach((a) => tx.create(db.collection(`users/${a.id}/notifications`).doc(), {
+        type: 'recurringStopped', pid: projectRef.id, projectName: p.name ?? '', iid: null, issueNumber: null,
+        issueTitle: String(t.title ?? '').slice(0, 200), by: '', byName: '', detail: '',
+        at: FieldValue.serverTimestamp(), read: false, expireAt,
+      }));
+      return false;
+    }
+
+    // ---- 書く ----
+    const number = (p.issueSeq ?? 0) + 1;
+    const issueRef = projectRef.collection('issues').doc();
+    // 期限：作った日（雛形のタイムゾーンの暦）の dueDays 日後の 23:59
+    const today = partsIn(now.getTime(), spec.tz);
+    const dueAt = Timestamp.fromMillis(zonedMs(today.y, today.m, today.d + (t.dueDays ?? 0), 23, 59, spec.tz));
+    // 雛形を作ったあとで消されたラベルは付けない
+    const labels = new Set(((p.labels ?? []) as { id: string }[]).map((l) => l.id));
+    tx.update(projectRef, { issueSeq: number });
+    tx.create(issueRef, {
+      number, title: t.title, type: t.type, status: 'open', importance: t.importance, priorityOverride: null,
+      dueAt, firstDueAt: dueAt, startAt: FieldValue.serverTimestamp(),
+      doneCriteria: t.doneCriteria, description: t.description ?? '',
+      assigneeId: t.assigneeId, reporterId: t.createdBy,
+      labelIds: ((t.labelIds ?? []) as string[]).filter((id) => labels.has(id)),
+      occurredOn: null, impact: '',
+      createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), updatedBy: t.createdBy,
+      recurringId: ref.id,
+    });
+    tx.create(issueRef.collection('events').doc(), {
+      type: 'recurring', rid: ref.id, by: t.createdBy, tz: spec.tz, at: FieldValue.serverTimestamp(),
+    });
+    tx.create(db.collection(`users/${t.assigneeId}/notifications`).doc(), {
+      type: 'recurring', pid: projectRef.id, projectName: p.name ?? '', iid: issueRef.id, issueNumber: number,
+      issueTitle: String(t.title ?? '').slice(0, 200), by: '', byName: '', detail: '',
+      at: FieldValue.serverTimestamp(), read: false, expireAt,
+    });
+    tx.update(ref, { nextAt: next, lastAt: FieldValue.serverTimestamp(), lastNumber: number });
+    return true;
+  });
+}
+
 // ---- 課題のリマインド ----
 
 /** これらのステータスの課題には、リマインドを届けない（もう取りかかることがない） */
@@ -365,7 +498,8 @@ export const imHourly = onSchedule(
     const now = new Date();
     // 添付のための写しが、まだ一度もまとめて作られていなければ作る（2回目からは印を見て何もしない）
     await backfillMirror().catch((e) => logger.error('mirror backfill failed', { error: String(e) }));
-    // 片方が失敗しても、もう片方は動かす
+    // どれかが失敗しても、ほかは動かす。定期課題を先に作る（できた課題を、毎朝のまとめに数えるため）
+    await sendRecurring(now).catch((e) => logger.error('recurring failed', { error: String(e) }));
     await sendMorningSummaries(now).catch((e) => logger.error('morning summaries failed', { error: String(e) }));
     await sendReminders(now).catch((e) => logger.error('reminders failed', { error: String(e) }));
   },
@@ -402,6 +536,8 @@ const PUSH_TEXT: Record<'ja' | 'en', Record<string, string>> = {
     requestDeclined: '{{name}} さんが、#{{n}}「{{title}}」の依頼を見送りました',
     reminder: 'リマインド：#{{n}}「{{title}}」',
     subtaskReminder: 'リマインド：{{title}}',
+    recurring: '定期課題から #{{n}}「{{title}}」ができました',
+    recurringStopped: '定期課題「{{title}}」を止めました。担当者か作った人が、もう担当できないためです',
   },
   en: {
     assigned: '{{name}} assigned you to #{{n}} "{{title}}"',
@@ -427,6 +563,8 @@ const PUSH_TEXT: Record<'ja' | 'en', Record<string, string>> = {
     requestDeclined: '{{name}} declined your request about #{{n}} "{{title}}"',
     reminder: 'Reminder: #{{n}} "{{title}}"',
     subtaskReminder: 'Reminder: {{title}}',
+    recurring: 'A recurring issue created #{{n}} "{{title}}"',
+    recurringStopped: 'The recurring issue "{{title}}" was paused because its assignee or creator can no longer be assigned',
   },
 };
 const DAILY_PARTS: Record<'ja' | 'en', Record<string, string>> = {
@@ -475,6 +613,7 @@ function pushBody(n: DocumentData, lang: 'ja' | 'en'): string {
 function pushUrl(uid: string, n: DocumentData): string {
   if (n.type === 'daily') return '/#today';
   if (n.type === 'projectDeleted') return '/';
+  if (n.type === 'recurringStopped') return `/p/${n.pid}/recurring`;
   if (n.iid) return `/p/${n.pid}/i/${n.iid}`;
   if (n.type === 'handover') return `/p/${n.pid}/list?assignee=${uid}`;
   return `/p/${n.pid}`;

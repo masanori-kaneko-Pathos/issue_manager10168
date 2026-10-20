@@ -110,7 +110,8 @@ export function validDailyTime(v: unknown): DailyTime | null {
 export type NotificationType =
   'assigned' | 'comment' | 'dueChanged' | 'resolved' | 'sentBack' | 'closed' | 'rejected' | 'restored' | 'joined'
   | 'handover' | 'daily' | 'effectCheck' | 'unblocked' | 'merged' | 'projectDeleted' | 'subtaskAssigned'
-  | 'mention' | 'watchResolved' | 'request' | 'requestDone' | 'requestDeclined' | 'reminder' | 'subtaskReminder';
+  | 'mention' | 'watchResolved' | 'request' | 'requestDone' | 'requestDeclined' | 'reminder' | 'subtaskReminder'
+  | 'recurring' | 'recurringStopped';
 
 /**
  * 画面内の通知（users/{uid}/notifications）。本人だけが読める。
@@ -230,6 +231,7 @@ export interface Issue {
   muted?: string[];           // 自動のウォッチ（提起者・担当者）を、自分で外した人
   estimateHours?: number | null; // 工数の見積（時間）。工数がオンのプロジェクトだけ
   actualHours?: number | null;   // 工数の実績（時間）
+  recurringId?: string;          // 定期課題から作られたとき、その雛形
 }
 export const CAUSE_CATEGORIES = [
   'requirements', 'design', 'testing', 'operation', 'communication', 'external', 'other',
@@ -241,7 +243,8 @@ export type Effect = 'yes' | 'partial' | 'no';
 export interface TimelineItem {
   id: string;
   kind: 'event' | 'comment';
-  type?: 'created' | 'imported' | 'status' | 'edit' | 'priority' | 'link' | 'merge' | 'subtask' | 'attachment';
+  type?: 'created' | 'imported' | 'status' | 'edit' | 'priority' | 'link' | 'merge' | 'subtask' | 'attachment'
+    | 'recurring';
   /** 課題に添付した・消した（type が attachment のときだけ。コメントへの添付は残さない＝コメントそのものが残るため） */
   file?: { action: 'add' | 'remove'; name: string };
   /** サブタスクを足した・消した・切り出した（type が subtask のときだけ。状態の切り替えは残さない） */
@@ -379,6 +382,42 @@ export interface Attachment {
 /** 1つの課題に添付できる数・1ファイルの大きさ（ルールでは数えられないので、数は画面で止める） */
 export const MAX_ATTACHMENTS = 10;
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+/** 定期課題の繰り返し方（daily＝毎日、weekly＝毎週、monthly＝毎月） */
+export type RecurFreq = 'daily' | 'weekly' | 'monthly';
+
+/** いつ作るか（画面と関数で、同じ計算に渡す形） */
+export interface RecurSpec {
+  freq: RecurFreq;
+  weekdays: number[];   // 毎週のときの曜日（0＝日〜6＝土）
+  monthDay: number;     // 毎月のときの日にち（1〜28、31＝月末）
+  time: number;         // 作る時刻。0時からの分（10分刻み）
+  tz: string;           // 時刻を数えるタイムゾーン（作った管理者のもの）
+}
+
+/** 定期課題の雛形（projects/{pid}/recurring/{rid}）。作る・直すのは管理者だけ。課題を作るのは関数 */
+export interface RecurringTemplate extends RecurSpec {
+  id: string;
+  title: string;
+  type: IssueType;
+  importance: Level;
+  assigneeId: string;
+  doneCriteria: string;
+  description: string;
+  labelIds: string[];
+  dueDays: number;               // 期限：作った日の何日後の 23:59 か（0・1・3・7）
+  active: boolean;
+  stopped?: 'member';            // 担当者か作った人が担当できなくなって、関数が止めた
+  nextAt: Timestamp;             // 次に作る時刻
+  lastAt?: Timestamp;
+  lastNumber?: number;           // 前回作った課題の番号
+  createdBy: string;             // 作った管理者（作られる課題の提起者になる）
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+/** 1つのプロジェクトで作れる定期課題の数（ルールでは数えられないので、画面で止める） */
+export const MAX_RECURRING = 20;
+export const RECUR_DUE_DAYS = [0, 1, 3, 7];
 
 /** 工数の入力を、0.5刻みの時間にそろえる。空なら null、数でない・範囲の外なら undefined（保存しない） */
 export function toHours(v: unknown): number | null | undefined {

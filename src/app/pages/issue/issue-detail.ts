@@ -990,6 +990,7 @@ export class IssueDetail implements OnInit {
       return this.i18n.t('detail.events.attachment.' + item.file.action, { name, file: item.file.name });
     }
     if (item.type === 'created') return this.i18n.t('detail.events.created', { name });
+    if (item.type === 'recurring') return this.i18n.t('detail.events.recurring');
     if (item.type === 'imported') return this.i18n.t('detail.events.imported', { name });
     if (item.type === 'merge' && item.merged) {
       return this.i18n.t('detail.events.merge', { name, n: String(item.merged.number) });

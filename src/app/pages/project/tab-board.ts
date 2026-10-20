@@ -186,6 +186,13 @@ const EMPTY_PAYLOAD = {
           <span class="id">
             @if (isActive(i)) { <app-priority-mark [level]="prio(i)" [manual]="manual(i)" /> }
             <span class="num">#{{ i.number }}</span>
+            @if (i.recurringId) {
+              <span class="recur" [title]="'recurring.badge' | t" role="img" [attr.aria-label]="'recurring.badge' | t">
+                <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m17 2 4 4-4 4" /><path d="M3 11V9a3 3 0 0 1 3-3h15" />
+                  <path d="m7 22-4-4 4-4" /><path d="M21 13v2a3 3 0 0 1-3 3H3" /></svg></span>
+            }
             @if (stale(i)) {
               <span class="stale" [title]="'stale.title' | t: { n: '' + staleDays() }">{{ 'stale.label' | t }}</span>
             }
@@ -332,6 +339,7 @@ const EMPTY_PAYLOAD = {
     .subs { align-self: flex-start; font-size: 12px; color: var(--text-muted); }
     .subs.all { color: var(--success-text); font-weight: bold; }    
     .fold { font-size: 12px; color: var(--text-muted); }
+    .recur { display: inline-flex; color: var(--text-muted); }
     `,
 })
 export class ProjectBoard implements OnInit {
