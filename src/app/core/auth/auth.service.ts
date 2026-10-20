@@ -1,5 +1,4 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { squareImage } from './avatar-image';
 import {
   User, onAuthStateChanged, signInWithEmailAndPassword,
   createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut,
@@ -147,10 +146,9 @@ export class AuthService {
     return p && p.photoURL !== undefined ? p.photoURL : this.user()?.photoURL ?? null;
   });
 
-  /** 写真を変える：正方形に縮めて上げ、プロフィールとメンバーの写しに書き、前の写真を消す */
-  async setPhoto(file: File) {
+  /** 写真を変える：切り取った画像を上げ、プロフィールとメンバーの写しに書き、前の写真を消す */
+  async setPhoto(blob: Blob) {
     const u = auth.currentUser!;
-    const blob = await squareImage(file);
     const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
     const st = getStorage(firebaseApp);
     const old = this.profile()?.photoURL;

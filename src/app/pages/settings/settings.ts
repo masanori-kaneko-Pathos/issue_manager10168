@@ -11,12 +11,13 @@ import { auth } from '../../core/firebase';
 import { ProjectService } from '../../core/project/project.service';
 import { SampleService } from '../../core/project/sample.service';
 import { Avatar } from '../../shared/avatar';
+import { AvatarCropDialog } from '../../shared/avatar-crop-dialog';
 
 type Section = 'general' | 'password';
 
 @Component({
   selector: 'app-settings',
-  imports: [FormsModule, RouterLink, TPipe, HelpTip, Avatar],
+  imports: [FormsModule, RouterLink, TPipe, HelpTip, Avatar, AvatarCropDialog],
   host: { '(window:beforeunload)': 'onBeforeUnload($event)' },
   template: `
     <header class="bar"><a routerLink="/" class="link">{{ 'common.back' | t }}</a></header>
@@ -133,6 +134,9 @@ type Section = 'general' | 'password';
         </div>
       }
     </main>
+    @if (cropFile(); as f) {
+      <app-avatar-crop-dialog [file]="f" (done)="savePhoto($event)" (cancel)="cropFile.set(null)" />
+    }
   `,
   styles: `
     .bar { padding: 8px 16px; border-bottom: 1px solid var(--border); }
@@ -224,20 +228,30 @@ export class Settings implements OnInit {
   photoBusy = signal(false);
   photoMsg = signal('');
 
-  async onPhoto(e: Event) {
+  /** 範囲を選ぶ窓に渡す写真（null＝窓は閉じている） */
+  cropFile = signal<File | null>(null);
+
+  /** 写真を選んだら、範囲を選ぶ窓を開く */
+  onPhoto(e: Event) {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
     input.value = ''; // 同じ写真をもう一度選んでも、選んだことになるように
     if (!file) return;
+    this.photoMsg.set('');
+    this.cropFile.set(file);
+  }
+
+  /** 範囲を決めたら、上げる */
+  async savePhoto(blob: Blob) {
+    this.cropFile.set(null);
     this.photoBusy.set(true);
     this.photoMsg.set('');
     try {
-      await this.authService.setPhoto(file);
+      await this.authService.setPhoto(blob);
       this.photoMsg.set('settings.photoSaved');
     } catch (err) {
       console.error(err);
-      this.photoMsg.set((err as Error).message === 'image' || err instanceof DOMException
-        ? 'settings.photoBad' : 'common.saveError');
+      this.photoMsg.set('common.saveError');
     } finally {
       this.photoBusy.set(false);
     }

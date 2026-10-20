@@ -359,7 +359,7 @@ export const en: Dict = {
     displayName: 'Display name',
     photoChange: 'Change photo',
     photoRemove: 'Remove photo',
-    photoHelp: 'The center is cropped to a square and saved at a small size. Without a photo, your initial is shown.',
+    photoHelp: 'After choosing a photo, you can pick the area to use. Without a photo, your initial is shown.',
     photoBad: "This image couldn't be read. Choose a PNG or JPEG photo.",
     photoSaved: 'Your photo was updated.',
     save: 'Save',
@@ -1064,6 +1064,12 @@ export const en: Dict = {
     openTab: 'Open in a new tab',
     loadFailed: "Couldn't read the file. Wait a moment and open it again.",
     more: 'Showing the first 500 rows ({{n}} more). Download the file to see all of it.',
+  },
+  crop: {
+    title: 'Choose the area for your photo',
+    help: 'Drag to move, and use the slider (or mouse wheel) to zoom. The area inside the circle becomes your photo.',
+    zoom: 'Zoom',
+    confirm: 'Done',
   },
   watch: {
     start: 'Watch ({{n}} watching)',
