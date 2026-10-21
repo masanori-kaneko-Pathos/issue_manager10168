@@ -14,8 +14,8 @@ import { TPipe } from '../../i18n/i18n';
     <div class="backdrop" (click)="cancel.emit()"></div>
     <section class="dialog" role="dialog" aria-modal="true" [attr.aria-label]="'invite.title' | t">
       <h2>{{ 'invite.title' | t }}</h2>
-      @if (retry()) { <p class="note" role="status">{{ 'invite.retryNote' | t }}</p> }
-      @if (hasFailed()) { <p class="note" role="alert">{{ 'invite.someFailed' | t }}</p> }
+      @if (retry()) { <p class="warn" role="status">{{ 'invite.retryNote' | t }}</p> }
+      @if (hasFailed()) { <p class="warn" role="alert">{{ 'invite.someFailed' | t }}</p> }
       <app-invite-picker [(value)]="invitees" [failed]="failed()" />
       <div class="row">
         <button type="button" class="link" (click)="cancel.emit()">{{ 'workflow.cancel' | t }}</button>
@@ -27,16 +27,9 @@ import { TPipe } from '../../i18n/i18n';
   styles: `
     :host { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; }
     .backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); }
-    .dialog { position: relative; background: var(--surface); color: var(--text); width: min(720px, calc(100% - 32px));
-      max-height: 90vh; overflow: auto; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-    h2 { font-size: 18px; margin: 0; }
-    .note { margin: 0; padding: 10px 12px; border-radius: 8px; font-size: 13px;
-      background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
-    .row { display: flex; justify-content: flex-end; gap: 8px; }
-    .link { background: none; border: none; color: var(--primary); min-height: 44px; cursor: pointer; }
-    .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
-      border-radius: 8px; font-size: 14px; cursor: pointer; }
-    .primary:disabled { background: var(--disabled); cursor: default; }
+    /* 3列の表が入るように広い窓 */
+    .dialog { width: min(720px, calc(100% - 32px)); }
+    @media (max-width: 600px) { .dialog { width: 100%; } }
   `,
 })
 export class InviteDialog implements OnInit {

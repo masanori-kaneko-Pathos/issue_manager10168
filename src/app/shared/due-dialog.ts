@@ -14,7 +14,7 @@ import { I18nService, TPipe } from '../i18n/i18n';
   host: { '(document:keydown.escape)': 'cancel.emit()' },
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
-    <section class="dialog" role="dialog" aria-modal="true">
+    <section class="dialog narrow" role="dialog" aria-modal="true">
       <p class="sub">#{{ issue().number }} {{ issue().title }}</p>
       <h2>{{ 'dueDialog.title' | t }}</h2>
 
@@ -50,7 +50,7 @@ import { I18nService, TPipe } from '../i18n/i18n';
       @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
       <div class="row">
         <button type="button" class="link" (click)="cancel.emit()">{{ 'workflow.cancel' | t }}</button>
-        <button type="button" class="primary" [class.past]="isPast()"
+        <button type="button" class="primary" [class.danger]="isPast()"
           [disabled]="busy() || !reason.trim() || !newDue() || !dayOk() || !!conflict()?.blocked" (click)="confirm()">
           {{ (isPast() ? 'dueDialog.confirmPast' : 'workflow.confirm') | t }}</button>
       </div>
@@ -59,29 +59,11 @@ import { I18nService, TPipe } from '../i18n/i18n';
   styles: `
     :host { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; }
     .backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); }
-    .dialog { position: relative; background: var(--surface); width: min(440px, calc(100% - 32px));
-      border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
     .sub { margin: 0; font-size: 13px; color: var(--text-muted); overflow-wrap: anywhere; }
-    h2 { font-size: 18px; margin: 0; }
     .change { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px;
       background: var(--surface-alt); border-radius: 8px; font-size: 14px; }
     .from { color: var(--text-muted); text-decoration: line-through; }
-    .field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: bold; }
-    input, textarea { font-size: 16px; padding: 8px 12px; font-weight: normal; }
-    input { min-height: 44px; }
-    .warn { margin: 0; padding: 10px 12px; border-radius: 8px; font-size: 13px;
-      background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
-    .row { display: flex; justify-content: flex-end; gap: 8px; }
-    .link { background: none; border: none; color: var(--primary); min-height: 44px; }
-    .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary);
-      border: none; border-radius: 8px; font-size: 14px; }
-    .primary.past { background: var(--danger); }
-    .primary:disabled { background: var(--disabled); }
-    .error { color: var(--danger-text); }
-    .conflict { padding: 10px 12px; border-radius: 8px; font-size: 13px;
-      background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
-    .conflict p { margin: 0 0 4px; }
-    .conflict p:last-child { margin-bottom: 0; }
+    input, textarea { font-weight: normal; }
   `,
 })
 export class DueDialog implements OnInit {

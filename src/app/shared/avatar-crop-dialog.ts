@@ -50,23 +50,18 @@ import {
     styles: `
       :host { position: fixed; inset: 0; z-index: 120; display: flex; align-items: center; justify-content: center; }
       .backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.5); }
-      .dialog { position: relative; background: var(--surface); border-radius: 12px; padding: 16px;
-        width: min(340px, calc(100% - 32px)); display: flex; flex-direction: column; align-items: center; gap: 12px; }
-      h2 { align-self: flex-start; font-size: 18px; margin: 0; }
+      /* 写真の枠に合わせた小さな窓（スマホでも全画面にしない） */
+      .dialog { width: min(340px, calc(100% - 32px)); height: auto; max-height: 90vh; border-radius: 12px; align-items: center; }
+      h2 { align-self: flex-start; }
       .stage { position: relative; border-radius: 8px; overflow: hidden; background: #222; }
       canvas { display: block; touch-action: none; cursor: grab; }
       canvas:active { cursor: grabbing; }
       .mask { position: absolute; inset: 0; pointer-events: none; border-radius: 50%;
         box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55); outline: 2px solid rgba(255, 255, 255, 0.9); }
-      .help { margin: 0; font-size: 12px; color: var(--text-muted); text-align: center; }
+      .help { text-align: center; }
       .zoom { display: flex; align-items: center; gap: 8px; width: 100%; color: var(--text-muted); }
       .zoom input { flex: 1; }
-      .row { align-self: stretch; display: flex; justify-content: flex-end; gap: 8px; }
-      .link { background: none; border: none; color: var(--primary); min-height: 44px; cursor: pointer; }
-      .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
-        border-radius: 8px; font-size: 14px; cursor: pointer; }
-      .primary:disabled { background: var(--disabled); }
-      .error { margin: 0; color: var(--danger-text); font-size: 13px; }
+      .row { align-self: stretch; }
     `,
   })
   export class AvatarCropDialog implements OnInit {

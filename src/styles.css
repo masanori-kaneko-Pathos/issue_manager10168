@@ -42,3 +42,78 @@
   }
 
   html { scrollbar-gutter: stable; }
+
+/* ================================================================
+   見た目の基準
+   部品の側に、同じ役目のものを書き写さないこと。
+   その部品だけ違う形にしたいときだけ、部品の側に書く（部品の側が強く効く）
+   ================================================================ */
+
+/* 押せるものの高さ：マウスは 40px、指で触る端末は 44px */
+:root { --tap: 40px; }
+@media (pointer: coarse) { :root { --tap: 44px; } }
+
+/* ボタンと入力欄も、アプリと同じ書体で */
+button, input, select, textarea { font-family: inherit; }
+
+/* ---- 入力欄（チェックボックス・ファイルなどは除く） ---- */
+/* :where() で包むと強さが 0 になる。部品の側に書いたもの（枠なしの欄など）が、いつも勝つように */
+:where(input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']), textarea, select) {
+  box-sizing: border-box; min-height: 44px; padding: 0 12px; font-size: 16px; /* 16px 未満だとスマホで拡大される */
+  color: var(--text); background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: 6px; }
+textarea { padding: 8px 12px; line-height: 1.5; }
+:where(input, textarea, select):focus-visible {
+  outline: 2px solid var(--primary); outline-offset: 0; border-color: var(--primary); }
+fieldset { border: none; padding: 0; margin: 0; min-width: 0; }
+legend { padding: 0; font-size: 14px; font-weight: bold; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: bold; }
+
+/* ---- ボタン ---- */
+.primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;
+  min-height: var(--tap); padding: 0 18px; border: none; border-radius: 8px;
+  background: var(--primary); color: var(--on-primary); font-size: 14px; text-decoration: none; cursor: pointer; }
+.primary:disabled { background: var(--disabled); cursor: default; }
+.primary.danger { background: var(--danger); }
+.ghost { display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;
+  min-height: var(--tap); padding: 0 16px; border: 1px solid var(--primary); border-radius: 8px;
+  background: var(--surface); color: var(--primary); font-size: 14px; text-decoration: none; cursor: pointer; }
+.ghost:hover:not(:disabled) { background: var(--primary-bg); }
+.ghost:disabled { border-color: var(--border-strong); color: var(--text-disabled); cursor: default; }
+.link { display: inline-flex; align-items: center; min-height: var(--tap); padding: 0; border: none; background: none;
+  color: var(--primary); font-size: 14px; text-decoration: none; cursor: pointer; }
+.link:disabled { color: var(--text-disabled); cursor: default; }
+.link.danger { color: var(--danger-text); }
+.row { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+
+/* ---- チップ ---- */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips button { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px;
+  border: 1px solid var(--border-strong); border-radius: 18px; background: var(--surface); color: var(--text);
+  font-size: 13px; cursor: pointer; }
+@media (pointer: coarse) { .chips button { min-height: 44px; border-radius: 22px; } }
+.chips button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+.chips button:disabled { color: var(--text-disabled); cursor: default; }
+
+/* ---- 窓（:host の重ね方と、後ろの暗い幕は、部品の側に書く） ---- */
+.dialog { position: relative; box-sizing: border-box; width: min(560px, calc(100% - 32px)); max-height: 90vh;
+  overflow: auto; display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 12px;
+  background: var(--surface); color: var(--text); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25); }
+.dialog.narrow { width: min(440px, calc(100% - 32px)); }
+/* 中でスクロールする箱は、flex の中では 0 まで縮められてしまう。窓の中では、どれも縮ませない（引き継ぎの窓で学んだこと） */
+.dialog > * { flex: none; }
+.dialog h2 { margin: 0; font-size: 18px; }
+@media (max-width: 600px) {
+  .dialog, .dialog.narrow { width: 100%; height: 100%; max-height: none; border-radius: 0; }
+}
+
+/* ---- 文字と注意の箱 ---- */
+.help { margin: 0; font-size: 12px; color: var(--text-muted); }
+.error { margin: 0; color: var(--danger-text); }
+.msg { margin: 0; font-size: 13px; color: var(--success-text); }
+.msg.ng { color: var(--danger-text); }
+.pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.warn, .conflict { margin: 0; padding: 10px 12px; border-radius: 8px; font-size: 13px;
+  background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
+.conflict p { margin: 0 0 4px; }
+.conflict p:last-child { margin-bottom: 0; }

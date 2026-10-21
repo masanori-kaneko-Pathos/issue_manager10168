@@ -118,31 +118,16 @@ import { MemberSelect } from '../../shared/member-select';
   styles: `
     :host { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; }
     .backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); }
-    .dialog { position: relative; background: var(--surface); width: min(560px, calc(100% - 32px)); max-height: 90vh;
-      overflow: auto; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-    @media (max-width: 600px) { .dialog { width: 100%; height: 100%; max-height: none; border-radius: 0; } }
-    h2 { font-size: 18px; margin: 0; }
-    .field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: bold; }
-    fieldset { border: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
-    legend { font-size: 14px; font-weight: bold; margin-bottom: 4px; }
-    input, textarea, select { font-size: 16px; padding: 8px 12px; font-weight: normal; }
-    input, select { min-height: 44px; }
+    fieldset { display: flex; flex-direction: column; gap: 6px; }
+    legend { margin-bottom: 4px; }
+    input, textarea, select { font-weight: normal; }
     select { max-width: 160px; }
-    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-    .chips button { min-height: 40px; padding: 0 14px; border: 1px solid var(--border-strong); background: var(--surface);
-      border-radius: 20px; font-size: 14px; cursor: pointer; }
-    .chips button.wd { min-width: 44px; padding: 0; }
-    .chips button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+    .chips button.wd { min-width: 44px; padding: 0; justify-content: center; }
     .time { display: flex; align-items: center; gap: 6px; font-size: 14px; }
     .time select { width: 80px; }
     .preview { margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--surface-alt); font-size: 13px; }
-    .warn { margin: 0; font-size: 13px; color: var(--warning-text); }
-    .error { color: var(--danger-text); margin: 0; }
-    .row { display: flex; justify-content: flex-end; gap: 8px; }
-    .link { background: none; border: none; color: var(--primary); min-height: 44px; cursor: pointer; }
-    .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
-      border-radius: 8px; font-size: 14px; cursor: pointer; }
-    .primary:disabled { background: var(--disabled); }
+    /* この窓の注意は、箱ではなく文字だけ */
+    .warn { padding: 0; border: none; background: none; }
   `,
 })
 export class RecurringDialog implements OnInit {

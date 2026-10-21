@@ -7,6 +7,7 @@ import { SearchService } from '../core/search/search.service';
 import { Seg, findMatch, segments, terms } from '../core/search/match';
 import { IssueStatus } from '../core/models';
 import { TPipe } from '../i18n/i18n';
+import { ProjectService } from '../core/project/project.service';
 
 /** すべてを探すとき、受信箱・1つのプロジェクトで出す件数 */
 const PER_GROUP = 5;
@@ -67,7 +68,7 @@ interface Row {
       <div class="bar" [class.on]="open()">
         <ng-container [ngTemplateOutlet]="glass" />
         @if (scopePid()) {
-          <span class="chip">{{ projName() || ('search.thisProject' | t) }}
+          <span class="chip"><span class="chip-name" [title]="projName()">{{ projName() || ('search.thisProject' | t) }}</span>
             <button type="button" [attr.aria-label]="'search.removeScope' | t" (click)="unscope()">✕</button>
           </span>
         }
@@ -153,14 +154,16 @@ interface Row {
     .bar { position: relative; z-index: 1; display: flex; align-items: center; gap: 6px; height: 36px;
       padding: 0 10px; border-radius: 18px; background: rgba(255, 255, 255, 0.15); color: var(--on-primary); }
     .bar.on { background: var(--surface); color: var(--text); }
-    .bar input { flex: 1; min-width: 0; height: 100%; border: none; outline: none; background: none;
-      color: inherit; font-size: 15px; }
+    /* 帯の中の欄なので、入力欄の基準（高さ 44px・内側の余白・角）は打ち消す */
+    .bar input { flex: 1; min-width: 0; height: 100%; min-height: 0; padding: 0; border: none; border-radius: 0;
+      outline: none; background: none; color: inherit; font-size: 15px; }
     .bar input::placeholder { color: inherit; opacity: 0.7; }
     .chip { display: inline-flex; align-items: center; gap: 2px; max-width: 45%; padding: 0 2px 0 8px;
       border-radius: 12px; background: var(--primary-bg); color: var(--primary); font-size: 12px;
       font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .chip button { width: 24px; height: 24px; flex: none; border: none; background: none; color: inherit;
       font-size: 11px; cursor: pointer; }
+    .chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     kbd { padding: 0 6px; border: 1px solid currentColor; border-radius: 4px; font-size: 11px; opacity: 0.7; }
     .panel { position: absolute; z-index: 1; top: calc(100% + 6px); left: 0; right: 0; max-height: 70vh;
       overflow: auto; background: var(--surface); color: var(--text); border-radius: 10px;
@@ -204,7 +207,23 @@ export class SearchBox {
   scoped = signal(true);
   /** 札が付いているときの、探す範囲のプロジェクト */
   scopePid = computed(() => (this.scoped() ? this.pid() : null));
-  projName = computed(() => { const p = this.pid(); return p ? this.search.nameOf(p) : ''; });
+  projName = computed(() => {
+    const p = this.pid();
+    return p ? this.search.nameOf(p) || this.names()[p] || '' : '';
+  });
+  private ps = inject(ProjectService);
+  /** 札に出すプロジェクト名（検索の読み込みを待たずに、プロジェクトの文書を1回だけ読んでおく） */
+  private names = signal<Record<string, string>>({});
+
+  private async ensureName(pid: string | null) {
+    if (!pid || this.names()[pid]) return;
+    try {
+      const p = await this.ps.get(pid);
+      if (p) this.names.update((m) => ({ ...m, [pid]: p.name }));
+    } catch {
+      // 読めなくても、「このプロジェクト」と出るだけ
+    }
+  }
 
   q = signal('');
   open = signal(false);
@@ -223,8 +242,10 @@ export class SearchBox {
       if (p !== this.pid()) {
         this.pid.set(p);
         this.scoped.set(true);
+        this.ensureName(p);
       }
     });
+    this.ensureName(this.pid()); // 最初にプロジェクトの中で開いたとき
     const onChange = (e: MediaQueryListEvent) => {
       this.isMobile.set(e.matches);
       this.close();

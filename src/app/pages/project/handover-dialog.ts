@@ -125,22 +125,18 @@ const FILTER_FROM = 7;
   styles: `
     :host { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; }
     .backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); }
-    .dialog { position: relative; background: var(--surface); width: min(600px, calc(100% - 32px)); max-height: 90vh;
-      overflow: auto; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-    h2 { font-size: 18px; margin: 0; overflow-wrap: anywhere; }
-    .help { margin: 0; font-size: 12px; color: var(--text-muted); }
-    .help.warn { color: var(--warning-text); }
+    h2 { overflow-wrap: anywhere; }
+    .help.warn { padding: 0; border: none; background: none; }
     .label { margin: 0; font-size: 14px; font-weight: bold; }
     .pens-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-    .pen-filter { min-height: 36px; font-size: 14px; padding: 0 10px; width: 180px; }
-    /* 中でスクロールする箱は、flex の中では 0 まで縮められてしまう。縮ませず、足りない分は窓ごとスクロールする */
-    .pens { flex: none; display: flex; flex-wrap: wrap; gap: 6px; max-height: 120px; overflow: auto; }
+    .pen-filter { min-height: 36px; font-size: 14px; width: 180px; }
+    .pens { display: flex; flex-wrap: wrap; gap: 6px; max-height: 120px; overflow: auto; }
     .pen { min-height: 36px; padding: 0 14px; border: 1px solid var(--border-strong); border-radius: 18px;
       background: var(--surface); color: var(--text); font-size: 14px; cursor: pointer; }
     .pen.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
     .pen.keep:not(.on) { color: var(--text-muted); border-style: dashed; }
-    .fill { align-self: flex-start; min-height: 32px; padding: 0; font-size: 13px; }
-    .issues { flex: none; list-style: none; margin: 0; padding: 0; max-height: 300px; overflow: auto;
+    .fill { align-self: flex-start; min-height: 32px; font-size: 13px; }
+    .issues { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow: auto;
       background: var(--surface-alt); border-radius: 8px; font-size: 13px;
       /* なぞって塗るとき、文字の選択が始まらないように */
       user-select: none; -webkit-user-select: none; }
@@ -159,16 +155,8 @@ const FILTER_FROM = 7;
     .dest.none { font-weight: normal; color: var(--text-subtle); }
     .issue-row.keep .dest { color: var(--text-muted); }
     .summary { margin: 0; font-size: 13px; color: var(--text-secondary); }
-    .field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: bold; }
-    textarea { font-size: 16px; padding: 8px 12px; font-weight: normal; }
+    textarea { font-weight: normal; }
     .none { margin: 0; font-size: 14px; }
-    .row { display: flex; justify-content: flex-end; gap: 8px; }
-    .link { background: none; border: none; color: var(--primary); min-height: 44px; cursor: pointer; }
-    .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
-      border-radius: 8px; font-size: 14px; }
-    .primary.danger { background: var(--danger); }
-    .primary:disabled { background: var(--disabled); }
-    .error { color: var(--danger-text); }
   `,
 })
 export class HandoverDialog {

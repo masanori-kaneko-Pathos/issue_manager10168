@@ -12,7 +12,7 @@ import { TPipe } from '../../i18n/i18n';
   host: { '(document:keydown.escape)': 'busy() || cancel.emit()' },
   template: `
     <div class="backdrop" (click)="busy() || cancel.emit()"></div>
-    <section class="dialog" role="dialog" aria-modal="true" [attr.aria-label]="'deleteProject.title' | t">
+    <section class="dialog narrow" role="dialog" aria-modal="true" [attr.aria-label]="'deleteProject.title' | t">
       <h2>{{ 'deleteProject.title' | t }}</h2>
       <p class="warn">{{ 'deleteProject.warn' | t }}</p>
       @if (others() === null) {
@@ -26,7 +26,7 @@ import { TPipe } from '../../i18n/i18n';
       @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
       <div class="row">
         <button type="button" class="link" [disabled]="busy()" (click)="cancel.emit()">{{ 'workflow.cancel' | t }}</button>
-        <button type="button" class="primary" [disabled]="busy() || typed !== name()" (click)="confirm()">
+        <button type="button" class="primary danger" [disabled]="busy() || typed !== name()" (click)="confirm()">
           {{ 'deleteProject.confirm' | t }}</button>
       </div>
     </section>
@@ -34,20 +34,10 @@ import { TPipe } from '../../i18n/i18n';
   styles: `
     :host { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; }
     .backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); }
-    .dialog { position: relative; background: var(--surface); width: min(480px, calc(100% - 32px));
-      border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-    h2 { font-size: 18px; margin: 0; }
-    .warn { margin: 0; padding: 10px 12px; border-radius: 8px; font-size: 13px;
-      background: var(--danger-bg); color: var(--danger-text); }
-    .help { margin: 0; font-size: 13px; color: var(--text-muted); }
-    .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: bold; }
-    input { min-height: 44px; font-size: 16px; padding: 0 12px; font-weight: normal; }
-    .error { color: var(--danger-text); margin: 0; }
-    .row { display: flex; justify-content: flex-end; gap: 8px; }
-    .link { background: none; border: none; color: var(--primary); min-height: 44px; cursor: pointer; }
-    .primary { min-height: 44px; padding: 0 20px; background: var(--danger); color: var(--on-primary); border: none;
-      border-radius: 8px; font-size: 14px; cursor: pointer; }
-    .primary:disabled { background: var(--disabled); cursor: default; }
+    /* 元に戻せない操作なので、注意は黄ではなく赤 */
+    .warn { background: var(--danger-bg); color: var(--danger-text); border-color: transparent; }
+    .help { font-size: 13px; }
+    input { font-weight: normal; }
   `,
 })
 export class DeleteProjectDialog implements OnInit {

@@ -107,40 +107,13 @@ import { DraftService, fieldPlace } from '../core/draft/draft.service';
   styles: `
     :host { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; }
     .backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); }
-    .dialog { position: relative; background: var(--surface); width: min(560px, 100%); max-height: 90vh; overflow: auto;
-      border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-    @media (max-width: 600px) {
-      .dialog { height: 100%; max-height: none; border-radius: 0; }
-    }
     .sub { margin: 0; font-size: 13px; color: var(--text-muted); overflow-wrap: anywhere; }
-    h2 { font-size: 18px; margin: 0; }
-    .field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: bold; }
-    fieldset { border: none; padding: 0; margin: 0; }
-    legend { font-size: 14px; font-weight: bold; }
-    textarea { font-size: 16px; padding: 8px 12px; font-weight: normal; }
-    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-    .chips button { min-height: 44px; padding: 0 14px; border: 1px solid var(--border-strong); background: var(--surface);
-      border-radius: 22px; font-size: 14px; }
-    .chips button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
-    .help { font-size: 12px; color: var(--text-muted); margin: 4px 0; }
+    .chips { margin-top: 4px; }
     .criteria { background: var(--surface-alt); padding: 12px; border-radius: 8px; }
-    .pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
     .check { display: flex; align-items: center; gap: 8px; margin-top: 8px; min-height: 44px; }
     .check input { width: 22px; height: 22px; }
-    .row { display: flex; justify-content: flex-end; gap: 8px; }
-    .link { background: none; border: none; color: var(--primary); min-height: 44px; }
-    .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
-      border-radius: 8px; font-size: 14px; }
-    .primary:disabled { background: var(--disabled); }
-    .error { color: var(--danger-text); }
-    .conflict { padding: 10px 12px; border-radius: 8px; font-size: 13px;
-      background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
-    .conflict p { margin: 0 0 4px; }
-    .conflict p:last-child { margin-bottom: 0; }
-    .warn { margin: 0; padding: 10px 12px; border-radius: 8px; font-size: 13px;
-      background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
     .hours { display: flex; align-items: center; gap: 6px; font-weight: normal; }
-    .hours input { width: 120px; min-height: 40px; font-size: 16px; padding: 0 8px; }
+    .hours input { width: 120px; }
     `,
 })
 export class StatusDialog implements OnInit {

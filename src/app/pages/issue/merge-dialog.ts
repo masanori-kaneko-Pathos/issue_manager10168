@@ -56,19 +56,11 @@ import { I18nService, TPipe } from '../../i18n/i18n';
   styles: `
     :host { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; }
     .backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); }
-    .dialog { position: relative; background: var(--surface); width: min(560px, calc(100% - 32px)); max-height: 90vh;
-      overflow: auto; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-    @media (max-width: 600px) {
-      .dialog { width: 100%; height: 100%; max-height: none; border-radius: 0; }
-    }
-    h2 { font-size: 18px; margin: 0; }
-    .help { margin: 0; font-size: 13px; color: var(--text-muted); }
-    .field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: bold; }
-    input, textarea { font-size: 16px; padding: 8px 12px; font-weight: normal; }
-    input { min-height: 44px; }
-    /* 窓の高さが足りなくなっても、候補の一覧だけ押しつぶされないように（flex: none＝縮めない） */
-    .results { flex: none; display: flex; flex-direction: column; max-height: min(45vh, 360px); overflow: auto; }
-    .row { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 4px 8px; border: none;
+    .help { font-size: 13px; }
+    input, textarea { font-weight: normal; }
+    .results { display: flex; flex-direction: column; max-height: min(45vh, 360px); overflow: auto; }
+    /* この窓の .row は「候補の行」（基準の .row の右寄せを打ち消す） */
+    .row { justify-content: flex-start; gap: 8px; min-height: 44px; padding: 4px 8px; border: none;
       border-bottom: 1px solid var(--border); background: none; text-align: left; font-size: 14px; cursor: pointer; }
     .row:hover { background: var(--surface-alt); }
     .num { color: var(--text-muted); font-size: 13px; }
@@ -77,12 +69,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     .picked { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 10px 12px;
       border-radius: 8px; background: var(--surface-alt); font-size: 14px; }
     .picked span { flex: 1; overflow-wrap: anywhere; }
-    .error { color: var(--danger-text); margin: 0; }
     .end { display: flex; justify-content: flex-end; gap: 8px; }
-    .link { background: none; border: none; color: var(--primary); min-height: 44px; cursor: pointer; }
-    .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
-      border-radius: 8px; font-size: 14px; }
-    .primary:disabled { background: var(--disabled); }
   `,
 })
 export class MergeDialog implements OnInit {

@@ -24,7 +24,7 @@ interface ProjectDraft {
   host: { '(document:keydown.escape)': 'close.emit()' },
   template: `
     <div class="backdrop" (click)="close.emit()"></div>
-    <section class="dialog" [class.wide]="inviteOpen()" role="dialog" aria-modal="true"
+    <section class="dialog narrow" [class.wide]="inviteOpen()" role="dialog" aria-modal="true"
       [attr.aria-label]="'projectNew.title' | t">
       <h2>{{ 'projectNew.title' | t }}</h2>
       <!-- 入力・選択・ボタンの操作は、どれも form まで上がってくるので、ここで1回だけ受けて下書きにしまう -->
@@ -57,22 +57,14 @@ interface ProjectDraft {
   styles: `
     :host { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; }
     .backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); }
-    .dialog { position: relative; background: var(--surface); color: var(--text); width: min(480px, calc(100% - 32px));
-      max-height: 90vh; overflow: auto; border-radius: 12px; padding: 16px; }
+    /* 招待を開いたら、3列の表が入るように広げる */
     .dialog.wide { width: min(720px, calc(100% - 32px)); }
-    h2 { font-size: 18px; margin: 0 0 12px; }
+    @media (max-width: 600px) { .dialog.wide { width: 100%; } }
     form { display: flex; flex-direction: column; gap: 12px; }
-    .field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: bold; }
-    input { min-height: 44px; padding: 0 12px; font-size: 16px; font-weight: normal; }
-    .toggle { align-self: flex-start; min-height: 40px; padding: 0; border: none; background: none;
+    input, textarea { font-weight: normal; }
+    textarea { line-height: 1.6; }
+    .toggle { align-self: flex-start; min-height: var(--tap); padding: 0; border: none; background: none;
       color: var(--primary); font-size: 14px; cursor: pointer; }
-    .error { margin: 0; color: var(--danger-text); }
-    .row { display: flex; justify-content: flex-end; gap: 8px; }
-    .link { background: none; border: none; color: var(--primary); min-height: 44px; cursor: pointer; }
-    .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
-      border-radius: 8px; font-size: 14px; cursor: pointer; }
-    .primary:disabled { background: var(--disabled); cursor: default; }
-    textarea { font-size: 16px; padding: 8px 12px; font-weight: normal; line-height: 1.6; }
   `,
 })
 export class ProjectNewDialog implements OnInit {

@@ -50,30 +50,17 @@ import { I18nService, TPipe } from '../../i18n/i18n';
   styles: `
     :host { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; }
     .backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); }
-    .dialog { position: relative; background: var(--surface); width: min(560px, calc(100% - 32px)); max-height: 90vh;
-      overflow: auto; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-    @media (max-width: 600px) {
-      .dialog { width: 100%; height: 100%; max-height: none; border-radius: 0; }
-    }
-    h2 { font-size: 18px; margin: 0; }
-    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-    .chips button { min-height: 40px; padding: 0 14px; border: 1px solid var(--border-strong); background: var(--surface);
-      border-radius: 20px; font-size: 14px; cursor: pointer; }
-    .chips button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
-    .help { margin: 0; font-size: 12px; color: var(--text-muted); }
-    input { min-height: 44px; font-size: 16px; padding: 0 12px; }
     .results { display: flex; flex-direction: column; min-height: 120px; }
     .proj { margin: 8px 0 2px; font-size: 12px; color: var(--text-muted); font-weight: bold; }
-    .row { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 4px 8px; border: none;
+    /* この窓の .row は「候補の行」（基準の .row の右寄せを打ち消す） */
+    .row { justify-content: flex-start; gap: 8px; min-height: 44px; padding: 4px 8px; border: none;
       border-bottom: 1px solid var(--border); background: none; text-align: left; font-size: 14px; cursor: pointer; }
     .row:hover:not(:disabled) { background: var(--surface-alt); }
     .row:disabled { color: var(--text-disabled); cursor: default; }
     .num { color: var(--text-muted); font-size: 13px; }
     .t { flex: 1; overflow-wrap: anywhere; }
     .st { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: var(--surface-muted); white-space: nowrap; }
-    .error { color: var(--danger-text); }
     .end { display: flex; justify-content: flex-end; }
-    .link { background: none; border: none; color: var(--primary); min-height: 44px; cursor: pointer; }
   `,
 })
 export class LinkDialog implements OnInit {

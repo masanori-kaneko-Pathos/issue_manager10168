@@ -23,7 +23,7 @@ function hmIn(d: Date, tz: string) {
     host: { '(document:keydown.escape)': 'cancel.emit()' },
     template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
-    <section class="dialog" role="dialog" aria-modal="true" [attr.aria-label]="'reminder.title' | t">
+    <section class="dialog narrow" role="dialog" aria-modal="true" [attr.aria-label]="'reminder.title' | t">
       <h2>{{ 'reminder.title' | t }}</h2>
       <p class="target">{{ sub()?.title ?? ('#' + issue().number + ' ' + issue().title) }}</p>
       <p class="help">{{ 'reminder.help' | t }}</p>
@@ -63,10 +63,6 @@ function hmIn(d: Date, tz: string) {
     styles: `
     :host { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; }
     .backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); }
-    .dialog { position: relative; background: var(--surface); color: var(--text); width: min(440px, calc(100% - 32px));
-      max-height: 90vh; overflow: auto; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-    h2 { font-size: 18px; margin: 0; }
-    .help { font-size: 12px; color: var(--text-muted); margin: 0; }
     .target { margin: 0; font-weight: bold; overflow-wrap: anywhere; }
     .now { font-size: 13px; margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--primary-bg); }
     .presets { display: flex; flex-direction: column; gap: 6px; }
@@ -76,15 +72,8 @@ function hmIn(d: Date, tz: string) {
     .presets button.on { border-color: var(--primary); background: var(--primary-bg); }
     .when { font-size: 12px; color: var(--text-muted); }
     .custom { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-    .custom input, .custom select { min-height: 44px; font-size: 16px; padding: 0 8px; }
-    .error { margin: 0; color: var(--danger-text); }
-    .row { display: flex; align-items: center; gap: 8px; }
+    .custom input, .custom select { padding: 0 8px; }
     .spacer { flex: 1; }
-    .link { background: none; border: none; color: var(--primary); min-height: 44px; cursor: pointer; }
-    .link.danger { color: var(--danger-text); }
-    .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
-      border-radius: 8px; font-size: 14px; cursor: pointer; }
-    .primary:disabled { background: var(--disabled); cursor: default; }
   `,
 })
 export class ReminderDialog implements OnInit {

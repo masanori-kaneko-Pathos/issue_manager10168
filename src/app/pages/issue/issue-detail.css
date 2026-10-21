@@ -4,7 +4,7 @@
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .crumb-num { white-space: nowrap; }
 main { max-width: 1040px; margin: 0 auto; padding: 16px 16px 48px; }
-.layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 32px; align-items: start; margin-top: 16px; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 32px; align-items: start; margin-top: 16px; }
 .body { grid-column: 1; grid-row: 1; min-width: 0; }
 .side { grid-column: 2; grid-row: 1; position: sticky; top: 64px; padding: 12px 14px;
   border: 1px solid var(--border); border-radius: 10px; }
@@ -58,36 +58,16 @@ button.pill:hover { border-color: var(--border-strong); }
 .fields { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 16px 0; }
 .fields dt { color: var(--text-muted); font-size: 13px; }
 .fields dd { margin: 0; }
-.pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
-.help { font-size: 12px; color: var(--text-muted); margin: 4px 0; }
 .panel { border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-top: 12px;
   display: flex; flex-direction: column; gap: 12px; }
 .panel h2 { margin: 0; }
-.field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: bold; }
-fieldset { border: none; padding: 0; margin: 0; }
-legend { font-size: 14px; font-weight: bold; }
-textarea { font-size: 16px; padding: 8px 12px; font-weight: normal; }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-.chips button { display: inline-flex; align-items: center; gap: 6px;
-  min-height: 44px; padding: 0 14px; border: 1px solid var(--border-strong); background: var(--surface);
-  border-radius: 22px; font-size: 14px; }
-.chips button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
-.row { display: flex; justify-content: flex-end; gap: 8px; }
-.link { background: none; border: none; color: var(--primary); min-height: 44px; }
-.primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
-  border-radius: 8px; font-size: 14px; }
-.primary:disabled { background: var(--disabled); }
-.error { color: var(--danger-text); }
-.conflict { padding: 10px 12px; border-radius: 8px; font-size: 13px;
-  background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
-.conflict p { margin: 0 0 4px; }
-.conflict p:last-child { margin-bottom: 0; }
-  .status[data-s='deleted'] { background: var(--danger-bg); color: var(--danger-text); }
+textarea { font-weight: normal; }
+.chips { margin-top: 4px; }
+.status[data-s='deleted'] { background: var(--danger-bg); color: var(--danger-text); }
 .trash { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; padding: 12px;
   border-radius: 8px; background: var(--danger-bg); color: var(--danger-text); }
 .trash p { margin: 0; }
 .trash .primary { align-self: flex-start; }
-.primary.danger { background: var(--danger); }
 .timeline { list-style: none; padding: 0; margin: 0; }
 .timeline li { padding: 8px 0; border-bottom: 1px solid var(--border); }
 .timeline li.comment { background: var(--surface-alt); padding: 8px 12px; }
@@ -157,14 +137,11 @@ a.add-link { display: inline-flex; align-items: center; text-decoration: none; }
 .text-btn:hover { border-color: var(--border-strong); background: var(--surface-alt); }
 .text-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 .inline-edit { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
-.inline-edit input, .inline-edit textarea { width: 100%; box-sizing: border-box; font-size: 16px; padding: 8px 10px;
-  font-weight: normal; }
+.inline-edit input, .inline-edit textarea { width: 100%; font-weight: normal; }
 .title-input { font-size: 20px !important; font-weight: bold !important; }
 .side-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
   font-size: 12px; font-weight: bold; color: var(--text-muted); }
 .chips.small button { min-height: 36px; padding: 0 10px; font-size: 13px; }
-.warn { margin: 0; padding: 8px 10px; border-radius: 8px; font-size: 12px;
-  background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
 .tl-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 24px 0 8px; }
 .tl-head h2 { margin: 0; }
 .timeline li.fold { padding: 6px 0; border-bottom: none; }
@@ -187,13 +164,16 @@ a.add-link { display: inline-flex; align-items: center; text-decoration: none; }
   background: var(--warning-bg); border: 1px solid var(--warning-border); }
 .req p { margin: 0; }
 .req textarea { font-size: 16px; padding: 8px 10px; }
-.link, .primary, .tools button { cursor: pointer; }
-.link:disabled, .primary:disabled, .tools button:disabled { cursor: default; }
+.tools button { cursor: pointer; }
+.tools button:disabled { cursor: default; }
 .pill.remind { border-color: var(--primary); background: var(--primary-bg); color: var(--primary); }
 .hours { display: flex; align-items: center; gap: 6px; }
 .inline-edit .hours input { width: 110px; }
 .who { display: inline-flex; align-items: center; gap: 6px; }
 .timeline .meta app-avatar { margin-right: 4px; }
+/* 右の項目を編集しているときは、見出しの下に、欄の幅いっぱいで広げる（名前・理由・ボタンが窮屈にならないように） */
+.props dd:has(.inline-edit) { grid-column: 1 / -1; }
+.inline-edit .row button { white-space: nowrap; }
 @media (min-width: 861px) {
   .side .inline-edit input, .side .inline-edit textarea, .side select { font-size: 14px; padding: 6px 8px; }
 }

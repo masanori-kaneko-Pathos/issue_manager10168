@@ -13,7 +13,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
   host: { '(document:keydown.escape)': 'cancel.emit()' },
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
-    <section class="dialog" role="dialog" aria-modal="true" [attr.aria-label]="'delete.title' | t">
+    <section class="dialog narrow" role="dialog" aria-modal="true" [attr.aria-label]="'delete.title' | t">
       <h2>{{ 'delete.title' | t }}</h2>
       <p class="sub">#{{ current().number }} {{ current().title }}</p>
       <p class="help">{{ 'delete.note' | t }}</p>
@@ -32,7 +32,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
       @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
       <div class="row">
         <button type="button" class="link" (click)="cancel.emit()">{{ 'workflow.cancel' | t }}</button>
-        <button type="button" class="primary" [disabled]="busy() || !reason.trim() || conflict()?.status === 'deleted'"
+        <button type="button" class="primary danger" [disabled]="busy() || !reason.trim() || conflict()?.status === 'deleted'"
           (click)="confirm()">{{ 'delete.confirm' | t }}</button>
       </div>
     </section>
@@ -40,23 +40,8 @@ import { I18nService, TPipe } from '../../i18n/i18n';
   styles: `
     :host { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; }
     .backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); }
-    .dialog { position: relative; background: var(--surface); width: min(480px, calc(100% - 32px)); max-height: 90vh;
-      overflow: auto; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-    h2 { font-size: 18px; margin: 0; }
     .sub { margin: 0; font-size: 13px; color: var(--text-muted); overflow-wrap: anywhere; }
-    .help { margin: 0; font-size: 13px; color: var(--text-muted); }
-    .field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: bold; }
-    textarea { font-size: 16px; padding: 8px 12px; font-weight: normal; }
-    .conflict { padding: 10px 12px; border-radius: 8px; font-size: 13px;
-      background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
-    .conflict p { margin: 0 0 4px; }
-    .conflict p:last-child { margin-bottom: 0; }
-    .error { color: var(--danger-text); margin: 0; }
-    .row { display: flex; justify-content: flex-end; gap: 8px; }
-    .link { background: none; border: none; color: var(--primary); min-height: 44px; cursor: pointer; }
-    .primary { min-height: 44px; padding: 0 20px; background: var(--danger); color: var(--on-primary); border: none;
-      border-radius: 8px; font-size: 14px; cursor: pointer; }
-    .primary:disabled { background: var(--disabled); cursor: default; }
+    textarea { font-weight: normal; }
   `,
 })
 export class DeleteDialog implements OnInit {

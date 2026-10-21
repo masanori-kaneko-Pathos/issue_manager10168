@@ -14,7 +14,7 @@ import { ProjectContext } from './project-context';
   host: { '(document:keydown.escape)': 'cancel.emit()' },
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
-    <section class="dialog" role="dialog" aria-modal="true" [attr.aria-label]="'csv.export' | t">
+    <section class="dialog narrow" role="dialog" aria-modal="true" [attr.aria-label]="'csv.export' | t">
       <h2>{{ 'csv.export' | t }}</h2>
 
       <label class="opt" [class.off]="!listCount()">
@@ -45,9 +45,6 @@ import { ProjectContext } from './project-context';
   styles: `
     :host { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; }
     .backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); }
-    .dialog { position: relative; background: var(--surface); width: min(460px, calc(100% - 32px));
-      border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-    h2 { font-size: 18px; margin: 0; }
     .opt { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border);
       border-radius: 8px; cursor: pointer; }
     .opt:has(input:checked) { border-color: var(--primary); background: var(--primary-bg); }
@@ -56,12 +53,6 @@ import { ProjectContext } from './project-context';
     .opt-body { display: flex; flex-direction: column; gap: 2px; }
     .opt-name { font-weight: bold; font-size: 14px; }
     .opt-help { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
-    .error { color: var(--danger-text); margin: 0; }
-    .row { display: flex; justify-content: flex-end; gap: 8px; }
-    .link { background: none; border: none; color: var(--primary); min-height: 44px; cursor: pointer; }
-    .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
-      border-radius: 8px; font-size: 14px; cursor: pointer; }
-    .primary:disabled { background: var(--disabled); cursor: default; }
   `,
 })
 export class CsvExportDialog implements OnInit {
