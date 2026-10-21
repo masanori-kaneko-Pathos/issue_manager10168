@@ -118,5 +118,45 @@ legend { padding: 0; font-size: 14px; font-weight: bold; }
 .conflict p { margin: 0 0 4px; }
 .conflict p:last-child { margin-bottom: 0; }
 
-    /* 区切りのない長い文字（URL・英数字の続き）が箱からはみ出すときだけ、途中で折り返す */
+/* 区切りのない長い文字（URL・英数字の続き）が箱からはみ出すときだけ、途中で折り返す */
     body { overflow-wrap: break-word; }
+/* ================================================================
+   動き（アニメーション）
+   ・開くときだけ動かす（閉じる動きは、CSS だけでは付けられないため）
+   ・transform ではなく translate・scale で動かす
+     （年月の選び窓や知らせの「真ん中寄せ」transform: translateX(-50%) と重ねがけになり、寄せが崩れない）
+   ・かんばん・カレンダー・サブタスクのドラッグ中の動きと、高さの伸び縮みには付けない
+   ================================================================ */
+   :root { --ease-out: cubic-bezier(0.2, 0, 0, 1); }
+
+   @keyframes im-fade { from { opacity: 0; } }
+   @keyframes im-pop { from { opacity: 0; translate: 0 -4px; } }
+   @keyframes im-dialog { from { opacity: 0; scale: 0.96; } }
+   @keyframes im-rise { from { opacity: 0; translate: 0 8px; } }
+   
+   /* 窓：後ろの幕はふわっと、窓は少し小さい所から */
+   :where(.backdrop) { animation: im-fade 200ms var(--ease-out); }
+   :where(.dialog) { animation: im-dialog 200ms var(--ease-out); }
+   
+   /* メニュー・吹き出し・ベルの小窓・年月の選び窓：上からすべり下りる */
+   :where([role='menu'], [role='dialog']:not(.dialog)) { animation: im-pop 160ms var(--ease-out); }
+   
+   /* たたんだものを開いたとき（ホームの期限の見出し・アーカイブ済み）：中身が上からすっと出る */
+   :where(.reveal) { animation: im-pop 160ms var(--ease-out); }
+   
+   /* かんばんの「サブタスクにする」「ここに落とすと課題に」：ふわっと */
+   :where(.sub-hint, .drop-hint) { animation: im-fade 160ms var(--ease-out); }
+   
+   /* 下に出る知らせ：下からすっと */
+   :where(.toast, .made) { animation: im-rise 200ms var(--ease-out); }
+   
+   /* 押せるもの：乗せたとき・押したときの色の変化を、なめらかに */
+   :where(button, a, [role='menuitem'], [role='tab']) {
+     transition: background-color 120ms, color 120ms, border-color 120ms, box-shadow 120ms, opacity 120ms; }
+   
+   /* 動きを減らす設定の人には、動きを付けない */
+   @media (prefers-reduced-motion: reduce) {
+     *, *::before, *::after {
+       animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+       transition-duration: 0.01ms !important; }
+   }

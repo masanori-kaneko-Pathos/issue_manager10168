@@ -123,7 +123,7 @@ const EMPTY_PAYLOAD = {
       <div class="board-wrap" cdkDropListGroup>
       @if (showInbox()) {
         <!-- 受信箱の帯：横に流れない。メモを列に落とすと、登録の窓が開く -->
-        <aside class="inbox-strip" [style.height.px]="boardH()">
+        <aside class="inbox-strip" [style.height.px]="boardH()" (animationend)="measure()">
           <header class="col-head">
             <a routerLink="/inbox" class="col-name strip-link">{{ 'inbox.title' | t }} ›</a>
             <span class="count">{{ inbox.count() }}</span>
@@ -326,6 +326,7 @@ const EMPTY_PAYLOAD = {
     .board { position: relative; box-sizing: border-box; display: flex; gap: 12px; align-items: flex-start;
       overflow-x: auto; overflow-y: hidden; padding-bottom: 8px; }
     .col { flex: 1 1 0; min-width: 220px; max-height: 100%; min-height: 0; box-sizing: border-box;
+      transition: flex-basis 220ms var(--ease-out);
       background: var(--surface-alt); border-radius: 10px;
       border-top: 4px solid var(--disabled); display: flex; flex-direction: column; }
     .col[data-col='in_progress'] { border-top-color: var(--primary); }
@@ -345,8 +346,11 @@ const EMPTY_PAYLOAD = {
     /* 左に受信箱の帯（横に流れない）、右にかんばん（送りボタンは、かんばんの場所の左右の端） */
     .board-wrap { display: flex; gap: 12px; align-items: flex-start; }
     .board-area { position: relative; flex: 1; min-width: 0; }
+    /* 開くとき、幅 0 から広がる（かんばんの列も、それに合わせてなめらかに右へ寄る）。閉じるときはすぐ消える */
+    @keyframes strip-in { from { width: 0; opacity: 0; margin-right: -12px; } }
     .inbox-strip { flex: none; width: 240px; box-sizing: border-box; display: flex; flex-direction: column;
-      background: var(--surface-alt); border-radius: 10px; border-top: 4px solid var(--primary); }
+      overflow: hidden; background: var(--surface-alt); border-radius: 10px; border-top: 4px solid var(--primary);
+      animation: strip-in 220ms var(--ease-out); }
     .strip-link { color: var(--text); text-decoration: none; }
     .strip-link:hover { text-decoration: underline; }
     .card.memo { border-left-color: var(--primary); }
@@ -372,6 +376,8 @@ const EMPTY_PAYLOAD = {
     .pager:hover, .pager:focus-visible { opacity: 1 !important; color: var(--text); }
     .card { background: var(--surface); border-radius: 8px; border-left: 4px solid var(--disabled);
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); overflow: hidden; cursor: grab; }
+    .card { transition: box-shadow 120ms; }
+    .card:hover { box-shadow: 0 3px 10px rgba(0, 0, 0, 0.14); }
     .card[data-p='high'] { border-left-color: var(--danger); }
     .card[data-p='mid'] { border-left-color: var(--warning); }
     .card[data-p='low'] { border-left-color: var(--success); }
@@ -668,10 +674,11 @@ export class ProjectBoard implements OnInit {
   })));
   /** 列の幅：選んだ数で箱を割る。列がそれより少ないときは、ある列の数で割る（右に空きを残さない） */
   colFlex = computed(() => {
+    if (this.isMobile()) return null;
     const pick = this.colsPick();
-    if (!pick || this.isMobile()) return null;
     const total = this.by() === 'status' ? this.visibleCols().length : this.altCols().length;
-    const n = Math.max(1, Math.min(pick, total));
+    // 「全部」も、列の数で割った幅をはっきり書く（同じ書き方にそろえると、数を変えたときに幅をなめらかに動かせる）
+    const n = Math.max(1, pick ? Math.min(pick, total) : total);
     return `0 0 calc((100% - ${(n - 1) * 12}px) / ${n})`;
   });
 

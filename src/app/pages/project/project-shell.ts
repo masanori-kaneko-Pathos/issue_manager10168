@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, afterEveryRender, computed, inject, signal, viewChild } from '@angular/core';
 import { ActivatedRoute, RouterLink, RouterLinkActive, RouterOutlet, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ProjectContext } from './project-context';
@@ -17,7 +17,7 @@ import { Crumbs, HOME } from '../../shared/crumbs';
   imports: [RouterLink, RouterLinkActive, RouterOutlet, TPipe, HelpTip, HandoverDialog,
      CsvExportDialog, ArchiveDialog, DeleteProjectDialog, Crumbs],
   providers: [ProjectContext],
-  host: { '(document:keydown.escape)': 'menuOpen.set(false)' },
+  host: { '(document:keydown.escape)': 'menuOpen.set(false)', '(window:resize)': 'placeInk()' },
   template: `@if (ctx.loading()) {
   <main><p>{{ 'common.loading' | t }}</p></main>
 } @else if (ctx.notFound()) {
@@ -81,7 +81,7 @@ import { Crumbs, HOME } from '../../shared/crumbs';
         </div>
       </div>
 
-      <nav class="tabs">
+      <nav class="tabs" #tabsEl>
         @for (t of tabs(); track t) {
           <a [routerLink]="t" routerLinkActive="on" queryParamsHandling="preserve">
             <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor"
@@ -89,6 +89,8 @@ import { Crumbs, HOME } from '../../shared/crumbs';
             {{ 'tabs.' + t | t }}
           </a>
         }
+        <!-- 今いるタブの下の青い線（1本だけ。タブを移ると、すべって移る） -->
+        <span class="ink" [class.ready]="inkReady()" [style.width.px]="ink().w" [style.translate]="ink().x + 'px 0'"></span>
       </nav>
     </div>
   </div>
@@ -156,13 +158,17 @@ import { Crumbs, HOME } from '../../shared/crumbs';
     .role { flex: none; font-size: 12px; padding: 2px 8px; border-radius: 12px; background: var(--chip-bg); font-weight: normal; }
 
     /* タブ：アイコン＋文字。今いるタブは太字と下の線。狭い画面では横にスクロール（バーは隠す） */
-    .tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; margin-bottom: -1px; }
+    .tabs { position: relative; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; margin-bottom: -1px; }
     .tabs::-webkit-scrollbar { display: none; }
     .tabs a { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; box-sizing: border-box;
       color: var(--text-muted); text-decoration: none; font-size: 14px; white-space: nowrap;
       border-bottom: 2px solid transparent; }
     .tabs a:hover { color: var(--text); }
-    .tabs a.on { color: var(--text); font-weight: bold; border-bottom-color: var(--primary); }
+    .tabs a.on { color: var(--text); font-weight: bold; }
+    /* 青い線：最初の1回は動かさずに置き、そのあとから、すべらせる */
+    .ink { position: absolute; left: 0; bottom: 0; height: 2px; border-radius: 2px; background: var(--primary);
+      pointer-events: none; }
+    .ink.ready { transition: translate 220ms var(--ease-out), width 220ms var(--ease-out); }
     .tabs a.on svg { color: var(--primary); }
 
     .more { position: relative; flex: none; }
@@ -241,6 +247,23 @@ export class ProjectHome {
     this.router.navigate(['/'], { replaceUrl: true, state: { deletedProject: name, byMe: true } });
   }
 
+  private tabsEl = viewChild<ElementRef<HTMLElement>>('tabsEl');
+  /** 青い線の位置と幅（今いるタブに合わせる） */
+  ink = signal({ x: 0, w: 0 });
+  /** 最初の位置に置けたら、そこから先は動きを付ける（開いた瞬間に左端からすべってこないように） */
+  inkReady = signal(false);
+
+  /** 今いるタブ（routerLinkActive が付けた on）の位置と幅を測る。タブにない画面（削除フォルダなど）では線を隠す */
+  placeInk() {
+    const nav = this.tabsEl()?.nativeElement;
+    if (!nav) return;
+    const a = nav.querySelector<HTMLElement>('a.on');
+    const cur = this.ink();
+    const next = a ? { x: a.offsetLeft, w: a.offsetWidth } : { x: cur.x, w: 0 };
+    if (next.x !== cur.x || next.w !== cur.w) this.ink.set(next);
+    if (a && !this.inkReady()) requestAnimationFrame(() => this.inkReady.set(true));
+  }
+
   /** 自分のメンバー文書（抜けるときの引き継ぎに使う） */
   me = computed(() => this.ctx.members().find((m) => m.uid === auth.currentUser!.uid) ?? null);
 
@@ -266,6 +289,7 @@ export class ProjectHome {
   };
 
   constructor() {
+    afterEveryRender(() => this.placeInk());
     // 別のプロジェクトに移ったときも読み直す
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((p) => this.ctx.load(p.get('pid')!));
   }

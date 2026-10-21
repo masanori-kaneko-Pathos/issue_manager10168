@@ -140,10 +140,10 @@ import { MineCalendar } from './mine-calendar';
             @let closed = folded().has(s.key);
             <h3 class="sec" [id]="'sec-' + s.key" [attr.data-k]="s.key">
               <button type="button" class="fold" [attr.aria-expanded]="!closed" (click)="toggleFold(s.key)">
-                <span class="tri" aria-hidden="true">{{ closed ? '▸' : '▾' }}</span>
+                <span class="tri" [class.shut]="closed" aria-hidden="true">▾</span>
                 {{ s.label | t }}<span class="n">{{ s.items.length }}</span></button></h3>
             @if (!closed) {
-            <ul class="ilist">
+            <ul class="ilist reveal">
               @for (i of s.items; track i.id) {
                 <li>
                   @if (isActive(i)) {
@@ -216,9 +216,9 @@ import { MineCalendar } from './mine-calendar';
                 <button type="button" class="link fold-btn" [attr.aria-expanded]="showArchived()"
                   (click)="showArchived.set(!showArchived())">
                   {{ 'archive.section' | t: { n: '' + archivedProjects().length } }}
-                  <span aria-hidden="true">{{ showArchived() ? '▴' : '▾' }}</span></button>
+                  <span class="tri" [class.up]="showArchived()" aria-hidden="true">▾</span></button>
                 @if (showArchived()) {
-                  <ul class="plist">
+                  <ul class="plist reveal">
                     @for (p of archivedProjects(); track p.id) {
                       <li class="archived">
                         <a class="pname" [routerLink]="['/p', p.id]" [title]="p.name">{{ p.name }}</a>
@@ -395,7 +395,10 @@ import { MineCalendar } from './mine-calendar';
     .fold { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px; margin-left: -4px; border: none;
       border-radius: 6px; background: none; color: inherit; font: inherit; cursor: pointer; }
     .fold:hover { background: var(--surface-alt); }
-    .tri { width: 12px; font-size: 11px; }
+    /* 三角は1つの絵を回す（たたむと左向き、アーカイブを開くと上向き） */
+    .tri { display: inline-block; width: 12px; font-size: 11px; text-align: center; transition: rotate 160ms var(--ease-out); }
+    .tri.shut { rotate: -90deg; }
+    .tri.up { rotate: 180deg; }
     @media (max-width: 600px) {
       .iproj { display: none; }
     }
