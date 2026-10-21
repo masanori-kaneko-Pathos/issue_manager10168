@@ -588,6 +588,7 @@ export const en: Dict = {
     leaveAdmin: 'Admins cannot leave. Ask another admin to change your role or remove you.',
     changeRole: "Change {{name}}'s role",
     promoteConfirm: 'Make {{name}} an admin? Admins can remove members and change other admins\' roles.',
+    selfHandover: 'Hand over my issues',
   },
   roleHelp: {
     admin: 'Manage members, change settings, reject and delete issues',
@@ -600,12 +601,14 @@ export const en: Dict = {
       remove: 'Remove {{name}} from the project',
       role: 'Change {{name}} to "{{role}}"',
       leave: 'Leave this project',
+      self: 'Hand over my issues',
     },
     note: {
       handover: 'Closed and rejected issues keep their assignee as a record.',
       remove: 'Once removed, this person can no longer see the project. Their comments and history stay.',
       role: 'Viewers cannot be assignees, so their issues are handed over first.',
       leave: 'After leaving, you can no longer see this project. To join again, an admin needs to invite you.',
+      self: 'Before time off, you can hand your open issues to others. Issues you keep stay assigned to you.',
     },
     issues: 'Issues to hand over ({{n}} open)',
     none: 'No open issues are assigned.',
@@ -626,7 +629,7 @@ export const en: Dict = {
     choose: 'Choose a person',
     reason: 'Reason',
     reasonHint: 'e.g. Going on extended leave',
-    confirm: { handover: 'Hand over', remove: 'Remove', role: 'Change', leave: 'Leave' },
+    confirm: { handover: 'Hand over', remove: 'Remove', role: 'Change', leave: 'Leave', self: 'Hand over', },
   },
   inbox: {
     title: 'Inbox',

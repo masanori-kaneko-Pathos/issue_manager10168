@@ -8,8 +8,8 @@ import { RecurringService } from '../../core/recurring/recurring.service';
 import { ProjectContext } from './project-context';
 import { I18nService, TPipe } from '../../i18n/i18n';
 
-/** handover＝担当の引き継ぎだけ、remove＝外す、role＝閲覧者に変える、leave＝自分から抜ける */
-export type HandoverMode = 'handover' | 'remove' | 'role' | 'leave';
+/** handover＝担当の引き継ぎだけ、self＝自分の担当を渡す（抜けずに）、remove＝外す、role＝閲覧者に変える、leave＝自分から抜ける */
+export type HandoverMode = 'handover' | 'self' | 'remove' | 'role' | 'leave';
 
 /** 「渡さない（今のまま）」のペン。uid と重ならない文字にする */
 const KEEP = '-';
@@ -52,16 +52,16 @@ const FILTER_FROM = 7;
               (click)="pen.set(m.uid)">
               {{ m.displayName }}{{ m.uid === myUid ? ('issueNew.you' | t) : '' }}</button>
           }
-          @if (mode() === 'handover' || templates().length) {
+          @if (onlyHandover() || templates().length) {
             <button type="button" role="radio" class="pen keep" [class.on]="pen() === KEEP" [attr.aria-checked]="pen() === KEEP"
-              (click)="pen.set(KEEP)">{{ (mode() === 'handover' ? 'handover.keep' : 'handover.recurKeep') | t }}</button>
+              (click)="pen.set(KEEP)">{{ (onlyHandover() ? 'handover.keep' : 'handover.recurKeep') | t }}</button>
           }
         </div>
         <p class="help">{{ 'handover.penHelp' | t }}</p>
 
         @if (issues().length) {
           @if (pen(); as p) {
-            @if (p !== KEEP || mode() === 'handover') {
+            @if (p !== KEEP || onlyHandover()) {
               <button type="button" class="link fill" (click)="fillAll()">
                 {{ 'handover.fillAll' | t: { name: penName(p) } }}</button>
             }
@@ -86,7 +86,7 @@ const FILTER_FROM = 7;
         @if (templates().length) {
           <p class="label">{{ 'handover.recurTitle' | t: { n: '' + templates().length } }}</p>
           <p class="help">{{ 'handover.recurHelp' | t }}</p>
-          @if (mode() !== 'handover') { <p class="help warn">{{ 'handover.recurStopNote' | t }}</p> }
+          @if (!onlyHandover()) { <p class="help warn">{{ 'handover.recurStopNote' | t }}</p> }
           <ul class="issues" [class.armed]="!!pen()">
             @for (r of templates(); track r.id) {
               @let d = destOf(R + r.id);
@@ -133,13 +133,14 @@ const FILTER_FROM = 7;
     .label { margin: 0; font-size: 14px; font-weight: bold; }
     .pens-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
     .pen-filter { min-height: 36px; font-size: 14px; padding: 0 10px; width: 180px; }
-    .pens { display: flex; flex-wrap: wrap; gap: 6px; max-height: 120px; overflow: auto; }
+    /* 中でスクロールする箱は、flex の中では 0 まで縮められてしまう。縮ませず、足りない分は窓ごとスクロールする */
+    .pens { flex: none; display: flex; flex-wrap: wrap; gap: 6px; max-height: 120px; overflow: auto; }
     .pen { min-height: 36px; padding: 0 14px; border: 1px solid var(--border-strong); border-radius: 18px;
       background: var(--surface); color: var(--text); font-size: 14px; cursor: pointer; }
     .pen.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
     .pen.keep:not(.on) { color: var(--text-muted); border-style: dashed; }
     .fill { align-self: flex-start; min-height: 32px; padding: 0; font-size: 13px; }
-    .issues { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow: auto;
+    .issues { flex: none; list-style: none; margin: 0; padding: 0; max-height: 300px; overflow: auto;
       background: var(--surface-alt); border-radius: 8px; font-size: 13px;
       /* なぞって塗るとき、文字の選択が始まらないように */
       user-select: none; -webkit-user-select: none; }
@@ -187,6 +188,8 @@ export class HandoverDialog {
   readonly R = R;
   readonly FILTER_FROM = FILTER_FROM;
   readonly myUid = auth.currentUser!.uid;
+  /** 担当を渡すだけか（だれかを外したり、役割を変えたりしない）。self も同じ動き */
+  onlyHandover = computed(() => this.mode() === 'handover' || this.mode() === 'self');
 
   /** 今持っているペン（渡す人の uid か KEEP。まだ選んでいなければ null） */
   pen = signal<string | null>(null);
@@ -260,7 +263,7 @@ export class HandoverDialog {
   paint(id: string) {
     const p = this.pen();
     if (!p || this.dest()[id] === p) return;
-    if (p === KEEP && this.mode() !== 'handover' && !id.startsWith(R)) return;
+    if (p === KEEP && !this.onlyHandover() && !id.startsWith(R)) return;
     this.dest.update((m) => ({ ...m, [id]: p }));
   }
 
@@ -300,7 +303,7 @@ export class HandoverDialog {
       if (d && d !== KEEP) out[r.id] = { assigneeId: d };
     }
     // 外す・閲覧者にする人が作った雛形は、今の管理者が引き取る（作った人が担当できなくなると、次の回で止まるため）
-    if (this.mode() !== 'handover') {
+    if (!this.onlyHandover()) {
       for (const r of this.allRecur()) {
         if (r.createdBy === this.target().uid) out[r.id] = { ...out[r.id], createdBy: this.myUid };
       }
@@ -323,7 +326,7 @@ export class HandoverDialog {
   ready() {
     if (this.issues().some((i) => !this.destOf(i.id))) return false;
     const moving = Object.keys(this.dests()).length + this.recurMoves();
-    if (this.mode() === 'handover' && !moving) return false;
+    if (this.onlyHandover() && !moving) return false;
     return !moving || !!this.reason.trim();
   }
 

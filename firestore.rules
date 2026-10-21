@@ -506,6 +506,9 @@ service cloud.firestore {
                 && request.resource.data.target == request.auth.uid)
             // 取り込み：メンバーも記録を残す（自分の取り込みだけ）
             || (canWrite(pid) && request.resource.data.type == 'import'
+                && request.resource.data.target == request.auth.uid)
+            // 自分の担当の引き継ぎ：メンバーも記録を残す（自分の担当だけ）
+            || (canWrite(pid) && request.resource.data.type == 'handover'
                 && request.resource.data.target == request.auth.uid));
       }
 

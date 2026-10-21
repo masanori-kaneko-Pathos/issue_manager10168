@@ -61,9 +61,16 @@ import { Avatar } from '../../shared/avatar';
               <button type="button" class="link danger" (click)="openDialog('remove', m)">{{ 'members.remove' | t }}</button>
             } @else {
               <span class="role">{{ 'roles.' + m.role | t }}</span>
-              @if (ctx.role() === 'admin') {
+              <!-- 担当の件数：管理者は全員分、ほかの人は自分の分だけ -->
+              @if (ctx.role() === 'admin' || m.uid === myUid) {
                 <span class="count">{{ 'members.count' | t: { n: '' + n } }}</span>
-                @if (m.uid === myUid) { <app-help-tip kind="denied" align="right" [keys]="['members.selfNote']" /> }
+              }
+              @if (canSelfHandover(m)) {
+                <button type="button" class="link" [disabled]="!n" (click)="openDialog('self', m)">
+                  {{ 'members.selfHandover' | t }}</button>
+              }
+              @if (ctx.role() === 'admin' && m.uid === myUid) {
+                <app-help-tip kind="denied" align="right" [keys]="['members.selfNote']" />
               }
             }
           </li>
@@ -170,6 +177,12 @@ export class ProjectMembers {
   manageable(m: Member) {
     return this.ctx.role() === 'admin' && m.uid !== this.myUid && !this.ctx.project()?.archived;
   }
+
+  /** 自分の担当を、抜けずに渡せるか：自分の行で、管理者かメンバー（閲覧者は担当を持たない）。アーカイブ中は不可 */
+  canSelfHandover(m: Member) {
+    const r = this.ctx.role();
+    return m.uid === this.myUid && (r === 'admin' || r === 'member') && !this.ctx.archived();
+  }  
 
   openDialog(mode: HandoverMode, m: Member) {
     this.dialog.set({ mode, member: m, role: null });
