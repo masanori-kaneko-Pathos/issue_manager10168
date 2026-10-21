@@ -1,4 +1,5 @@
-import { Component, ElementRef, afterEveryRender, computed, inject, signal, viewChild } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
+import { TabInk } from '../../shared/tab-ink';
 import { ActivatedRoute, RouterLink, RouterLinkActive, RouterOutlet, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ProjectContext } from './project-context';
@@ -15,9 +16,9 @@ import { Crumbs, HOME } from '../../shared/crumbs';
 @Component({
   selector: 'app-project-shell',
   imports: [RouterLink, RouterLinkActive, RouterOutlet, TPipe, HelpTip, HandoverDialog,
-     CsvExportDialog, ArchiveDialog, DeleteProjectDialog, Crumbs],
+     CsvExportDialog, ArchiveDialog, DeleteProjectDialog, Crumbs, TabInk],
   providers: [ProjectContext],
-  host: { '(document:keydown.escape)': 'menuOpen.set(false)', '(window:resize)': 'placeInk()' },
+  host: { '(document:keydown.escape)': 'menuOpen.set(false)' },
   template: `@if (ctx.loading()) {
   <main><p>{{ 'common.loading' | t }}</p></main>
 } @else if (ctx.notFound()) {
@@ -81,7 +82,7 @@ import { Crumbs, HOME } from '../../shared/crumbs';
         </div>
       </div>
 
-      <nav class="tabs" #tabsEl>
+      <nav class="tabs">
         @for (t of tabs(); track t) {
           <a [routerLink]="t" routerLinkActive="on" queryParamsHandling="preserve">
             <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor"
@@ -90,7 +91,7 @@ import { Crumbs, HOME } from '../../shared/crumbs';
           </a>
         }
         <!-- 今いるタブの下の青い線（1本だけ。タブを移ると、すべって移る） -->
-        <span class="ink" [class.ready]="inkReady()" [style.width.px]="ink().w" [style.translate]="ink().x + 'px 0'"></span>
+        <app-tab-ink />
       </nav>
     </div>
   </div>
@@ -165,10 +166,6 @@ import { Crumbs, HOME } from '../../shared/crumbs';
       border-bottom: 2px solid transparent; }
     .tabs a:hover { color: var(--text); }
     .tabs a.on { color: var(--text); font-weight: bold; }
-    /* 青い線：最初の1回は動かさずに置き、そのあとから、すべらせる */
-    .ink { position: absolute; left: 0; bottom: 0; height: 2px; border-radius: 2px; background: var(--primary);
-      pointer-events: none; }
-    .ink.ready { transition: translate 220ms var(--ease-out), width 220ms var(--ease-out); }
     .tabs a.on svg { color: var(--primary); }
 
     .more { position: relative; flex: none; }
@@ -247,23 +244,6 @@ export class ProjectHome {
     this.router.navigate(['/'], { replaceUrl: true, state: { deletedProject: name, byMe: true } });
   }
 
-  private tabsEl = viewChild<ElementRef<HTMLElement>>('tabsEl');
-  /** 青い線の位置と幅（今いるタブに合わせる） */
-  ink = signal({ x: 0, w: 0 });
-  /** 最初の位置に置けたら、そこから先は動きを付ける（開いた瞬間に左端からすべってこないように） */
-  inkReady = signal(false);
-
-  /** 今いるタブ（routerLinkActive が付けた on）の位置と幅を測る。タブにない画面（削除フォルダなど）では線を隠す */
-  placeInk() {
-    const nav = this.tabsEl()?.nativeElement;
-    if (!nav) return;
-    const a = nav.querySelector<HTMLElement>('a.on');
-    const cur = this.ink();
-    const next = a ? { x: a.offsetLeft, w: a.offsetWidth } : { x: cur.x, w: 0 };
-    if (next.x !== cur.x || next.w !== cur.w) this.ink.set(next);
-    if (a && !this.inkReady()) requestAnimationFrame(() => this.inkReady.set(true));
-  }
-
   /** 自分のメンバー文書（抜けるときの引き継ぎに使う） */
   me = computed(() => this.ctx.members().find((m) => m.uid === auth.currentUser!.uid) ?? null);
 
@@ -289,7 +269,6 @@ export class ProjectHome {
   };
 
   constructor() {
-    afterEveryRender(() => this.placeInk());
     // 別のプロジェクトに移ったときも読み直す
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((p) => this.ctx.load(p.get('pid')!));
   }

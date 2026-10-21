@@ -22,10 +22,11 @@ import { Router } from '@angular/router';
 import { SampleService } from '../../core/project/sample.service';
 import { MineBoard } from './mine-board';
 import { MineCalendar } from './mine-calendar';
+import { TabInk } from '../../shared/tab-ink';
 
 @Component({
   selector: 'app-home',
-  imports: [RouterLink, TPipe, PriorityMark, ProjectNewDialog, DeleteProjectDialog, MineBoard, MineCalendar],
+  imports: [RouterLink, TPipe, PriorityMark, ProjectNewDialog, DeleteProjectDialog, MineBoard, MineCalendar, TabInk],
   template: `
     <main>
       <!-- 知らせ・ようこそ・招待は、2列の上に全幅で -->
@@ -108,6 +109,7 @@ import { MineCalendar } from './mine-calendar';
                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path [attr.d]="viewIcons[v]" /></svg>
                   {{ 'tabs.' + v | t }}</button>
               }
+              <app-tab-ink />
             </div>
             @if (view() === 'list') {
               <label class="check">
@@ -384,12 +386,14 @@ import { MineCalendar } from './mine-calendar';
     .idue { flex: none; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
     .idue.overdue { color: var(--danger-text); font-weight: bold; }
     /* リスト｜かんばん｜カレンダー：プロジェクトのタブと同じ見た目 */
-    .views { display: inline-flex; gap: 2px; margin-right: auto; border-bottom: 1px solid var(--border); }
+    .views { position: relative; display: inline-flex; gap: 2px; margin-right: auto; border-bottom: 1px solid var(--border); }
+    /* 下の線（1px）の上に重ねる */
+    .views app-tab-ink { bottom: -1px; }
     .views button { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 10px;
       border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none;
       color: var(--text-muted); font-size: 14px; cursor: pointer; }
     .views button:hover { color: var(--text); }
-    .views button.on { color: var(--text); font-weight: bold; border-bottom-color: var(--primary); }
+    .views button.on { color: var(--text); font-weight: bold; }
     .views button.on svg { color: var(--primary); }
     /* 期限の見出し：押すと、その区切りをたたむ・開く */
     .fold { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px; margin-left: -4px; border: none;

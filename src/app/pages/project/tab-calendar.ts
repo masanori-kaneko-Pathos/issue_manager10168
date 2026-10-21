@@ -17,6 +17,7 @@ import { TrashDrop } from '../../shared/trash-drop';
 import { DeleteDialog } from '../issue/delete-dialog';
 import { UndoService } from '../../core/undo/undo.service';
 import { IssueFormService } from '../../core/issue/issue-form.service';
+import { MonthPicker } from '../../shared/month-picker';
 
 type Mode = 'month' | 'week';
 interface Day { key: string; d: number; dow: number; inRange: boolean; }
@@ -39,39 +40,14 @@ function addDays(dt: Date, n: number): Date {
 @Component({
   selector: 'app-tab-calendar',
   imports: [RouterLink, TPipe, CdkDropListGroup, CdkDropList, CdkDrag, DueDialog, PriorityMark, PeopleFilter,
-    TrashDrop, DeleteDialog],
-  host: { '(document:keydown.escape)': 'pickerOpen.set(false)' },
+    TrashDrop, DeleteDialog, MonthPicker],
   template: `
     <div class="toolbar">
       <app-people-filter [members]="ctx.assignable()" [counts]="ctx.activeCount()" [value]="who()"
         (picked)="setWho($event)" />
       <div class="center">
         <button type="button" class="arrow" (click)="move(-1)" [attr.aria-label]="'calendar.prev' | t">‹</button>
-        <div class="title-wrap">
-          <h2 class="title-h">
-            <button type="button" class="title" aria-haspopup="dialog" [attr.aria-expanded]="pickerOpen()"
-              [attr.aria-label]="('calendar.pick' | t) + '：' + title()" (click)="togglePicker()">
-              {{ title() }} <span class="caret" aria-hidden="true">▾</span></button>
-          </h2>
-          @if (pickerOpen()) {
-            <div class="backdrop" (click)="pickerOpen.set(false)"></div>
-            <div class="picker" role="dialog" [attr.aria-label]="'calendar.pick' | t">
-              <div class="picker-head">
-                <button type="button" class="arrow" [attr.aria-label]="'calendar.prevYear' | t"
-                  (click)="pickerYear.set(pickerYear() - 1)">‹</button>
-                <strong>{{ yearLabel() }}</strong>
-                <button type="button" class="arrow" [attr.aria-label]="'calendar.nextYear' | t"
-                  (click)="pickerYear.set(pickerYear() + 1)">›</button>
-              </div>
-              <div class="months">
-                @for (m of monthNames(); track $index; let k = $index) {
-                  <button type="button" [class.on]="isShownMonth(k)" [class.now]="isThisMonth(k)"
-                    [attr.aria-current]="isShownMonth(k) ? 'date' : null" (click)="pickMonth(k)">{{ m }}</button>
-                }
-              </div>
-            </div>
-          }
-        </div>
+        <app-month-picker [value]="cursor()" [label]="title()" [today]="todayKey()" (picked)="pickMonth($event)" />
         <button type="button" class="arrow" (click)="move(1)" [attr.aria-label]="'calendar.next' | t">›</button>
         <button type="button" class="today-btn" [disabled]="showingToday()" (click)="goToday()">
           {{ 'calendar.today' | t }}</button>
@@ -156,23 +132,6 @@ function addDays(dt: Date, n: number): Date {
     .arrow { width: 36px; height: 36px; border: none; border-radius: 50%; background: none; color: var(--text);
       font-size: 20px; line-height: 1; cursor: pointer; }
     .arrow:hover { background: var(--surface-alt); }
-    .title-wrap { position: relative; }
-    .title-h { margin: 0; font-size: 16px; }
-    .title { min-height: 36px; padding: 0 10px; border: none; border-radius: 8px; background: none; color: var(--text);
-      font: inherit; font-weight: bold; white-space: nowrap; cursor: pointer; }
-    .title:hover { background: var(--surface-alt); }
-    .caret { font-size: 11px; color: var(--text-muted); }
-    .backdrop { position: fixed; inset: 0; z-index: 51; }
-    .picker { position: absolute; top: calc(100% + 4px); left: 50%; transform: translateX(-50%); z-index: 52;
-      width: 264px; padding: 10px; background: var(--surface); border-radius: 10px;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2); }
-    .picker-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-    .months { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
-    .months button { min-height: 40px; border: none; border-radius: 8px; background: none; color: var(--text);
-      font-size: 13px; cursor: pointer; }
-    .months button:hover { background: var(--surface-alt); }
-    .months button.now { color: var(--primary); font-weight: bold; }
-    .months button.on { background: var(--primary); color: var(--on-primary); }
 
     .grid { display: grid; grid-template-columns: repeat(7, 1fr); border-top: 1px solid var(--border);
       border-left: 1px solid var(--border); }
@@ -344,45 +303,14 @@ export class ProjectCalendar implements OnInit {
       .format(toUTC(this.cursor() || this.todayKey()));
   });
 
-  // ---- 年月の選び窓 ----
-  pickerOpen = signal(false);
-  /** 選び窓で見ている年（窓の中で ‹ › で動かす。開くたびに、今見ている年に戻す） */
-  pickerYear = signal(2026);
-  private locale = computed(() => (this.i18n.lang() === 'ja' ? 'ja-JP' : 'en-US'));
-
-  /** 1月〜12月の名前（日本語なら「1月」、英語なら「Jan」） */
-  monthNames = computed(() => {
-    const fmt = new Intl.DateTimeFormat(this.locale(), { month: 'short', timeZone: 'UTC' });
-    return Array.from({ length: 12 }, (_, k) => fmt.format(new Date(Date.UTC(2026, k, 1))));
-  });
-
-  yearLabel = computed(() => new Intl.DateTimeFormat(this.locale(), { year: 'numeric', timeZone: 'UTC' })
-    .format(new Date(Date.UTC(this.pickerYear(), 0, 1))));
+  // ---- 年月の選び窓（部品は MonthPicker） ----
 
   /** 今日が、今の表示の中に見えているか（見えているときは「今日」を押せなくする） */
   showingToday = computed(() => this.days().some((d) => d.key === this.todayKey() && d.inRange));
 
-  togglePicker() {
-    if (!this.pickerOpen()) this.pickerYear.set(toUTC(this.cursor()).getUTCFullYear());
-    this.pickerOpen.set(!this.pickerOpen());
-  }
-
-  /** 今見ている月か（選び窓で塗る） */
-  isShownMonth(k: number) {
-    const b = toUTC(this.cursor());
-    return b.getUTCFullYear() === this.pickerYear() && b.getUTCMonth() === k;
-  }
-
-  /** 今日の月か（選び窓で太字に） */
-  isThisMonth(k: number) {
-    const t = toUTC(this.todayKey());
-    return t.getUTCFullYear() === this.pickerYear() && t.getUTCMonth() === k;
-  }
-
-  /** 月を選ぶ：その月の1日へ（週の表示なら、1日を含む週へ） */
-  pickMonth(k: number) {
-    this.go(keyOf(new Date(Date.UTC(this.pickerYear(), k, 1))));
-    this.pickerOpen.set(false);
+  /** 選び窓で月を選んだ：その月の1日へ（週の表示なら、1日を含む週へ） */
+  pickMonth(key: string) {
+    this.go(key);
     this.updateUrl();
   }
 

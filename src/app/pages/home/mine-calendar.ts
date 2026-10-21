@@ -7,6 +7,7 @@ import { compareIssues, isManualPriority, priorityOf } from '../../core/issue/pr
 import { dateKey, shortDue } from '../../core/time/time';
 import { PriorityMark } from '../../shared/priority-mark';
 import { I18nService, TPipe } from '../../i18n/i18n';
+import { MonthPicker } from '../../shared/month-picker';
 
 type Mine = Issue & { projectId: string };
 interface Day { key: string; d: number; dow: number; inRange: boolean; }
@@ -28,15 +29,17 @@ function addDays(dt: Date, n: number): Date {
 /** ホームの「自分の課題」のカレンダー（月・見るだけ）。押した日の課題を、表の下に並べる */
 @Component({
   selector: 'app-mine-calendar',
-  imports: [RouterLink, TPipe, PriorityMark],
+  imports: [RouterLink, TPipe, PriorityMark, MonthPicker],
   template: `
     <div class="cal-head">
       <button type="button" class="arrow" [attr.aria-label]="'calendar.prev' | t" (click)="move(-1)">‹</button>
-      <strong class="title">{{ title() }}</strong>
+      <app-month-picker [value]="cursor()" [label]="title()" [today]="todayKey()" (picked)="go($event)" />
       <button type="button" class="arrow" [attr.aria-label]="'calendar.next' | t" (click)="move(1)">›</button>
       <button type="button" class="today-btn" [disabled]="showingToday()" (click)="goToday()">{{ 'calendar.today' | t }}</button>
     </div>
-    <div class="grid">
+    <!-- 月を移るたびに表を作り直し、新しい表のマスをすべり込ませる -->
+    @for (g of [gridKey()]; track g) {
+    <div class="grid" [attr.data-slide]="slideDir()">
       @for (w of weekdays(); track $index) {
         <div class="dow" [class.sun]="$index === 0" [class.sat]="$index === 6">{{ w }}</div>
       }
@@ -59,6 +62,7 @@ function addDays(dt: Date, n: number): Date {
         </div>
       }
     </div>
+    }
 
     @if (selected(); as k) {
       @let list = byDay().get(k) ?? [];
@@ -78,9 +82,9 @@ function addDays(dt: Date, n: number): Date {
     }
   `,
   styles: `
-    .cal-head { display: flex; align-items: center; gap: 4px; margin: 8px 0; }
-    .title { min-width: 9em; text-align: center; font-size: 15px; }
-    .arrow { width: 32px; height: 32px; border: none; border-radius: 50%; background: none; color: var(--text);
+    /* プロジェクトのカレンダーと同じ：‹ 年月 ▾ › 今日 を真ん中に */
+    .cal-head { display: flex; align-items: center; justify-content: center; gap: 2px; margin: 8px 0; }
+    .arrow { width: 36px; height: 36px; border: none; border-radius: 50%; background: none; color: var(--text);
       font-size: 20px; line-height: 1; cursor: pointer; }
     .arrow:hover { background: var(--surface-alt); }
     .today-btn { margin-left: 8px; min-height: 32px; padding: 0 10px; border: 1px solid var(--border-strong);
@@ -88,6 +92,14 @@ function addDays(dt: Date, n: number): Date {
     .today-btn:disabled { color: var(--text-disabled); border-color: var(--border); cursor: default; }
     .grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--border);
       border-left: 1px solid var(--border); }
+    /* 月を移ったとき：先へは右から、前へは左から、マスがすべり込む */
+    .grid { overflow: hidden; }
+    @keyframes cal-next { from { opacity: 0; translate: 32px 0; } }
+    @keyframes cal-prev { from { opacity: 0; translate: -32px 0; } }
+    @keyframes cal-fade { from { opacity: 0; } }
+    .grid[data-slide='1'] .cell { animation: cal-next 200ms var(--ease-out); }
+    .grid[data-slide='-1'] .cell { animation: cal-prev 200ms var(--ease-out); }
+    .grid[data-slide='0'] .cell { animation: cal-fade 160ms var(--ease-out); }
     .dow { padding: 4px; font-size: 12px; text-align: center; color: var(--text-muted); background: var(--surface-alt);
       border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
     .sun { color: var(--danger-text); }
@@ -151,6 +163,17 @@ export class MineCalendar {
   cursor = signal('');
   /** 押した日（最初は今日） */
   selected = signal<string | null>(null);
+  /** すべり込む向き（1＝先へ、-1＝前へ、0＝ふわっと、null＝開いた直後は動かさない） */
+  slideDir = signal<1 | -1 | 0 | null>(null);
+  /** 表の名札：最初の日。これが変わると、表を作り直す */
+  gridKey = computed(() => this.days()[0]?.key ?? '');
+
+  /** 表示する月を変える。今より先なら右から、前なら左から（選び窓からも呼ぶ） */
+  go(next: string) {
+    const cur = this.cursor();
+    this.slideDir.set(next > cur ? 1 : next < cur ? -1 : 0);
+    this.cursor.set(next);
+  }
 
   constructor() {
     const t = this.todayKey();
@@ -196,11 +219,11 @@ export class MineCalendar {
 
   move(dir: 1 | -1) {
     const b = toUTC(this.cursor());
-    this.cursor.set(keyOf(new Date(Date.UTC(b.getUTCFullYear(), b.getUTCMonth() + dir, 1))));
+    this.go(keyOf(new Date(Date.UTC(b.getUTCFullYear(), b.getUTCMonth() + dir, 1))));
   }
 
   goToday() {
-    this.cursor.set(this.todayKey());
+    this.go(this.todayKey());
     this.selected.set(this.todayKey());
   }
 
