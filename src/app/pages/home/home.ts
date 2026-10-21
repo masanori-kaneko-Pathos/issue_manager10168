@@ -20,14 +20,15 @@ import { DeleteProjectDialog } from '../project/delete-project-dialog';
 import { RequestService } from '../../core/request/request.service';
 import { Router } from '@angular/router';
 import { SampleService } from '../../core/project/sample.service';
+import { MineBoard } from './mine-board';
+import { MineCalendar } from './mine-calendar';
 
 @Component({
   selector: 'app-home',
-  imports: [RouterLink, TPipe, PriorityMark, ProjectNewDialog, DeleteProjectDialog],
+  imports: [RouterLink, TPipe, PriorityMark, ProjectNewDialog, DeleteProjectDialog, MineBoard, MineCalendar],
   template: `
-   
-
     <main>
+      <!-- 知らせ・ようこそ・招待は、2列の上に全幅で -->
       @if (removedFrom() !== null) {
         <div class="notice" role="status">
           <p>{{ removedFrom()
@@ -78,210 +79,266 @@ import { SampleService } from '../../core/project/sample.service';
       }
 
       @if (invitations().length) {
-        <h2>{{ 'invitations.title' | t }}</h2>
-        <ul class="list">
-          @for (inv of invitations(); track inv.projectId) {
-            <li class="invitation">
-              <span class="name">{{ 'invitations.from' | t: {
-                name: inv.invitedByName, project: inv.projectName, role: i18n.t('roles.' + inv.role) } }}</span>
-              <button type="button" class="primary" (click)="accept(inv)" [disabled]="busy()">{{ 'invitations.accept' | t }}</button>
-              <button type="button" class="link" (click)="decline(inv)" [disabled]="busy()">{{ 'invitations.decline' | t }}</button>
-            </li>
-          }
-        </ul>
-      }
-
-      <section class="inbox">
-        <div class="mine-head">
-          <h2>{{ 'inbox.title' | t }}</h2>
-          <button type="button" class="link write" (click)="inbox.openPen()">{{ 'inbox.write' | t }}</button>
-        </div>
-        <ul class="list">
-          @for (m of inbox.active().slice(0, 3); track m.id) {
-            <li class="memo">
-              <a class="name" routerLink="/inbox" [queryParams]="{ m: m.id }">{{ m.title }}</a>
-              @if (inbox.isOld(m)) { <span class="old">{{ 'inbox.old' | t }}</span> }
-            </li>
-          } @empty {
-            <li class="empty">{{ 'inbox.empty' | t }}</li>
-          }
-        </ul>
-        @if (inbox.count()) {
-          <a routerLink="/inbox" class="link see-all">{{ 'inbox.seeAll' | t: { n: '' + inbox.count() } }}</a>
-        }
-      </section>
-
-      <section class="mine" id="today">
-        <div class="mine-head">
-          <h2>{{ 'mine.title' | t }}</h2>
-          <label class="check">
-            <input type="checkbox" [checked]="showDone()" (change)="showDone.set(!showDone())" />
-            {{ 'mine.showDone' | t }}
-          </label>
-        </div>
-        <div class="today" role="group" [attr.aria-label]="'today.title' | t">
-          <span class="today-title">{{ 'today.title' | t }}</span>
-          @for (b of buckets; track b) {
-            <button type="button" class="t-chip" [attr.data-b]="b" [class.on]="bucket() === b"
-              [attr.aria-pressed]="bucket() === b" [disabled]="!todayCounts()[b]" (click)="toggleBucket(b)">
-              @if (b === 'overdue') { <span class="bang" aria-hidden="true">!</span> }
-              {{ 'today.buckets.' + b | t }} <strong>{{ todayCounts()[b] }}</strong>
-            </button>
-          }
-          @if (oldMemos()) {
-            <a routerLink="/inbox" class="t-chip">{{ 'today.oldMemos' | t }} <strong>{{ oldMemos() }}</strong></a>
-          }
-          @if (!hasToday()) { <span class="small">{{ 'today.none' | t }}</span> }
-        </div>
-        @if (bucket()) {
-          <p class="small">{{ 'today.filtered.' + bucket() | t }}
-            <button type="button" class="link" (click)="bucket.set(null)">{{ 'today.clear' | t }}</button></p>
-        }
-        <ul class="list">
-          @for (i of visibleMine(); track i.id) {
-            <li class="mine-item">
-              @if (isActive(i)) {
-                <app-priority-mark [level]="prio(i)" [manual]="manual(i)" showText />
-              } @else {
-                <span class="prio-none"></span>
-              }
-              <a class="name" [routerLink]="['/p', i.projectId, 'i', i.id]">#{{ i.number }} {{ i.title }}</a>
-              <span class="small">{{ projectName(i.projectId) }}</span>
-              @if (isActive(i) && isOverdue(i)) {
-                <span class="small overdue" [title]="remaining(i)">{{ 'due.overdue' | t }} {{ dueLabel(i) }}</span>
-              } @else if (isActive(i)) {
-                <span class="small">{{ dueLabel(i) }}・{{ remaining(i) }}</span>
-              } @else {
-                <span class="small">{{ 'status.' + i.status | t }}</span>
-              }
-            </li>
-          } @empty {
-            <li class="empty">{{ 'mine.empty' | t }}</li>
-          }
-        </ul>
-        @if (mySubtaskIssues().length) {
-          <h3 class="sub-head">{{ 'mine.subtasks' | t: { n: '' + mySubtaskIssues().length } }}</h3>
+        <section class="invites">
+          <h2>{{ 'invitations.title' | t }}</h2>
           <ul class="list">
-            @for (i of mySubtaskIssues(); track i.id) {
-              <li class="mine-item">
-                <a class="name" [routerLink]="['/p', i.projectId, 'i', i.id]">#{{ i.number }} {{ i.title }}</a>
-                <span class="small">{{ projectName(i.projectId) }}</span>
+            @for (inv of invitations(); track inv.projectId) {
+              <li class="invitation">
+                <span class="name">{{ 'invitations.from' | t: {
+                  name: inv.invitedByName, project: inv.projectName, role: i18n.t('roles.' + inv.role) } }}</span>
+                <button type="button" class="primary" (click)="accept(inv)" [disabled]="busy()">{{ 'invitations.accept' | t }}</button>
+                <button type="button" class="link" (click)="decline(inv)" [disabled]="busy()">{{ 'invitations.decline' | t }}</button>
               </li>
             }
           </ul>
-        }        
-      </section>
+        </section>
+      }
 
-      <h2>{{ 'projects.title' | t }}</h2>
-      @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
-
-      @if (loading()) {
-        <p>{{ 'common.loading' | t }}</p>
-      } @else {
-        <ul class="list">
-          @for (p of activeProjects(); track p.id) {
-            <li>
-              <a class="name" [routerLink]="['/p', p.id]">{{ p.name }}</a>
-              @if (reqCount()[p.id]; as n) {
-                <a class="req-chip" [routerLink]="['/p', p.id, 'requests']" [title]="'request.waiting' | t">
-                  {{ 'request.homeChip' | t: { n: '' + n } }}</a>
+      <div class="layout">
+        <!-- 右（スマホでは先頭）：今日のまとめと、自分の課題 -->
+        <section class="mine" id="today">
+          <div class="head">
+            <h2>{{ 'mine.title' | t }}</h2>
+            <!-- プロジェクトのタブと同じ形（アイコン＋文字、今いるものに下線） -->
+            <div class="views" role="tablist" [attr.aria-label]="'mine.title' | t">
+              @for (v of viewList; track v) {
+                <button type="button" role="tab" [class.on]="view() === v" [attr.aria-selected]="view() === v"
+                  (click)="setView(v)">
+                  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path [attr.d]="viewIcons[v]" /></svg>
+                  {{ 'tabs.' + v | t }}</button>
               }
-              <span class="role">{{ 'roles.' + p.role | t }}</span>
-            </li>
-          } @empty {
-            <li class="empty first">
-              <span>{{ 'projects.empty' | t }}</span>
-              <button type="button" class="primary" (click)="newOpen.set(true)">{{ 'projectNew.title' | t }}</button>
-            </li>
-          }
-        </ul>
-        @if (archivedProjects().length) {
-          <button type="button" class="link fold-btn" [attr.aria-expanded]="showArchived()"
-            (click)="showArchived.set(!showArchived())">
-            {{ 'archive.section' | t: { n: '' + archivedProjects().length } }}
-            <span aria-hidden="true">{{ showArchived() ? '▴' : '▾' }}</span></button>
-          @if (showArchived()) {
-            <ul class="list">
-              @for (p of archivedProjects(); track p.id) {
-                <li class="archived">
-                  <a class="name" [routerLink]="['/p', p.id]">{{ p.name }}</a>
-                  <span class="role">{{ 'archive.kinds.' + (p.archiveKind ?? 'completed') | t }}</span>
-                  <span class="role">{{ 'roles.' + p.role | t }}</span>
-                  @if (p.role === 'admin') {
-                    <div class="row-more">
-                      <button type="button" class="row-more-btn" [attr.aria-expanded]="rowMenu() === p.id"
-                        [attr.aria-label]="'project.menu' | t" [title]="'project.menu' | t"
-                        (click)="toggleRowMenu(p.id, $event)">⋮</button>
-                      @if (rowMenu() === p.id) {
-                        <div class="backdrop" (click)="rowMenu.set(null)"></div>
-                        <div class="menu" role="menu" [class.up]="rowMenuUp()">
-                          <button type="button" role="menuitem" [disabled]="busy()" (click)="unarchive(p)">
-                            {{ 'archive.unarchive' | t }}</button>
-                          <div class="sep" role="separator"></div>
-                          <button type="button" role="menuitem" class="danger"
-                            (click)="rowMenu.set(null); deleteTarget.set(p)">{{ 'deleteProject.open' | t }}</button>
-                        </div>
-                      }
-                    </div>
+            </div>
+            @if (view() === 'list') {
+              <label class="check">
+                <input type="checkbox" [checked]="showDone()" (change)="showDone.set(!showDone())" />
+                {{ 'mine.showDone' | t }}
+              </label>
+            }
+          </div>
+          @if (view() === 'board') {
+            <app-mine-board [issues]="openMine()" [nameOf]="nameFn" />
+          } @else if (view() === 'calendar') {
+            <app-mine-calendar [issues]="openMine()" [nameOf]="nameFn" />
+          } @else {
+          <div class="today" role="group" [attr.aria-label]="'today.title' | t">
+            <span class="today-title">{{ 'today.title' | t }}</span>
+            @for (b of buckets; track b) {
+              <!-- 押すと、下のその見出しへ飛ぶ -->
+              <button type="button" class="t-chip" [attr.data-b]="b" [disabled]="!todayCounts()[b]" (click)="jump(b)">
+                @if (b === 'overdue') { <span class="bang" aria-hidden="true">!</span> }
+                {{ 'today.buckets.' + b | t }} <strong>{{ todayCounts()[b] }}</strong>
+              </button>
+            }
+            @if (oldMemos()) {
+              <a routerLink="/inbox" class="t-chip">{{ 'today.oldMemos' | t }} <strong>{{ oldMemos() }}</strong></a>
+            }
+            @if (!hasToday()) { <span class="small">{{ 'today.none' | t }}</span> }
+          </div>
+
+          @for (s of sections(); track s.key) {
+            @let closed = folded().has(s.key);
+            <h3 class="sec" [id]="'sec-' + s.key" [attr.data-k]="s.key">
+              <button type="button" class="fold" [attr.aria-expanded]="!closed" (click)="toggleFold(s.key)">
+                <span class="tri" aria-hidden="true">{{ closed ? '▸' : '▾' }}</span>
+                {{ s.label | t }}<span class="n">{{ s.items.length }}</span></button></h3>
+            @if (!closed) {
+            <ul class="ilist">
+              @for (i of s.items; track i.id) {
+                <li>
+                  @if (isActive(i)) {
+                    <app-priority-mark [level]="prio(i)" [manual]="manual(i)" />
+                  } @else {
+                    <span class="prio-none"></span>
+                  }
+                  <a class="ititle" [routerLink]="['/p', i.projectId, 'i', i.id]">
+                    <span class="num">#{{ i.number }}</span> {{ i.title }}</a>
+                  <span class="iproj">{{ projectName(i.projectId) }}</span>
+                  @if (isActive(i)) {
+                    <span class="idue" [class.overdue]="isOverdue(i)" [title]="remaining(i)">{{ dueLabel(i) }}</span>
+                  } @else {
+                    <span class="idue">{{ 'status.' + i.status | t }}</span>
                   }
                 </li>
               }
             </ul>
+            }
+          } @empty {
+            <p class="empty">{{ 'mine.empty' | t }}</p>
           }
-        }
-      }
+
+          @if (mySubtaskIssues().length) {
+            <h3 class="sec">{{ 'mine.subtasks' | t: { n: '' + mySubtaskIssues().length } }}</h3>
+            <ul class="ilist">
+              @for (i of mySubtaskIssues(); track i.id) {
+                <li>
+                  <span class="prio-none"></span>
+                  <a class="ititle" [routerLink]="['/p', i.projectId, 'i', i.id]">
+                    <span class="num">#{{ i.number }}</span> {{ i.title }}</a>
+                  <span class="iproj">{{ projectName(i.projectId) }}</span>
+                </li>
+              }
+            </ul>
+          }
+          }
+        </section>
+
+        <!-- 左（スマホでは後ろ）：プロジェクトと、受信箱 -->
+        <aside class="side">
+          <section class="box">
+            <div class="side-head">
+              <h2>{{ 'projects.title' | t }}</h2>
+              <button type="button" class="icon-btn" [attr.aria-label]="'projectNew.title' | t" [title]="'projectNew.title' | t"
+                (click)="newOpen.set(true)">＋</button>
+            </div>
+            @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
+            @if (loading()) {
+              <p class="small">{{ 'common.loading' | t }}</p>
+            } @else {
+              <ul class="plist">
+                @for (p of activeProjects(); track p.id) {
+                  <li>
+                    <a class="pname" [routerLink]="['/p', p.id]" [title]="p.name">{{ p.name }}</a>
+                    @if (reqCount()[p.id]; as n) {
+                      <a class="req-chip" [routerLink]="['/p', p.id, 'requests']" [title]="'request.waiting' | t">
+                        {{ 'request.homeChip' | t: { n: '' + n } }}</a>
+                    }
+                    <span class="role">{{ 'roles.' + p.role | t }}</span>
+                  </li>
+                } @empty {
+                  <li class="first">
+                    <span class="small">{{ 'projects.empty' | t }}</span>
+                    <button type="button" class="primary" (click)="newOpen.set(true)">{{ 'projectNew.title' | t }}</button>
+                  </li>
+                }
+              </ul>
+              @if (archivedProjects().length) {
+                <button type="button" class="link fold-btn" [attr.aria-expanded]="showArchived()"
+                  (click)="showArchived.set(!showArchived())">
+                  {{ 'archive.section' | t: { n: '' + archivedProjects().length } }}
+                  <span aria-hidden="true">{{ showArchived() ? '▴' : '▾' }}</span></button>
+                @if (showArchived()) {
+                  <ul class="plist">
+                    @for (p of archivedProjects(); track p.id) {
+                      <li class="archived">
+                        <a class="pname" [routerLink]="['/p', p.id]" [title]="p.name">{{ p.name }}</a>
+                        <span class="role">{{ 'archive.kinds.' + (p.archiveKind ?? 'completed') | t }}</span>
+                        @if (p.role === 'admin') {
+                          <div class="row-more">
+                            <button type="button" class="row-more-btn" [attr.aria-expanded]="rowMenu() === p.id"
+                              [attr.aria-label]="'project.menu' | t" [title]="'project.menu' | t"
+                              (click)="toggleRowMenu(p.id, $event)">⋮</button>
+                            @if (rowMenu() === p.id) {
+                              <div class="backdrop" (click)="rowMenu.set(null)"></div>
+                              <div class="menu" role="menu" [class.up]="rowMenuUp()">
+                                <button type="button" role="menuitem" [disabled]="busy()" (click)="unarchive(p)">
+                                  {{ 'archive.unarchive' | t }}</button>
+                                <div class="sep" role="separator"></div>
+                                <button type="button" role="menuitem" class="danger"
+                                  (click)="rowMenu.set(null); deleteTarget.set(p)">{{ 'deleteProject.open' | t }}</button>
+                              </div>
+                            }
+                          </div>
+                        }
+                      </li>
+                    }
+                  </ul>
+                }
+              }
+            }
+          </section>
+
+          <section class="box">
+            <div class="side-head">
+              <h2><a routerLink="/inbox" class="h-link">{{ 'inbox.title' | t }}</a>
+                @if (inbox.count()) { <span class="n">{{ inbox.count() }}</span> }</h2>
+              <button type="button" class="icon-btn" [attr.aria-label]="'inbox.write' | t" [title]="'inbox.write' | t"
+                (click)="inbox.openPen()">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg></button>
+            </div>
+            <ul class="mlist">
+              @for (m of inbox.active().slice(0, 3); track m.id) {
+                <li>
+                  <a class="mname" routerLink="/inbox" [queryParams]="{ m: m.id }" [title]="m.title">{{ m.title }}</a>
+                  @if (inbox.isOld(m)) { <span class="old">{{ 'inbox.old' | t }}</span> }
+                </li>
+              } @empty {
+                <li class="small">{{ 'inbox.empty' | t }}</li>
+              }
+            </ul>
+          </section>
+        </aside>
+      </div>
     </main>
     @if (newOpen()) { <app-project-new-dialog (close)="newOpen.set(false)" /> }
-        @if (deleteTarget(); as p) {
+    @if (deleteTarget(); as p) {
       <app-delete-project-dialog [pid]="p.id" [name]="p.name" [prefill]="!!p.sample" (done)="onDeleted($event)"
         (cancel)="deleteTarget.set(null)" />
     }
   `,
   styles: `
-    .bar { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--border); }
-    .bar h1 { font-size: 18px; margin: 0; flex: 1; }
-    main { max-width: 640px; margin: 0 auto; padding: 16px; }
-    .first { flex-direction: column; align-items: flex-start !important; gap: 8px; padding: 12px !important; }
-    .list { list-style: none; padding: 0; }
-    .list li { display: flex; gap: 8px; align-items: center; min-height: 56px; padding: 0 12px; border-bottom: 1px solid var(--border); }
-    .list .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-    .list .role { font-size: 12px; padding: 2px 8px; border-radius: 12px; background: var(--chip-bg); }
-    .archived { color: var(--text-subtle); }
-    .empty { color: var(--text-muted); }
-    .error { color: var(--danger-text); }
+    main { max-width: 1200px; margin: 0 auto; padding: 16px 16px 48px; box-sizing: border-box; }
+    h2 { font-size: 16px; margin: 0; }
+    .small { font-size: 12px; color: var(--text-muted); }
+    .empty { margin: 12px 0; color: var(--text-muted); font-size: 14px; }
     .notice { background: var(--warning-bg); padding: 12px; border-radius: 8px; margin-bottom: 16px; }
     .notice p { margin: 0 0 8px; }
-    h2 { font-size: 16px; }
-    .invitation { flex-wrap: wrap; padding: 8px 12px !important; }
+
+    /* ようこその箱・招待（全幅） */
+    .intro { margin-bottom: 24px; padding: 16px; border-radius: 12px; border: 1px solid var(--primary);
+      background: var(--primary-bg); }
+    .intro h2 { margin: 0 0 6px; }
+    .intro .lead { margin: 0 0 8px; }
+    .steps { margin: 0 0 12px; padding-left: 1.4em; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+    .intro-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .invites { margin-bottom: 24px; }
+    .list { list-style: none; padding: 0; margin: 8px 0 0; }
+    .invitation { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px;
+      border-bottom: 1px solid var(--border); }
     .invitation .name { flex-basis: 100%; }
-    .mine { margin-bottom: 24px; }
-    .inbox { margin-bottom: 24px; }
-    .memo { min-height: 44px !important; }
-    .old { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: var(--warning-bg); color: var(--warning-text); }
-    .see-all { font-size: 13px; }
-    .mine-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-    .check { display: flex; align-items: center; gap: 6px; font-size: 13px; min-height: 40px; }
-    .mine-item { flex-wrap: wrap; }
-    .mine-item .name { flex: 1; min-width: 50%; overflow-wrap: anywhere; }
-    .mine-item app-priority-mark, .prio-none { width: 64px; flex: none; }
-    .small { font-size: 12px; color: var(--text-muted); }
-    .small.overdue { color: var(--danger); font-weight: bold; }
-    .mine { scroll-margin-top: 64px; }
-    .today { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 8px; }
-    .today-title { font-size: 12px; color: var(--text-muted); margin-right: 4px; }
-    .t-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px;
-      border: 1px solid var(--border-strong); border-radius: 18px; background: var(--surface); color: var(--text);
-      font-size: 13px; text-decoration: none; cursor: pointer; }
-    .t-chip strong { font-size: 14px; }
-    .t-chip.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
-    .t-chip:disabled { color: var(--text-disabled); cursor: default; }
-    .t-chip[data-b='overdue']:not(:disabled):not(.on) .bang,
-    .t-chip[data-b='overdue']:not(:disabled):not(.on) strong { color: var(--danger-text); }
-    .bang { font-weight: bold; }
-    .fold-btn { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 14px; cursor: pointer; }
-    .row-more { position: relative; }
-    .row-more-btn { width: 36px; height: 36px; min-height: 36px; border: none; border-radius: 50%; background: none;
-      color: var(--text-muted); font-size: 18px; cursor: pointer; }
+
+    /* 2列：左にプロジェクトと受信箱（細い）、右に自分の課題（広い）。スマホは書いた順の1列 */
+    .layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); grid-template-areas: 'side mine';
+      gap: 32px; align-items: start; }
+    .mine { grid-area: mine; min-width: 0; scroll-margin-top: 64px; }
+    .side { grid-area: side; display: flex; flex-direction: column; gap: 16px; position: sticky; top: 68px; }
+    @media (max-width: 959px) {
+      .layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: none; gap: 24px; }
+      .mine, .side { grid-area: auto; }
+      .side { position: static; }
+    }
+
+    /* 左の箱（プロジェクト・受信箱） */
+    .box { padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+    .side-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+    .side-head h2 { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+    .h-link { color: var(--text); text-decoration: none; }
+    .h-link:hover { text-decoration: underline; }
+    .n { font-size: 12px; font-weight: normal; padding: 0 8px; border-radius: 10px; background: var(--surface-alt);
+      color: var(--text-muted); }
+    .icon-btn { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0;
+      border: none; border-radius: 6px; background: none; color: var(--text-muted); font-size: 18px; cursor: pointer; }
+    .icon-btn:hover { background: var(--surface-alt); color: var(--text); }
+    .plist, .mlist { list-style: none; margin: 0; padding: 0; }
+    .plist li, .mlist li { display: flex; align-items: center; gap: 6px; min-height: 34px; }
+    .pname, .mname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      padding: 4px 6px; margin: 0 -6px; border-radius: 6px; color: var(--text); text-decoration: none; font-size: 14px; }
+    .pname:hover, .mname:hover { background: var(--surface-alt); }
+    .mname { font-size: 13px; }
+    .role { flex: none; font-size: 11px; padding: 1px 6px; border-radius: 10px; background: var(--chip-bg); }
+    .archived .pname { color: var(--text-subtle); }
+    .first { flex-direction: column; align-items: flex-start !important; gap: 8px; padding: 4px 0; }
+    .req-chip { flex: none; font-size: 11px; padding: 1px 8px; border-radius: 10px; text-decoration: none; white-space: nowrap;
+      background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
+    .old { flex: none; font-size: 11px; padding: 1px 6px; border-radius: 10px; background: var(--warning-bg); color: var(--warning-text); }
+    .fold-btn { gap: 4px; min-height: 32px; font-size: 13px; }
+
+    /* アーカイブ済みの行の ⋮ */
+    .row-more { position: relative; flex: none; }
+    .row-more-btn { width: 28px; height: 28px; border: none; border-radius: 50%; background: none;
+      color: var(--text-muted); font-size: 16px; cursor: pointer; }
     .row-more-btn:hover { background: var(--surface-alt); }
     .backdrop { position: fixed; inset: 0; z-index: 51; }
     .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 52; min-width: 220px;
@@ -294,15 +351,54 @@ import { SampleService } from '../../core/project/sample.service';
     .menu button.danger { color: var(--danger-text); font-weight: bold; }
     .menu button.danger:hover { background: var(--danger-bg); }
     .menu.up { top: auto; bottom: calc(100% + 4px); }
-    .sub-head { font-size: 13px; color: var(--text-muted); margin: 16px 0 0; }  
-    .req-chip { font-size: 12px; padding: 2px 10px; border-radius: 12px; text-decoration: none; white-space: nowrap;
-      background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
-    .intro { margin-bottom: 24px; padding: 16px; border-radius: 12px; border: 1px solid var(--primary);
-      background: var(--primary-bg); }
-    .intro h2 { margin: 0 0 6px; }
-    .intro .lead { margin: 0 0 8px; }
-    .steps { margin: 0 0 12px; padding-left: 1.4em; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
-    .intro-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+    /* 自分の課題 */
+    .head { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+    .check { display: flex; align-items: center; gap: 6px; font-size: 13px; min-height: 36px; }
+    .today { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 4px; }
+    .today-title { font-size: 12px; color: var(--text-muted); margin-right: 4px; }
+    .t-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px;
+      border: 1px solid var(--border-strong); border-radius: 16px; background: var(--surface); color: var(--text);
+      font-size: 13px; text-decoration: none; cursor: pointer; }
+    .t-chip:hover:not(:disabled) { background: var(--surface-alt); }
+    .t-chip strong { font-size: 14px; }
+    .t-chip:disabled { color: var(--text-disabled); cursor: default; }
+    .t-chip[data-b='overdue']:not(:disabled) .bang,
+    .t-chip[data-b='overdue']:not(:disabled) strong { color: var(--danger-text); }
+    .bang { font-weight: bold; }
+    /* 期限の見出し。飛んだとき、アプリのヘッダーの下に隠れないように */
+    .sec { display: flex; align-items: center; gap: 6px; margin: 18px 0 4px; font-size: 13px; color: var(--text-muted);
+      scroll-margin-top: 64px; }
+    .sec[data-k='overdue'] { color: var(--danger-text); }
+    .ilist { list-style: none; margin: 0; padding: 0; }
+    .ilist li { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 2px 8px;
+      border-bottom: 1px solid var(--border); }
+    .ilist li:hover { background: var(--surface-alt); }
+    .ilist app-priority-mark, .prio-none { width: 18px; flex: none; }
+    .ititle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      color: var(--text); text-decoration: none; font-size: 14px; }
+    .ititle:hover { text-decoration: underline; }
+    .num { color: var(--text-muted); font-size: 13px; }
+    .iproj { flex: none; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-size: 12px; color: var(--text-muted); }
+    .idue { flex: none; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+    .idue.overdue { color: var(--danger-text); font-weight: bold; }
+    /* リスト｜かんばん｜カレンダー：プロジェクトのタブと同じ見た目 */
+    .views { display: inline-flex; gap: 2px; margin-right: auto; border-bottom: 1px solid var(--border); }
+    .views button { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 10px;
+      border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none;
+      color: var(--text-muted); font-size: 14px; cursor: pointer; }
+    .views button:hover { color: var(--text); }
+    .views button.on { color: var(--text); font-weight: bold; border-bottom-color: var(--primary); }
+    .views button.on svg { color: var(--primary); }
+    /* 期限の見出し：押すと、その区切りをたたむ・開く */
+    .fold { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px; margin-left: -4px; border: none;
+      border-radius: 6px; background: none; color: inherit; font: inherit; cursor: pointer; }
+    .fold:hover { background: var(--surface-alt); }
+    .tri { width: 12px; font-size: 11px; }
+    @media (max-width: 600px) {
+      .iproj { display: none; }
+    }
     `,
 })
 export class Projects implements OnInit {
@@ -314,6 +410,32 @@ export class Projects implements OnInit {
   protected i18n = inject(I18nService);
   private route = inject(ActivatedRoute);
   protected inbox = inject(InboxService);
+  /** 自分の課題の見せ方（URL の ?view= に残す。戻る・再読み込みで同じ表示に） */
+  readonly viewList = ['list', 'board', 'calendar'] as const;
+  /** 切り替えのアイコン（プロジェクトのタブと同じ絵） */
+  readonly viewIcons: Record<string, string> = {
+    list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
+    board: 'M3 4h5v16H3zM10 4h4v10h-4zM16 4h5v13h-5z',
+    calendar: 'M3 6h18v15H3zM3 10h18M8 3v4M16 3v4',
+  };
+  view = signal<'list' | 'board' | 'calendar'>((() => {
+    const v = this.route.snapshot.queryParamMap.get('view');
+    return v === 'board' || v === 'calendar' ? v : 'list';
+  })());
+
+  setView(v: 'list' | 'board' | 'calendar') {
+    this.view.set(v);
+    this.router.navigate([], {
+      relativeTo: this.route, queryParams: { view: v === 'list' ? null : v },
+      queryParamsHandling: 'merge', replaceUrl: true
+    });
+  }
+
+  /** かんばん・カレンダーに出す課題：未完了と解決済み（アーカイブ中・削除フォルダの中は除く） */
+  openMine = computed(() => this.myIssues().filter((i) => !this.archivedIds().has(i.projectId)
+    && ['open', 'in_progress', 'on_hold', 'resolved'].includes(i.status)));
+  /** 部品にプロジェクト名の引き方を渡す（テンプレートでは矢印関数が書けないので、ここで作る） */
+  readonly nameFn = (pid: string) => this.projectName(pid);
 
   /** 「自分の課題」の見張り。プロジェクトごとに1本（pid → やめる関数） */
   private mineStops = new Map<string, Unsubscribe>();
@@ -399,8 +521,6 @@ export class Projects implements OnInit {
       .sort((a, b) => compareIssues(a, b, this.clock.now()));
   });
   showDone = signal(false);
-  /** 今日のまとめの区分で、自分の課題を絞る（null＝絞らない） */
-  bucket = signal<DueBucket | null>(null);
   readonly buckets: DueBucket[] = ['overdue', 'today', 'tomorrow', 'in3'];
   /** アーカイブ中のプロジェクト（今日のまとめには数えない） */
   private archivedIds = computed(() => new Set(this.projects().filter((p) => p.archived).map((p) => p.id)));
@@ -421,16 +541,54 @@ export class Projects implements OnInit {
   oldMemos = computed(() => this.inbox.active().filter((m) => this.inbox.isOld(m)).length);
   hasToday = computed(() => Object.values(this.todayCounts()).some((n) => n > 0) || this.oldMemos() > 0);
   /** 初期は自分の手が必要なもの（未着手・対応中・保留）。切り替えで解決済み・クローズも表示 */
-  visibleMine = computed(() => {
+  /**
+   * 自分の課題を、期限の見出しで区切る（今日のまとめのチップと同じ区分 ＋「それより先」）。
+   * チェックを入れたときだけ、一番下に「終わった課題」。0件の見出しは出さない
+   */
+  sections = computed(() => {
     const now = this.clock.now();
-    const bucket = this.bucket();
-    return this.myIssues()
-      // アーカイブ中のプロジェクトの課題は出さない（通知と集計から外す約束。プロジェクトを開けば見られる）
-      .filter((i) => !this.archivedIds().has(i.projectId))
-      .filter((i) => i.status !== 'deleted' && (this.showDone() || this.isActive(i)))
-      .filter((i) => !bucket || (this.counts(i) && dueBucket(i.dueAt.toMillis(), now, this.tz()) === bucket))
-      .sort((a, b) => compareIssues(a, b, now));
+    const keys = ['overdue', 'today', 'tomorrow', 'in3', 'later', 'done'] as const;
+    const map = new Map<string, (Issue & { projectId: string })[]>(keys.map((k) => [k, []]));
+    for (const i of this.myIssues()) {
+      // アーカイブ中のプロジェクトの課題と、削除フォルダの中は出さない（今までどおり）
+      if (this.archivedIds().has(i.projectId) || i.status === 'deleted') continue;
+      if (!this.isActive(i)) {
+        if (this.showDone()) map.get('done')!.push(i);
+        continue;
+      }
+      map.get(dueBucket(i.dueAt.toMillis(), now, this.tz()) ?? 'later')!.push(i);
+    }
+    return keys
+      .map((key) => ({
+        key,
+        label: key === 'later' || key === 'done' ? 'mine.' + key : 'today.buckets.' + key,
+        items: map.get(key)!.sort((a, b) => compareIssues(a, b, now)),
+      }))
+      .filter((s) => s.items.length);
   });
+
+  /** たたんでいる期限の見出し（この端末に覚えておく。次に開いても、たたんだまま） */
+  private readonly foldKey = `issuemanager.homeFold.${auth.currentUser!.uid}`;
+  folded = signal<Set<string>>((() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(this.foldKey) ?? '[]') as string[]);
+    } catch {
+      return new Set<string>();
+    }
+  })());
+
+  toggleFold(k: string) {
+    const next = new Set(this.folded());
+    if (next.has(k)) next.delete(k);
+    else next.add(k);
+    this.folded.set(next);
+    try {
+      localStorage.setItem(this.foldKey, JSON.stringify([...next]));
+    } catch {
+      // 覚えておけなくても、たたむこと自体はできる
+    }
+  }
+
   needsVerify = signal(false);
   info = signal('');
   /** プロジェクトから外されて戻ってきたときの知らせ（プロジェクト名。わからなければ空文字。知らせがなければ null） */
@@ -612,9 +770,11 @@ export class Projects implements OnInit {
   }
 
 
-  /** 同じチップをもう一度押すと、絞り込みを外す */
-  toggleBucket(b: DueBucket) {
-    this.bucket.set(this.bucket() === b ? null : b);
+  /** 今日のまとめのチップを押したら、下のその見出しへ飛ぶ */
+  jump(b: DueBucket) {
+    if (this.folded().has(b)) this.toggleFold(b);
+    // 開いた一覧が描かれてから動かす
+    setTimeout(() => document.getElementById('sec-' + b)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }
 
   projectName(pid: string) {

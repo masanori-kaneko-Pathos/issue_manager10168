@@ -343,6 +343,8 @@ export const en: Dict = {
     showDone: 'Show resolved and closed',
     empty: 'You have no assigned issues.',
     subtasks: 'Subtasks assigned to you ({{n}})',
+    later: 'Later',
+    done: 'Done',
   },
   menu: {
     account: 'Account',
@@ -555,6 +557,7 @@ export const en: Dict = {
     prevYear: 'Previous year',
     nextYear: 'Next year',
     addOn: 'New issue due {{date}}',
+    noneOnDay: 'No issues due on this day',
   },
   dueDialog: {
     title: 'Change due date',

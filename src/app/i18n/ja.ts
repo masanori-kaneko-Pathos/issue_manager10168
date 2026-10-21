@@ -340,6 +340,8 @@ export const ja = {
     showDone: '解決済み・クローズも表示',
     empty: '担当している課題はありません。',
     subtasks: 'サブタスクの担当（{{n}}）',
+    later: 'それ以降',
+    done: '終わった課題',
   },
   menu: {
     account: 'アカウント',
@@ -552,6 +554,7 @@ export const ja = {
     prevYear: '前の年',
     nextYear: '次の年',
     addOn: '{{date}}に課題を登録',
+    noneOnDay: 'この日が期限の課題はありません',
   },
   dueDialog: {
     title: '期限の変更',
