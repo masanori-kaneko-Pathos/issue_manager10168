@@ -119,7 +119,9 @@ export class ReminderDialog implements OnInit {
         };
         const today = dateKey(new Date(now), tz);
         const tomorrow = dateKey(new Date(now + 24 * 60 * MIN), tz);
-        const morning = this.authService.profile()?.dailyTime ?? DEFAULT_DAILY_TIME;
+        // 毎日のまとめの時刻。届けない（'off'）にしている人は、初期の 10:00 を「明日の朝」にする
+        const dt = this.authService.profile()?.dailyTime;
+        const morning = typeof dt === 'number' ? dt : DEFAULT_DAILY_TIME;
         const list = [{ key: 'in1h', at: new Date(Math.ceil((now + 60 * MIN) / STEP) * STEP) }];
         const five = at(today, 17, 0);
         if (five.getTime() > now) list.push({ key: 'today', at: five });

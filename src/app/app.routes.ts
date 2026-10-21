@@ -33,8 +33,20 @@ export const routes: Routes = [
           loadComponent: () => import('./pages/project/tab-dashboard').then((m) => m.TabDashboard) },
         { path: 'members',
           loadComponent: () => import('./pages/project/tab-members').then((m) => m.ProjectMembers) },
-          { path: 'settings', canDeactivate: [unsavedGuard],
-            loadComponent: () => import('./pages/project/tab-settings').then((m) => m.ProjectSettings) },
+        // 設定：左に索引。名前・ラベル・日数と件数・使う機能は、同じ部品（tab-settings）を、出す欄（section）だけ変えて使う
+        { path: 'settings',
+          children: [
+            { path: '', pathMatch: 'full', redirectTo: 'general' },
+            { path: 'general', canDeactivate: [unsavedGuard], data: { section: 'general' },
+              loadComponent: () => import('./pages/project/tab-settings').then((m) => m.ProjectSettings) },
+            { path: 'labels', canDeactivate: [unsavedGuard], data: { section: 'labels' },
+              loadComponent: () => import('./pages/project/tab-settings').then((m) => m.ProjectSettings) },
+            { path: 'rules', canDeactivate: [unsavedGuard], data: { section: 'rules' },
+              loadComponent: () => import('./pages/project/tab-settings').then((m) => m.ProjectSettings) },
+            // 使う機能はスイッチで、押したらすぐ保存するので、離れるときの確かめは要らない
+            { path: 'features', data: { section: 'features' },
+              loadComponent: () => import('./pages/project/tab-settings').then((m) => m.ProjectSettings) },
+          ] },
         // 削除フォルダ（タブには出さず、「⋮」メニューから開く）
         { path: 'trash',
           loadComponent: () => import('./pages/project/trash').then((m) => m.Trash) },

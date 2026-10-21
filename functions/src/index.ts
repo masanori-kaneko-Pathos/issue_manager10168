@@ -128,6 +128,7 @@ interface Target {
   reminders: string[];   // 期限前の通知で数える区分
   group: DailyGroup;     // まとめの形
   pids: string[];        // その人が所属する、アーカイブ中でないプロジェクト（全部まとめて1通）
+  off: boolean;          // 毎日のまとめを届けない（効果確認だけ届ける）
 }
 
 /**
@@ -157,11 +158,14 @@ async function sendMorningSummaries(now: Date) {
   for (const u of users) {
     if (!u.exists) continue;
     const tz = safeTz(u.get('timeZone'));
+    // 毎日のまとめを「届けない」にした人も、効果確認は届ける（そのときは初期の時刻に）
+    const off = u.get('dailyTime') === 'off';
+    const time = off ? DEFAULT_DAILY_TIME : validTime(u.get('dailyTime')) ?? DEFAULT_DAILY_TIME;
     // 本人が決めた時刻（10分刻み）になった人だけ
-    if ((validTime(u.get('dailyTime')) ?? DEFAULT_DAILY_TIME) !== slotIn(now, tz)) continue;
+    if (time !== slotIn(now, tz)) continue;
     targets.push({
       uid: u.id, tz, reminders: u.get('dueReminders') ?? DEFAULT_REMINDERS,
-      group: dailyGroupOf(u.get('dailyGroup')), pids: projectsOf.get(u.id) ?? [],
+      group: dailyGroupOf(u.get('dailyGroup')), pids: projectsOf.get(u.id) ?? [], off,
     });
   }
   if (!targets.length) return;
@@ -176,10 +180,11 @@ async function sendMorningSummaries(now: Date) {
   // ⑤ 人ごとに数えて、1通書く（1人の失敗で、ほかの人の分を止めない）
   let written = 0;
   for (const t of targets) {
+    if (t.off) continue; // 届けないにした人には、まとめを書かない（効果確認は ⑥ で届く）
     try {
       if (await writeSummary(t, openByPid, now)) written++;
     } catch (e) {
-      logger.error('morning summary failed', { uid: t.uid, error: String(e) });
+      logger.error('daily summary failed', { uid: t.uid, error: String(e) });
     }
   }
   logger.info('morning summaries', { targets: targets.length, written });

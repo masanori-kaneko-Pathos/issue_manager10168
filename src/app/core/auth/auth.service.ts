@@ -24,7 +24,7 @@ export interface UserProfile {
   defaultView?: 'list' | 'board';
   dueReminders?: ReminderBucket[];  // 期限前の通知で数える区分
   dailyGroup?: DailyGroup;          // 毎朝のまとめの形（無ければ期限別）
-  dailyTime?: number;               // 毎朝のまとめの時刻（0時からの分・10分刻み。無ければ 10:00）
+  dailyTime?: number | 'off';       // 毎日のまとめの時刻（0時からの分・10分刻み。無ければ 10:00）。'off' は届けない
   introHidden?: boolean;            // 「ようこそ」の箱を「後で見る」で閉じた
   photoURL?: string | null;         // アイコンの写真（無い＝入れたことがない、null＝本人が外した）
   emailNotify?: EmailGroup[];       // メールで受け取る通知のまとまり（無い＝どれも受け取らない）

@@ -27,7 +27,9 @@ service cloud.firestore {
         && (!('defaultView' in request.resource.data) || request.resource.data.defaultView in ['list', 'board'])
         && (!('dailyGroup' in request.resource.data) || request.resource.data.dailyGroup in ['due', 'priority', 'assignee'])
         // 毎朝のまとめの時刻：0時からの分で、10分刻み（関数は === で比べるので、ずれると届かなくなる）
+        // 'off' は「毎日のまとめを届けない」
         && (!('dailyTime' in request.resource.data)
+            || request.resource.data.dailyTime == 'off'
             || (request.resource.data.dailyTime is int
                 && request.resource.data.dailyTime >= 0 && request.resource.data.dailyTime < 1440
                 && request.resource.data.dailyTime % 10 == 0))

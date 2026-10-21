@@ -23,10 +23,12 @@ import { SampleService } from '../../core/project/sample.service';
 import { MineBoard } from './mine-board';
 import { MineCalendar } from './mine-calendar';
 import { TabInk } from '../../shared/tab-ink';
+import { MemoRow } from '../../shared/memo-row';
 
 @Component({
   selector: 'app-home',
-  imports: [RouterLink, TPipe, PriorityMark, ProjectNewDialog, DeleteProjectDialog, MineBoard, MineCalendar, TabInk],
+  imports: [RouterLink, TPipe, PriorityMark, ProjectNewDialog, DeleteProjectDialog,
+    MineBoard, MineCalendar, TabInk, MemoRow],
   template: `
     <main>
       <!-- 知らせ・ようこそ・招待は、2列の上に全幅で -->
@@ -262,10 +264,8 @@ import { TabInk } from '../../shared/tab-ink';
             </div>
             <ul class="mlist">
               @for (m of inbox.active().slice(0, 3); track m.id) {
-                <li>
-                  <a class="mname" routerLink="/inbox" [queryParams]="{ m: m.id }" [title]="m.title">{{ m.title }}</a>
-                  @if (inbox.isOld(m)) { <span class="old">{{ 'inbox.old' | t }}</span> }
-                </li>
+                <!-- ペンの吹き出しと同じ1行（押すとその場で直す・課題にする・ゴミ箱へ） -->
+                <li><app-memo-row [memo]="m" [compact]="true" touchUi="menu" /></li>
               } @empty {
                 <li class="small">{{ 'inbox.empty' | t }}</li>
               }
@@ -324,7 +324,8 @@ import { TabInk } from '../../shared/tab-ink';
       border: none; border-radius: 6px; background: none; color: var(--text-muted); font-size: 18px; cursor: pointer; }
     .icon-btn:hover { background: var(--surface-alt); color: var(--text); }
     .plist, .mlist { list-style: none; margin: 0; padding: 0; }
-    .plist li, .mlist li { display: flex; align-items: center; gap: 6px; min-height: 34px; }
+    .plist li { display: flex; align-items: center; gap: 6px; min-height: 34px; }
+    .mlist li { display: flex; align-items: center; }
     .pname, .mname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       padding: 4px 6px; margin: 0 -6px; border-radius: 6px; color: var(--text); text-decoration: none; font-size: 14px; }
     .pname:hover, .mname:hover { background: var(--surface-alt); }

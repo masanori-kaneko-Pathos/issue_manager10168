@@ -201,7 +201,8 @@ import { IssueFormService } from '../core/issue/issue-form.service';
     .panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 52; width: min(360px, calc(100vw - 24px));
       max-height: 70vh; overflow: auto; background: var(--surface); color: var(--text); border-radius: 10px;
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2); }
-    .panel-head { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between;
+    /* 止まる見出し。行（position: relative）より上に描く（重なりを決めないと、後に書いた行が上に描かれて透ける） */
+    .panel-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between;
       gap: 8px; padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--border); }
     .panel-head .link { background: none; border: none; color: var(--primary); min-height: 36px; font-size: 13px;
       cursor: pointer; }

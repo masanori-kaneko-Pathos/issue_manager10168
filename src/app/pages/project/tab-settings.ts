@@ -1,5 +1,6 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import {
   DEFAULT_SETTINGS, LABEL_COLORS, Label, LabelColor, MAX_LABELS_PER_PROJECT,
   ProjectSettings as SettingsData, labelColor,
@@ -9,6 +10,7 @@ import { ProjectService } from '../../core/project/project.service';
 import { SearchService } from '../../core/search/search.service';
 import { HelpTip } from '../../shared/help-tip';
 import { LabelChip } from '../../shared/label-chip';
+import { IndexItem, SideIndex } from '../../shared/side-index';
 import { I18nService, TPipe } from '../../i18n/i18n';
 
 /**
@@ -19,10 +21,21 @@ type NumKey = 'notifyHour' | 'staleDays' | 'effectCheckDays' | 'highPriorityLimi
 const RANGES: Record<NumKey, [number, number]> = {
   notifyHour: [0, 23], staleDays: [1, 90], effectCheckDays: [1, 90], highPriorityLimit: [1, 100],
 };
+type Section = 'general' | 'labels' | 'rules' | 'features';
+type Feature = keyof SettingsData['features'];
+
+/** 左の索引（個人の設定と同じ部品） */
+const INDEX: IndexItem[] = [
+  { path: 'general', key: 'projectSettings.name', icon: 'M4 20h4L19 9l-4-4L4 16z' },
+  { path: 'labels', key: 'projectSettings.labels', icon: 'M3 12V3h9l9 9-9 9zM7.5 7.5h.01' },
+  { path: 'rules', key: 'projectSettings.rules', icon: 'M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z' },
+  { path: 'features', key: 'projectSettings.features',
+    icon: 'M8 7h8a5 5 0 0 1 0 10H8A5 5 0 0 1 8 7zM8 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z' },
+];
 
 @Component({
   selector: 'app-tab-settings',
-  imports: [FormsModule, TPipe, HelpTip, LabelChip],
+  imports: [FormsModule, TPipe, HelpTip, LabelChip, SideIndex],
   host: { '(window:beforeunload)': 'onBeforeUnload($event)' },
   template: `
     @if (ctx.role() !== 'admin') {
@@ -31,126 +44,106 @@ const RANGES: Record<NumKey, [number, number]> = {
       <p>{{ 'archive.settingsLocked' | t }}</p>
     } @else {
       <div class="layout">
-      <nav class="index" [attr.aria-label]="'tabs.settings' | t">
-        @for (s of sections; track s.id) {
-          <button type="button" (click)="jump(s.id)">{{ s.key | t }}</button>
-        }
-      </nav>
-      <div class="body">
-      <section id="ps-name">
-        <h2>{{ 'projectSettings.name' | t }}</h2>
-        <input class="pname" [ngModel]="name()" (ngModelChange)="name.set($event); info.set('')" maxlength="100"
-          [attr.aria-label]="'projectSettings.name' | t" />
-        <p class="help">{{ 'projectSettings.nameHelp' | t }}</p>
-      </section>
-      <section id="ps-labels">
-        <h2>{{ 'projectSettings.labels' | t }} <app-help-tip [keys]="['projectSettings.labelsHelp']" /></h2>
-        <ul class="labels">
-          @for (l of labels(); track l.id; let i = $index) {
-            <li>
-              <app-label-chip [label]="l" />
-              <input [ngModel]="l.name" (ngModelChange)="rename(i, $event)" maxlength="20"
-                [attr.aria-label]="'projectSettings.labelName' | t" />
-              <div class="colors">
-                @for (c of colors; track c) {
-                  <button type="button" class="swatch" [attr.data-color]="c" [class.on]="colorOf(l) === c"
-                    [attr.aria-label]="'projectSettings.colors.' + c | t" (click)="recolor(i, c)"></button>
+        <app-side-index [items]="index" [prefix]="['..']" label="tabs.settings" />
+        <div class="body">
+          <h1 class="page-title">{{ titleKey() | t }}</h1>
+          @switch (section) {
+            @case ('general') {
+              <section>
+                <input class="pname" [ngModel]="name()" (ngModelChange)="name.set($event); info.set('')" maxlength="100"
+                  [attr.aria-label]="'projectSettings.name' | t" />
+                <p class="help">{{ 'projectSettings.nameHelp' | t }}</p>
+              </section>
+            }
+            @case ('labels') {
+              <section>
+                <p class="help">{{ 'projectSettings.labelsHelp' | t }}</p>
+                <ul class="labels">
+                  @for (l of labels(); track l.id; let i = $index) {
+                    <li>
+                      <app-label-chip [label]="l" />
+                      <input [ngModel]="l.name" (ngModelChange)="rename(i, $event)" maxlength="20"
+                        [attr.aria-label]="'projectSettings.labelName' | t" />
+                      <div class="colors">
+                        @for (c of colors; track c) {
+                          <button type="button" class="swatch" [attr.data-color]="c" [class.on]="colorOf(l) === c"
+                            [attr.aria-label]="'projectSettings.colors.' + c | t" (click)="recolor(i, c)"></button>
+                        }
+                      </div>
+                      <button type="button" class="link danger" (click)="remove(i)">{{ 'projectSettings.delete' | t }}</button>
+                    </li>
+                  }
+                </ul>
+                @if (labels().length < max) {
+                  <form class="add" (ngSubmit)="add()">
+                    <input name="newLabel" [(ngModel)]="newName" maxlength="20" [placeholder]="'projectSettings.newLabel' | t" />
+                    <button type="submit" class="ghost" [disabled]="!newName.trim()">{{ 'projectSettings.add' | t }}</button>
+                  </form>
+                } @else {
+                  <p class="help">{{ 'projectSettings.maxReached' | t: { n: '' + max } }}</p>
                 }
-              </div>
-              <button type="button" class="link danger" (click)="remove(i)">{{ 'projectSettings.delete' | t }}</button>
-            </li>
+              </section>
+            }
+            @case ('rules') {
+              <section>
+                @for (k of dayKeys; track k) {
+                  <label class="num">
+                    <span class="name">{{ 'projectSettings.' + k | t }}</span>
+                    <span class="in">
+                      <input type="number" inputmode="numeric" step="1" [min]="range(k)[0]" [max]="range(k)[1]"
+                        [ngModel]="settings()[k]" (ngModelChange)="setNum(k, $event)" />
+                      <span>{{ (k === 'highPriorityLimit' ? 'projectSettings.unitCount' : 'projectSettings.unitDays') | t }}</span>
+                    </span>
+                    <span class="help">{{ 'projectSettings.' + k + 'Help' | t: { min: '' + range(k)[0], max: '' + range(k)[1] } }}</span>
+                  </label>
+                }
+              </section>
+            }
+            @case ('features') {
+              <!-- 使う機能：右端のスイッチ。押したらすぐ保存する（通知設定と同じ手触り） -->
+              <section>
+                @for (f of featureList; track f) {
+                  <label class="sw-row">
+                    <span class="f-body">
+                      <span class="f-name">{{ 'projectSettings.' + f | t }}</span>
+                      <span class="help">{{ 'projectSettings.' + f + 'Help' | t }}</span>
+                    </span>
+                    <input type="checkbox" role="switch" class="switch" [checked]="savedSettings().features[f]"
+                      [disabled]="busy()" (change)="setFeature(f, $event)" />
+                  </label>
+                }
+              </section>
+            }
           }
-        </ul>
+          @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
+          @if (info()) { <p class="ok" role="status">{{ info() | t }}</p> }
 
-        @if (labels().length < max) {
-          <form class="add" (ngSubmit)="add()">
-            <input name="newLabel" [(ngModel)]="newName" maxlength="20" [placeholder]="'projectSettings.newLabel' | t" />
-            <button type="submit" [disabled]="!newName.trim()">{{ 'projectSettings.add' | t }}</button>
-          </form>
-        } @else {
-          <p class="help">{{ 'projectSettings.maxReached' | t: { n: '' + max } }}</p>
-        }
-        @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
-        @if (info()) { <p class="ok">{{ info() | t }}</p> }
-      </section>
-
-      <section id="ps-rules">
-        <h2>{{ 'projectSettings.rules' | t }}</h2>
-        <div class="nums">
-          @for (k of dayKeys; track k) {
-            <label class="num">
-              <span class="name">{{ 'projectSettings.' + k | t }}</span>
-              <span class="in">
-                <input type="number" inputmode="numeric" step="1" [min]="range(k)[0]" [max]="range(k)[1]"
-                  [ngModel]="settings()[k]" (ngModelChange)="setNum(k, $event)" />
-                <span>{{ (k === 'highPriorityLimit' ? 'projectSettings.unitCount' : 'projectSettings.unitDays') | t }}</span>
-              </span>
-              <span class="help">{{ 'projectSettings.' + k + 'Help' | t: { min: '' + range(k)[0], max: '' + range(k)[1] } }}</span>
-            </label>
+          @if (dirty()) {
+            <div class="savebar" role="status">
+              <span>{{ 'settings.unsaved' | t }}</span>
+              <button type="button" class="link" [disabled]="busy()" (click)="discard()">{{ 'settings.discard' | t }}</button>
+              <button type="button" class="primary" [disabled]="busy()" (click)="save()">{{ 'settings.saveChanges' | t }}</button>
+            </div>
           }
         </div>
-      </section>
-
-      <section id="ps-features">
-        <h2>{{ 'projectSettings.features' | t }}</h2>
-        <label class="feature">
-          <input type="checkbox" [checked]="settings().features.gantt"
-            (change)="setFeature('gantt', $any($event.target).checked)" />
-          <span class="f-body">
-            <span class="f-name">{{ 'projectSettings.gantt' | t }}</span>
-            <span class="help">{{ 'projectSettings.ganttHelp' | t }}</span>
-          </span>
-        </label>
-        <label class="feature">
-          <input type="checkbox" [checked]="settings().features.effort"
-            (change)="setFeature('effort', $any($event.target).checked)" />
-          <span class="f-body">
-            <span class="f-name">{{ 'projectSettings.effort' | t }}</span>
-            <span class="help">{{ 'projectSettings.effortHelp' | t }}</span>
-          </span>
-        </label>
-        <label class="feature">
-          <input type="checkbox" [checked]="settings().features.recurring"
-            (change)="setFeature('recurring', $any($event.target).checked)" />
-          <span class="f-body">
-            <span class="f-name">{{ 'projectSettings.recurring' | t }}</span>
-            <span class="help">{{ 'projectSettings.recurringHelp' | t }}</span>
-          </span>
-        </label>
-      </section>
-
-      @if (dirty()) {
-        <div class="savebar" role="status">
-          <span>{{ 'settings.unsaved' | t }}</span>
-          <button type="button" class="link" [disabled]="busy()" (click)="discard()">{{ 'settings.discard' | t }}</button>
-          <button type="button" class="primary" [disabled]="busy()" (click)="save()">{{ 'settings.saveChanges' | t }}</button>
-        </div>
-      }
-      </div>
       </div>
     }
   `,
   styles: `
-    .layout { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 24px; align-items: start; }
-    .index { position: sticky; top: 68px; display: flex; flex-direction: column; gap: 2px; }
-    .index button { text-align: left; min-height: 36px; padding: 0 10px; border: none; border-radius: 6px;
-      background: none; color: var(--text); font-size: 14px; cursor: pointer; }
-    .index button:hover { background: var(--surface-alt); }
+    /* 左に索引、右にページ（個人の設定と同じ形）。スマホは索引を上に横並び */
+    .layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 24px; align-items: start; }
     .body { min-width: 0; max-width: 720px; }
-    /* 飛んだとき、アプリのヘッダーの下に隠れないように */
-    .body section { scroll-margin-top: 68px; }
     @media (max-width: 720px) {
-      .layout { grid-template-columns: minmax(0, 1fr); gap: 8px; }
-      .index { position: static; flex-direction: row; overflow-x: auto; scrollbar-width: none; }
-      .index::-webkit-scrollbar { display: none; }
-      .index button { flex: none; white-space: nowrap; }
+      .layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
     }
-    h2 { font-size: 16px; }
-    .pname { box-sizing: border-box; width: 100%; max-width: 480px; min-height: 44px; font-size: 16px; padding: 0 12px; }
-    .labels { list-style: none; padding: 0; margin: 0 0 12px; }
+    .page-title { font-size: 18px; margin: 0 0 12px; }
+    section { border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px;
+      display: flex; flex-direction: column; gap: 12px; }
+    .pname { width: 100%; max-width: 480px; }
+    .labels { list-style: none; padding: 0; margin: 0; }
     .labels li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0;
       border-bottom: 1px solid var(--border); }
-    .labels input { flex: 1; min-width: 140px; min-height: 40px; font-size: 16px; padding: 0 10px; }
+    .labels input { flex: 1; min-width: 140px; }
     .colors { display: flex; gap: 6px; }
     .swatch { width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
     .swatch.on { border-color: var(--text); }
@@ -161,30 +154,21 @@ const RANGES: Record<NumKey, [number, number]> = {
     .swatch[data-color='purple'] { background: var(--label-purple); }
     .swatch[data-color='gray']   { background: var(--label-gray); }
     .add { display: flex; gap: 8px; max-width: 480px; }
-    .add input { flex: 1; min-height: 44px; font-size: 16px; padding: 0 12px; }
-    .add button { min-height: 44px; padding: 0 16px; }
-    .link { background: none; border: none; color: var(--primary); min-height: 40px; cursor: pointer; }
-    .danger { color: var(--danger-text); }
-    .help { font-size: 12px; color: var(--text-muted); }
+    .add input { flex: 1; }
+    .help { font-size: 12px; color: var(--text-muted); margin: 0; }
     .error { color: var(--danger-text); }
     .ok { color: var(--success-text); }
     .savebar { position: sticky; bottom: 0; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-      padding: 12px 16px; margin: 16px -16px 0; background: var(--warning-bg); border-top: 1px solid var(--warning-border); }
+      padding: 12px 16px; border-radius: 8px; background: var(--warning-bg); border-top: 1px solid var(--warning-border); }
     .savebar span { flex: 1; font-size: 13px; }
-    .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary);
-      border: none; border-radius: 8px; }
-    .nums { display: flex; flex-direction: column; gap: 14px; max-width: 520px; }
     .num { display: flex; flex-direction: column; gap: 4px; }
     .num .name { font-size: 14px; font-weight: bold; }
-    .num select, .num input { min-height: 44px; font-size: 16px; padding: 0 10px; }
-    .num select { max-width: 160px; }
     .num .in { display: flex; align-items: center; gap: 6px; }
     .num input { width: 100px; }
-    .num .help { margin: 0; }
-    .feature { display: flex; align-items: flex-start; gap: 10px; max-width: 520px; cursor: pointer; }
-    .feature + .feature { margin-top: 12px; }
-    .feature input { width: 20px; height: 20px; margin-top: 2px; }
-    .f-body { display: flex; flex-direction: column; gap: 2px; }
+    /* 左に名前と説明、右端にスイッチ */
+    .sw-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; cursor: pointer; }
+    .sw-row + .sw-row { padding-top: 12px; border-top: 1px solid var(--border); }
+    .f-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
     .f-name { font-size: 14px; font-weight: bold; }
   `,
 })
@@ -193,6 +177,13 @@ export class ProjectSettings implements OnInit {
   private ps = inject(ProjectService);
   private i18n = inject(I18nService);
   private search = inject(SearchService);
+
+  /** このページで出す欄（道の data で決まる。左の索引の1項目にあたる） */
+  readonly section = inject(ActivatedRoute).snapshot.data['section'] as Section;
+  readonly index = INDEX;
+  /** ページの見出し（左の索引と同じ名前） */
+  titleKey = computed(() => INDEX.find((x) => x.path === this.section)?.key ?? 'tabs.settings');
+  readonly featureList: Feature[] = ['gantt', 'effort', 'recurring'];
 
   /** 画面で編集中のプロジェクト名と、保存済みの名前 */
   name = signal('');
@@ -208,7 +199,7 @@ export class ProjectSettings implements OnInit {
   private saved = signal<Label[]>([]);
   /** 画面で編集中の設定と、保存済みの設定 */
   settings = signal<SettingsData>(DEFAULT_SETTINGS);
-  private savedSettings = signal<SettingsData>(DEFAULT_SETTINGS);
+  savedSettings = signal<SettingsData>(DEFAULT_SETTINGS);
 
   readonly dayKeys: NumKey[] = ['staleDays', 'effectCheckDays', 'highPriorityLimit'];
   newName = '';
@@ -216,21 +207,9 @@ export class ProjectSettings implements OnInit {
   error = signal('');
   info = signal('');
 
-  /** 左の索引（押すと、その欄まで動く） */
-  readonly sections = [
-    { id: 'ps-name', key: 'projectSettings.name' },
-    { id: 'ps-labels', key: 'projectSettings.labels' },
-    { id: 'ps-rules', key: 'projectSettings.rules' },
-    { id: 'ps-features', key: 'projectSettings.features' },
-  ];
-
-  jump(id: string) {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
   private labelsDirty = computed(() => JSON.stringify(this.labels()) !== JSON.stringify(this.saved()));
   private settingsDirty = computed(() => JSON.stringify(this.settings()) !== JSON.stringify(this.savedSettings()));
-  /** どちらかに未保存の変更があれば、下に保存のバーを出す（保存は1つのボタンで両方） */
+  /** 未保存の変更があれば、下に保存のバーを出す（ページごとに、そのページの欄だけが変わる） */
   dirty = computed(() => this.nameDirty() || this.labelsDirty() || this.settingsDirty());
 
   ngOnInit() {
@@ -257,10 +236,30 @@ export class ProjectSettings implements OnInit {
     this.info.set('');
   }
 
-  /** 使う機能のオン・オフ。保存するまでは画面の中だけ（保存は「通知と日数」と同じバー） */
-  setFeature(k: keyof SettingsData['features'], v: boolean) {
-    this.settings.update((s) => ({ ...s, features: { ...s.features, [k]: v } }));
+  /**
+   * 使う機能のオン・オフ。押したらすぐ保存する（保存済みの設定に、機能だけを変えて書く）。
+   * 失敗したら、スイッチを元に戻して知らせる
+   */
+  async setFeature(f: Feature, e: Event) {
+    const el = e.target as HTMLInputElement;
+    const prev = this.savedSettings();
+    const next = { ...prev, features: { ...prev.features, [f]: el.checked } };
+    this.busy.set(true);
+    this.error.set('');
     this.info.set('');
+    try {
+      await this.ps.updateSettings(this.ctx.pid(), next);
+      this.ctx.setSettings(next);
+      this.savedSettings.set(next);
+      this.settings.set(next);
+      this.info.set('settings.saved');
+    } catch (err) {
+      console.error(err);
+      el.checked = !el.checked;
+      this.error.set('common.saveError');
+    } finally {
+      this.busy.set(false);
+    }
   }
 
   colorOf(l: Label) {
