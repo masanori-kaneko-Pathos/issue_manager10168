@@ -42,6 +42,9 @@ export const ja = {
     loadError: '読み込めませんでした。再読み込みしてください。',
     saveError: '保存できませんでした。もう一度お試しください。',
   },
+
+  crumbs: { nav: 'いまの場所', home: 'ホーム', inbox: '受信箱', drafts: '下書き' },
+
   projects: {
     title: 'プロジェクト',
     namePlaceholder: '新しいプロジェクト名',
