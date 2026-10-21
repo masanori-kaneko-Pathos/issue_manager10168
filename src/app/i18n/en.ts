@@ -192,6 +192,7 @@ export const en: Dict = {
     impactPlaceholder: 'e.g. Billing page for Client A, all signed-in users',
     similar: 'Similar issues exist. If yours is the same, use the existing one instead of creating a new one.',
     similarHelp: 'You can still create this issue. Links open in a new tab.',
+    created: 'Created #{{n}}', openCreated: 'Open',
   },
   status: {
     open: 'Open', in_progress: 'In progress', on_hold: 'On hold',

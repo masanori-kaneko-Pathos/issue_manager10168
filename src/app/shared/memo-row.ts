@@ -8,6 +8,7 @@ import { InboxMemo } from '../core/models';
 import { IS_TOUCH, enterKey } from '../core/dom';
 import { relativeTime } from '../core/time/time';
 import { I18nService, TPipe } from '../i18n/i18n';
+import { IssueFormService } from '../core/issue/issue-form.service';
 
 /**
  * 受信箱のメモの1行。押すか ✎ で、その場で直せる（1行目がタイトル、2行目から詳しいこと）。
@@ -124,6 +125,7 @@ export class MemoRow implements OnInit {
   protected inbox = inject(InboxService);
   private undo = inject(UndoService);
   private router = inject(Router);
+  private issueForm = inject(IssueFormService);
   private clock = inject(Clock);
   private i18n = inject(I18nService);
   readonly touch = IS_TOUCH;
@@ -204,7 +206,7 @@ export class MemoRow implements OnInit {
   toIssue() {
     this.menuOpen.set(false);
     this.leave.emit();
-    this.router.navigate(['/new'], { queryParams: { memo: this.memo().id } });
+    this.issueForm.open(null, { memo: this.memo().id });
   }
 
   /** ゴミ箱へ（30日で自動で消える）。下に「元に戻す」 */

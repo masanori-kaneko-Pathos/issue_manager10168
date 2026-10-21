@@ -10,7 +10,7 @@ import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth/auth.service';
 import { Clock } from '../../core/time/clock';
 import { ConflictError, EMPTY_STATUS_PAYLOAD, IssueService, conflictWho } from '../../core/issue/issue.service';
-import { DEFAULT_SETTINGS, Issue, IssueStatus, Level, labelsOf, hasWorkaround } from '../../core/models';
+import { DEFAULT_SETTINGS, InboxMemo, Issue, IssueStatus, Level, labelsOf, hasWorkaround } from '../../core/models';
 import { LabelChip } from '../../shared/label-chip';
 import { PriorityMark } from '../../shared/priority-mark';
 import { compareIssues, isManualPriority, isStale, priorityOf } from '../../core/issue/priority';
@@ -27,6 +27,8 @@ import { Avatar } from '../../shared/avatar';
 import { TrashDrop } from '../../shared/trash-drop';
 import { DeleteDialog } from '../issue/delete-dialog';
 import { AssigneeDialog } from '../../shared/assignee-dialog';
+import { InboxService } from '../../core/inbox/inbox.service';
+import { IssueFormService } from '../../core/issue/issue-form.service';
 
 type ColKey = 'open' | 'in_progress' | 'resolved' | 'done' | 'on_hold';
 type DueFilter = 'today' | 'week' | 'overdue';
@@ -38,6 +40,10 @@ interface AltCol { key: string; label: string; issues: Issue[]; overdue: number;
 /** 期限の列 → その列の期限（今日から何日後の 23:59）。ドラッグで落としたときの最初の値と、「＋」で登録するときの期限 */
 const DUE_COL_DAYS: Record<string, number> = { today: 0, tomorrow: 1, week: 7, later: 14 };
 const DAY = 24 * 60 * 60 * 1000;
+/** つかんでいるのが受信箱のメモか（課題には番号があり、メモにはない） */
+function isMemo(x: unknown): x is InboxMemo {
+  return !!x && typeof x === 'object' && !('number' in x);
+}
 
 /** 列 → その列に置いたときのステータス */
 const COL_STATUS: Record<ColKey, IssueStatus> = {
@@ -64,11 +70,17 @@ const EMPTY_PAYLOAD = {
   imports: [CdkDropListGroup, CdkDropList, CdkDrag, NgTemplateOutlet,
     CdkScrollable, RouterLink, TPipe, HelpTip, StatusDialog, LabelChip, PriorityMark, DueDialog, PeopleFilter,
     Avatar, TrashDrop, DeleteDialog, AssigneeDialog],
-    host: { '(window:resize)': 'measure()', '(document:keydown.escape)': 'colsOpen.set(false)' },
+  host: { '(window:resize)': 'measure()', '(document:keydown.escape)': 'colsOpen.set(false)' },
   template: `
     <div class="quick">
       <app-people-filter [members]="ctx.assignable()" [counts]="ctx.activeCount()" [value]="who()"
         (picked)="setWho($event)" />
+      @if (!isMobile() && ctx.canCreate() && !ctx.archived()) {
+        <div class="chips">
+          <button type="button" [class.on]="inboxOpen()" [attr.aria-pressed]="inboxOpen()" (click)="toggleInbox()">
+            {{ 'inbox.title' | t }} {{ inbox.count() }}</button>
+        </div>
+      }
       <div class="chips" role="group" [attr.aria-label]="'board.by' | t">
         @for (v of views; track v) {
           <button type="button" [class.on]="by() === v" [attr.aria-pressed]="by() === v"
@@ -132,19 +144,44 @@ const EMPTY_PAYLOAD = {
         </div>
       }
 
-      <div class="board-wrap">
+      <div class="board-wrap" cdkDropListGroup>
+      @if (showInbox()) {
+        <!-- 受信箱の帯：横に流れない。メモを列に落とすと、登録の窓が開く -->
+        <aside class="inbox-strip" [style.height.px]="boardH()">
+          <header class="col-head">
+            <a routerLink="/inbox" class="col-name strip-link">{{ 'inbox.title' | t }} ›</a>
+            <span class="count">{{ inbox.count() }}</span>
+          </header>
+          <div class="cards" cdkDropList [cdkDropListData]="'inbox'" [cdkDropListSortingDisabled]="true"
+            [cdkDropListEnterPredicate]="noEnter">
+            @for (m of inbox.active(); track m.id) {
+              <article class="card memo" cdkDrag [cdkDragData]="m" [cdkDragStartDelay]="{ touch: 300, mouse: 0 }"
+                (cdkDragStarted)="onMemoDragStart(m)" (cdkDragEnded)="onDragEnd()" (cdkDragMoved)="onDragMoved($event)">
+                <div class="body">
+                  <span class="title">{{ m.title }}</span>
+                  @if (m.body) { <span class="memo-b">{{ firstLine(m.body) }}</span> }
+                  @if (inbox.isOld(m)) { <span class="old">{{ 'inbox.old' | t }}</span> }
+                </div>
+              </article>
+            } @empty {
+              <p class="empty">{{ 'inbox.empty' | t }}</p>
+            }
+          </div>
+        </aside>
+      }
+      <div class="board-area">
       @if (by() === 'status') {
-        <div class="board" #boardEl cdkDropListGroup cdkScrollable [class.dragging]="!!dragging()"
+        <div class="board" #boardEl cdkScrollable [class.dragging]="!!dragging()"
           [style.height.px]="boardH()" (scroll)="onBoardScroll()">
           @for (c of visibleCols(); track c) {
             <section class="col" [attr.data-col]="c" [style.flex]="colFlex()"
-              [class.allowed]="!!dragging() && canDropInto(c)" [class.blocked]="!!dragging() && !canDropInto(c)">
+              [class.allowed]="anyDrag() && canDropInto(c)" [class.blocked]="anyDrag() && !canDropInto(c)">
               <header class="col-head">
                 <span class="col-name">{{ 'board.cols.' + c | t }}</span>
                 <span class="count">{{ byCol()[c].length }}</span>
                 @if (c === 'open' && ctx.canCreate()) {
-                  <a class="head-add" [routerLink]="['/p', ctx.pid(), 'new']" [queryParams]="{ ret: here() }"
-                    [attr.aria-label]="'project.newIssue' | t" [title]="'project.newIssue' | t">＋</a>
+                  <button type="button" class="head-add" (click)="issueForm.open(ctx.pid())"
+                    [attr.aria-label]="'project.newIssue' | t" [title]="'project.newIssue' | t">＋</button>
                 }
                 @if (c === 'done') { <span class="note">{{ 'board.doneNote' | t }}</span> }
               </header>
@@ -163,23 +200,22 @@ const EMPTY_PAYLOAD = {
                 </div>
             </section>
           }
-          @if (canTrash()) { <app-trash-drop [show]="!!dragging()" (dropped)="deleting.set($event)" /> }
+          @if (canTrash()) { <app-trash-drop [show]="anyDrag()" (dropped)="onTrash($event)" /> }
         </div>
       } @else {
         <!-- 期限別：期限の列へドラッグできる（落とすと期限の変更の窓）。担当者別：見るだけ -->
-        <div class="board" #boardEl cdkDropListGroup cdkScrollable [class.dragging]="!!dragging()"
+        <div class="board" #boardEl cdkScrollable [class.dragging]="!!dragging()"
           [style.height.px]="boardH()" (scroll)="onBoardScroll()">
           @for (c of altCols(); track c.key) {
             <section class="col" [attr.data-col]="c.key" [style.flex]="colFlex()"
-              [class.allowed]="!!dragging() && altOk(c.key)" [class.blocked]="!!dragging() && !altOk(c.key)">
+              [class.allowed]="anyDrag() && altOk(c.key)" [class.blocked]="anyDrag() && !altOk(c.key)">
               <header class="col-head">
                 <span class="col-name">{{ c.label }}</span>
                 <span class="count">{{ c.issues.length }}</span>
                 @if (c.overdue) { <span class="od">{{ 'board.overdueN' | t: { n: '' + c.overdue } }}</span> }
                 @if (by() === 'due' && c.key !== 'overdue' && ctx.canCreate()) {
-                  <a class="head-add hover" [routerLink]="['/p', ctx.pid(), 'new']"
-                    [queryParams]="{ due: dueDateOf(c.key), ret: here() }"
-                    [attr.aria-label]="'project.newIssue' | t" [title]="'project.newIssue' | t">＋</a>
+                  <button type="button" class="head-add hover" (click)="issueForm.open(ctx.pid(), { due: dueDateOf(c.key) })"
+                    [attr.aria-label]="'project.newIssue' | t" [title]="'project.newIssue' | t">＋</button>
                 }
               </header>
               <div class="cards" cdkDropList [cdkDropListData]="c.key"
@@ -198,11 +234,11 @@ const EMPTY_PAYLOAD = {
               </div>
             </section>
           }
-          @if (canTrash()) { <app-trash-drop [show]="!!dragging()" (dropped)="deleting.set($event)" /> }
+          @if (canTrash()) { <app-trash-drop [show]="anyDrag()" (dropped)="onTrash($event)" /> }
         </div>
       }
         <!-- 列の数を選んでいるとき：左右の端に、1列ずつ送るボタン（乗せると薄く出る） -->
-        @if (colsPick() && !isMobile() && !dragging()) {
+        @if (colsPick() && !isMobile() && !anyDrag()) {
           @if (canLeft()) {
             <button type="button" class="pager left" [attr.aria-label]="'board.prevCol' | t" [title]="'board.prevCol' | t"
               (click)="page(-1)">
@@ -216,6 +252,7 @@ const EMPTY_PAYLOAD = {
                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg></button>
           }
         }
+      </div>
       </div>
     }
 
@@ -334,14 +371,24 @@ const EMPTY_PAYLOAD = {
     .tick { width: 14px; }
     /* カードは縮ませない（overflow: hidden のカードは 0 まで縮められてしまう。はみ出した分は列の中でスクロール） */
     .cards > * { flex: none; }
-    .board-wrap { position: relative; }
+    /* 左に受信箱の帯（横に流れない）、右にかんばん（送りボタンは、かんばんの場所の左右の端） */
+    .board-wrap { display: flex; gap: 12px; align-items: flex-start; }
+    .board-area { position: relative; flex: 1; min-width: 0; }
+    .inbox-strip { flex: none; width: 240px; box-sizing: border-box; display: flex; flex-direction: column;
+      background: var(--surface-alt); border-radius: 10px; border-top: 4px solid var(--primary); }
+    .strip-link { color: var(--text); text-decoration: none; }
+    .strip-link:hover { text-decoration: underline; }
+    .card.memo { border-left-color: var(--primary); }
+    .memo-b { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .old { align-self: flex-start; font-size: 11px; padding: 1px 6px; border-radius: 8px;
+      background: var(--warning-bg); color: var(--warning-text); }
     .pager { position: absolute; top: 50%; transform: translateY(-50%); z-index: 5; width: 36px; height: 56px;
       display: inline-flex; align-items: center; justify-content: center; padding: 0;
       border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-muted);
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); opacity: 0; transition: opacity 0.15s; cursor: pointer; }
     .pager.left { left: 4px; }
     .pager.right { right: 4px; }
-    .board-wrap:hover .pager { opacity: 0.75; }
+    .board-area:hover .pager { opacity: 0.75; }
     .pager:hover, .pager:focus-visible { opacity: 1 !important; color: var(--text); }
     .card { background: var(--surface); border-radius: 8px; border-left: 4px solid var(--disabled);
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); overflow: hidden; cursor: grab; }
@@ -368,6 +415,7 @@ const EMPTY_PAYLOAD = {
     .head-add { margin-left: auto; width: 32px; height: 32px; border-radius: 8px; display: inline-flex;
       align-items: center; justify-content: center; color: var(--primary); text-decoration: none;
       font-size: 18px; font-weight: bold; }
+    button.head-add { padding: 0; border: none; background: none; cursor: pointer; }
     .head-add:hover { background: var(--surface); }
         /* 期限の列の ＋ は、マウスの端末では列に乗せたときだけ出す（スマホはいつも出す） */
     @media (hover: hover) and (pointer: fine) {
@@ -454,6 +502,58 @@ export class ProjectBoard implements OnInit {
   pendingAssignee = signal<{ issue: Issue; to: string } | null>(null);
   /** 窓に渡す名前の引き方（テンプレートでは矢印関数が書けないので、ここで作る） */
   readonly nameFn = (uid: string) => this.ctx.nameOf(uid);
+  protected inbox = inject(InboxService);
+  protected issueForm = inject(IssueFormService);
+  /** 受信箱のメモをつかんでいる間 */
+  draggingMemo = signal<InboxMemo | null>(null);
+  /** 課題かメモのどちらかを、つかんでいるか */
+  anyDrag = computed(() => !!this.dragging() || !!this.draggingMemo());
+  /** 帯の中には、何も落とさせない（メモはかんばんの列へ。課題は帯に入れない） */
+  readonly noEnter = () => false;
+
+  /** 受信箱の帯を開いているか（端末ごとに覚える） */
+  private readonly inboxKey = `issuemanager.boardInbox.${auth.currentUser!.uid}`;
+  inboxOpen = signal((() => {
+    try {
+      return localStorage.getItem(this.inboxKey) === '1';
+    } catch {
+      return false;
+    }
+  })());
+  /** 帯を出すか：PC で、課題を作れる人（管理者・メンバー）が開いたとき。アーカイブ中は出さない */
+  showInbox = computed(() => this.inboxOpen() && !this.isMobile() && this.ctx.canCreate() && !this.ctx.archived());
+
+  toggleInbox() {
+    this.inboxOpen.set(!this.inboxOpen());
+    try {
+      localStorage.setItem(this.inboxKey, this.inboxOpen() ? '1' : '0');
+    } catch {
+      // 覚えられなくても、今の画面には効く
+    }
+  }
+
+  firstLine(body: string) {
+    return body.split('\n')[0];
+  }
+
+  onMemoDragStart(m: InboxMemo) {
+    this.draggingMemo.set(m);
+    this.raf = requestAnimationFrame(this.autoScroll);
+  }
+
+  /** ゴミ箱に落とした：課題なら削除の窓、メモならゴミ箱へ（元に戻すつき） */
+  async onTrash(x: Issue | InboxMemo) {
+    if (!isMemo(x)) {
+      this.deleting.set(x);
+      return;
+    }
+    try {
+      await this.inbox.discard(x.id);
+      this.undo.offer('inbox.discarded', undefined, () => this.inbox.restore(x.id));
+    } catch (e) {
+      console.error(e);
+    }
+  }
   menuFor = signal<string | null>(null);
   /** ゴミ箱に落とした課題（削除の窓で確かめ中） */
   deleting = signal<Issue | null>(null);
@@ -624,7 +724,7 @@ export class ProjectBoard implements OnInit {
     if (b === 'overdue' || b === 'today' || b === 'tomorrow') return b;
     return i.dueAt.toMillis() - now <= 7 * DAY ? 'week' : 'later';
   }
-  
+
   /** 今の画面の道（登録画面から、このかんばんに戻ってくるため。分け方・人の絞り込みも入っている） */
   here() {
     return this.router.url;
@@ -650,6 +750,16 @@ export class ProjectBoard implements OnInit {
   onDueDrop(e: CdkDragDrop<string, string, Issue>) {
     this.dragging.set(null);
     if (e.previousContainer === e.container) return;
+    // 受信箱のメモ：その列の期限か担当者を入れて、登録の窓を開く
+    const data = e.item.data as Issue | InboxMemo;
+    if (isMemo(data)) {
+      const key = e.container.data;
+      if (this.altOk(key)) {
+        this.issueForm.open(this.ctx.pid(),
+          { memo: data.id, ...(this.by() === 'due' ? { due: this.dueDateOf(key) } : { assignee: key }) });
+      }
+      return;
+    }
     // 担当者のかんばん：別の人の列に落としたら、担当者を変える窓
     if (this.by() === 'assignee') {
       const to = e.container.data;
@@ -765,13 +875,16 @@ export class ProjectBoard implements OnInit {
     return this.moves(i).length > 0;
   }
 
-  private canMove(i: Issue, col: ColKey) {
+  private canMove(i: Issue | InboxMemo, col: ColKey) {
+    // 受信箱のメモ：登録は未着手から、の決まりなので、未着手の列だけ
+    if (isMemo(i)) return col === 'open';
     if (colOf(i.status) === col) return true; // 元の列に戻すのはOK
     return this.moves(i).some((a) => a.t.to === COL_STATUS[col]);
   }
 
   /** 枠の強調用：今つかんでいるカードを、この列に落とせるか */
   canDropInto(col: ColKey) {
+    if (this.draggingMemo()) return col === 'open';
     const d = this.dragging();
     return !d || this.canMove(d, col);
   }
@@ -783,6 +896,7 @@ export class ProjectBoard implements OnInit {
 
   onDragEnd() {
     this.dragging.set(null);
+    this.draggingMemo.set(null);
     this.frozen.set(null); // 止めていた間に届いた変更を、ここで反映する
     cancelAnimationFrame(this.raf);
     this.pointer = null;
@@ -793,7 +907,8 @@ export class ProjectBoard implements OnInit {
   private pointer: { x: number; y: number } | null = null;
   private raf = 0;
 
-  onDragMoved(e: CdkDragMove<Issue>) {
+  /** 課題のカードでも受信箱のメモでも、使うのは指の位置だけ */
+  onDragMoved(e: Pick<CdkDragMove<unknown>, 'pointerPosition'>) {
     this.pointer = e.pointerPosition;
   }
 
@@ -827,6 +942,11 @@ export class ProjectBoard implements OnInit {
   onDrop(e: CdkDragDrop<ColKey, ColKey, Issue>) {
     this.dragging.set(null);
     if (e.previousContainer === e.container) return;
+    const data = e.item.data as Issue | InboxMemo;
+    if (isMemo(data)) {
+      if (e.container.data === 'open') this.issueForm.open(this.ctx.pid(), { memo: data.id });
+      return;
+    }
     const issue = e.item.data;
     const a = this.moves(issue).find((m) => m.t.to === COL_STATUS[e.container.data]);
     if (a) this.start(issue, a.t);

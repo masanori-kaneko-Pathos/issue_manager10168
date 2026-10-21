@@ -24,6 +24,8 @@ import { MemberSelect } from '../../shared/member-select';
 import { NotificationService } from '../../core/notification/notification.service';
 import { setDoc } from 'firebase/firestore';
 import { PeopleFilter, whoFromQuery, whoQuery } from '../../shared/people-filter';
+import { IssueFormService } from '../../core/issue/issue-form.service';
+
 
 type SortKey = 'priority' | 'due' | 'number' | 'updated';
 type BulkAction = 'assignee' | 'labels' | 'importance' | 'due' | 'delete';
@@ -44,7 +46,7 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
       <div class="section-head">
         <h2>{{ 'project.issues' | t }}</h2>
         @if (canCreate()) {
-          <a class="primary" [routerLink]="['/p', pid(), 'new']">{{ 'project.newIssue' | t }}</a>
+          <button type="button" class="primary" (click)="issueForm.open(pid())">{{ 'project.newIssue' | t }}</button>
                } @else {
           <span class="denied-wrap">
             <button type="button" class="primary" disabled>{{ 'project.newIssue' | t }}</button>
@@ -385,6 +387,7 @@ export class TabList implements OnInit {
   isViewer = computed(() => this.ctx.role() === 'viewer');
   labels = computed(() => this.ctx.project()?.labels ?? []);
   private notifications = inject(NotificationService);
+  protected issueForm = inject(IssueFormService);
   private readonly myUid = auth.currentUser!.uid;
 
   // ---- まとめて操作 ----

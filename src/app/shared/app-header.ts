@@ -18,6 +18,7 @@ import { DraftService } from '../core/draft/draft.service';
 import { Avatar } from './avatar';
 import { SETTINGS_NAV } from './settings-nav';
 import { NoticeActions } from './notice-actions';
+import { IssueFormService } from '../core/issue/issue-form.service';
 
 @Component({
   selector: 'app-header',
@@ -266,6 +267,7 @@ export class AppHeader {
   protected notify = inject(NotificationService);
   /** 下書き（件数を＋のメニューに出す） */
   protected drafts = inject(DraftService);
+  private issueForm = inject(IssueFormService);
   private clock = inject(Clock);
   private i18n = inject(I18nService);
   bellOpen = signal(false);
@@ -363,8 +365,7 @@ export class AppHeader {
   /** プロジェクトの中にいるときは、そのプロジェクトを選んだ状態で開く */
   newIssue() {
     this.addOpen.set(false);
-    const pid = this.currentPid();
-    this.router.navigate(['/new'], { queryParams: pid ? { p: pid } : {} });
+    this.issueForm.open(this.currentPid());
   }
 
   newProject() {

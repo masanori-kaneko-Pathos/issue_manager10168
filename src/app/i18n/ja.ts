@@ -189,6 +189,7 @@ export const ja = {
     impactPlaceholder: '例：A社の請求画面、ログインしている全員',
     similar: '似た課題があります。同じ内容なら、登録せずにそちらを使ってください。',
     similarHelp: 'このまま登録することもできます。押すと別のタブで開きます。',
+    created: '#{{n}} を登録しました', openCreated: '開く',
   },
   status: {
     open: '未着手', in_progress: '対応中', on_hold: '保留',

@@ -42,6 +42,7 @@ import { AttachmentList } from './attachment-list';
 import { DraftService, fieldPlace } from '../../core/draft/draft.service';
 import { Avatar } from '../../shared/avatar';
 import { Crumbs, Crumb, HOME } from '../../shared/crumbs';
+import { IssueFormService } from '../../core/issue/issue-form.service';
 
 
 /** 経緯の「編集した欄」の項目名 → 翻訳キー（issue.〇〇）。名前が違うものだけ書く */
@@ -88,6 +89,7 @@ export class IssueDetail implements OnInit {
   private clock = inject(Clock);
   protected i18n = inject(I18nService);
   private undo = inject(UndoService);
+  protected issueForm = inject(IssueFormService);
 
 
   readonly pid = this.route.snapshot.paramMap.get('pid')!;

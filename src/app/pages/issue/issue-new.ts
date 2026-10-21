@@ -1,7 +1,7 @@
 import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { bigrams, coverage } from '../../core/search/match';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/router';
 import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth/auth.service';
 import { ProjectService } from '../../core/project/project.service';
@@ -19,6 +19,7 @@ import { MAX_ATTACHMENTS } from '../../core/models';
 import { sizeText } from './attachment-list';
 import { ImageViewer, ViewerImage } from '../../shared/image-viewer';
 import { Crumbs, Crumb, HOME } from '../../shared/crumbs';
+import { ISSUE_NEW_EMBED } from '../../core/issue/issue-form.service';
 
 const LAST_PROJECT_KEY = 'issuemanager.lastProject';
 
@@ -53,13 +54,23 @@ interface IssueDraft {
   impact: string;
   showDetail: boolean;
   estimate?: number | null;
+  /** どこから開いたか（下書きから登録しても、メモが消える・元の課題とつながる、が効くように） */
+  src?: {
+    memoId: string | null;
+    relatedFrom: IssueLink | null;
+    recurrenceOf: { iid: string; number: number } | null;
+    splitFrom: { iid: string; sid: string; number: number } | null;
+    notes: { from: number | null; copy: number | null; recur: number | null; split: { n: number; title: string } | null };
+  };
 }
 
 @Component({
   selector: 'app-issue-new',
   imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelPicker, MemberSelect, ImageViewer, Crumbs],
   template: `
-    <header class="head"><app-crumbs [items]="crumbs()"><span>{{ 'issueNew.title' | t }}</span></app-crumbs></header>
+    @if (!embed) {
+      <header class="head"><app-crumbs [items]="crumbs()"><span>{{ 'issueNew.title' | t }}</span></app-crumbs></header>
+    }
     <main>
       <h1>{{ 'issueNew.title' | t }}</h1>
       @if (fromNumber(); as n) { <p class="notice">{{ 'prevention.creating' | t: { n: '' + n } }}</p> }
@@ -224,7 +235,12 @@ interface IssueDraft {
         }
 
         @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
-        <button type="submit" class="primary" [disabled]="busy() || !ready()">{{ 'issueNew.submit' | t }}</button>
+        <div class="row">
+          @if (embed) {
+            <button type="button" class="link" (click)="discard()">{{ 'workflow.cancel' | t }}</button>
+          }
+          <button type="submit" class="primary" [disabled]="busy() || !ready()">{{ 'issueNew.submit' | t }}</button>
+        </div>
       </form>
     </main>
     @if (viewer(); as v) {
@@ -280,39 +296,53 @@ export class IssueNew implements OnInit {
   private authService = inject(AuthService);
   protected i18n = inject(I18nService);
 
+  /** 窓として開いたときの値（ふつうのページなら null） */
+  protected readonly embed = inject(ISSUE_NEW_EMBED, { optional: true });
+  /** ? の値。窓として開いたときは、呼んだ側が渡した値（窓は自分の URL を持たないため） */
+  private readonly qp = this.embed ? convertToParamMap(this.embed.query) : this.route.snapshot.queryParamMap;
   /** 開いた元のプロジェクト（プロジェクトの外から開いたときは null） */
-  private readonly fromPid =
-    this.route.snapshot.paramMap.get('pid') ?? this.route.snapshot.queryParamMap.get('p');
+  private readonly fromPid = this.embed
+    ? this.embed.pid
+    : this.route.snapshot.paramMap.get('pid') ?? this.qp.get('p');
   pid = signal<string | null>(null);
   projects = signal<ProjectWithRole[]>([]);
   loadingProjects = signal(true);
   /** 受信箱のメモから来たときの、メモの id */
-  private readonly memoId = this.route.snapshot.queryParamMap.get('memo');
+  private memoId = this.qp.get('memo');
   private inbox = inject(InboxService);
   /** 再発防止課題として作るときの、元の課題の id（詳細画面の「再発防止課題を作る」から来たとき） */
-  private readonly fromIid = this.route.snapshot.queryParamMap.get('from');
+  private readonly fromIid = this.qp.get('from');
   private relatedFrom: IssueLink | null = null;
   /** 複製するときの、元の課題の id（詳細画面の ⋮「複製する」から来たとき） */
-  private readonly copyIid = this.route.snapshot.queryParamMap.get('copy');
+  private readonly copyIid = this.qp.get('copy');
   /** 登録したあとに戻る画面（かんばんの列の ＋ から来たとき）。同じプロジェクトの中の道だけ受け付ける */
-  private readonly ret = this.route.snapshot.queryParamMap.get('ret');
+  private readonly ret = this.qp.get('ret');
   copyNumber = signal<number | null>(null);
   /** 再発として登録するときの、元の課題の id（詳細画面の「再発として新しく登録」から来たとき） */
-  private readonly recurIid = this.route.snapshot.queryParamMap.get('recur');
+  private readonly recurIid = this.qp.get('recur');
   private recurrenceOf: { iid: string; number: number } | null = null;
 
   recurNumber = signal<number | null>(null);
   /** サブタスクを切り出すときの、親の課題とサブタスクの id（サブタスクの ⋮「課題に切り出す」から来たとき） */
-  private readonly splitOf = this.route.snapshot.queryParamMap.get('splitOf');
-  private readonly splitSub = this.route.snapshot.queryParamMap.get('sub');
+  private readonly splitOf = this.qp.get('splitOf');
+  private readonly splitSub = this.qp.get('sub');
   private splitFrom: { iid: string; sid: string; number: number } | null = null;
   splitNote = signal<{ n: number; title: string } | null>(null);
   fromNumber = signal<number | null>(null);
   private drafts = inject(DraftService);
-  /** 下書きにできるのは、ふつうの登録だけ（メモ・再発防止・再発・切り出しは、元から開き直せば同じ中身になるため） */
-  private readonly draftable = !this.memoId && !this.fromIid && !this.recurIid && !this.splitOf && !this.copyIid;
-  /** この画面の下書きの id（下書きから開いたときはその id。新しく開いたときは、打ち始めたら下書きになる） */
-  private readonly draftId = this.route.snapshot.queryParamMap.get('draft') ?? crypto.randomUUID();
+  /** どこから開いた登録も、下書きにする（書き足した中身は、元から開き直しても戻らないため） */
+  private readonly draftable = true;
+  /**
+   * 下書きの id。下書きから開いたときはその id。メモ・再発防止・再発・切り出し・複製から開いたときは、元で決まる名前
+   * （同じ元からもう一度開くと、書きかけの続きが開く。同じ元の下書きが2つできない）。ふつうの登録は新しい id
+   */
+  private readonly draftId = this.qp.get('draft')
+    ?? (this.memoId ? 'memo:' + this.memoId
+      : this.fromIid ? 'from:' + this.fromIid
+        : this.recurIid ? 'recur:' + this.recurIid
+          : this.splitOf && this.splitSub ? `split:${this.splitOf}_${this.splitSub}`
+            : this.copyIid ? 'copy:' + this.copyIid
+              : crypto.randomUUID());
   private draftTimer: ReturnType<typeof setTimeout> | undefined;
   /** 何か触ったか（触っていなければしまわない） */
   private touched = false;
@@ -320,7 +350,7 @@ export class IssueNew implements OnInit {
   private submitted = false;
   backLink = computed(() => {
     const src = this.fromIid || this.recurIid || this.splitOf || this.copyIid;
-    return this.route.snapshot.queryParamMap.get('draft') ? ['/drafts']
+    return this.qp.get('draft') ? ['/drafts']
       : this.memoId ? ['/inbox']
         : src && this.fromPid ? ['/p', this.fromPid, 'i', src]
           : this.fromPid ? ['/p', this.fromPid] : ['/'];
@@ -328,7 +358,7 @@ export class IssueNew implements OnInit {
 
   /** 道しるべ：来た所に合わせて「ホーム › 下書き」「ホーム › 受信箱」「ホーム › プロジェクト名 › #12」 */
   crumbs = computed<Crumb[]>(() => {
-    if (this.route.snapshot.queryParamMap.get('draft')) return [HOME, { key: 'crumbs.drafts', link: '/drafts' }];
+    if (this.qp.get('draft')) return [HOME, { key: 'crumbs.drafts', link: '/drafts' }];
     if (this.memoId) return [HOME, { key: 'crumbs.inbox', link: '/inbox' }];
     if (!this.fromPid) return [HOME];
     const src = this.fromIid || this.recurIid || this.splitOf || this.copyIid;
@@ -441,17 +471,20 @@ export class IssueNew implements OnInit {
         ?? writable[0]?.id ?? null;
       if (first) await this.selectProject(first);
       // カレンダーの日付から来たら、その日の23:59（自分のタイムゾーン）を期限に入れる
-      const due = this.route.snapshot.queryParamMap.get('due');
+      const due = this.qp.get('due');
       const m = due?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
       if (m) {
         const d = zonedTime(+m[1], +m[2], +m[3], 23, 59, this.tz());
         this.dueAt.set(d);
         this.dueInput = toLocalInput(d, this.tz());
       }
-      // 下書きから開いたら、その中身を入れる
-      await this.restoreDraft();
-      // 受信箱のメモから来たら、タイトルと内容を入れておく
-      if (this.memoId) {
+      // かんばんの担当者の列から来たら、その人を担当者に（担当者になれる人のときだけ）
+      const who = this.qp.get('assignee');
+      if (who && this.members().some((m) => m.uid === who)) this.assigneeId.set(who);
+      // 下書きがあれば、その中身を入れる（同じメモ・同じ元からの書きかけも、ここで続きが開く）
+      const restored = await this.restoreDraft();
+      // 受信箱のメモから来たら、タイトルと内容を入れておく（書きかけの続きを開いたときは、入れ直さない）
+      if (this.memoId && !restored) {
         const memo = await this.inbox.get(this.memoId);
         if (memo) {
           this.title = memo.title;
@@ -462,10 +495,12 @@ export class IssueNew implements OnInit {
         }
       }
       // 再発防止課題として作るときは、必須の欄を全部埋めておく
-      if (this.fromIid && this.fromPid) await this.fillPrevention(this.fromPid, this.fromIid);
-      if (this.recurIid && this.fromPid) await this.fillRecurrence(this.fromPid, this.recurIid);
-      if (this.splitOf && this.splitSub && this.fromPid) await this.fillSplit(this.fromPid, this.splitOf, this.splitSub);
-      if (this.copyIid && this.fromPid) await this.fillCopy(this.fromPid, this.copyIid);
+      if (!restored) {
+        if (this.fromIid && this.fromPid) await this.fillPrevention(this.fromPid, this.fromIid);
+        if (this.recurIid && this.fromPid) await this.fillRecurrence(this.fromPid, this.recurIid);
+        if (this.splitOf && this.splitSub && this.fromPid) await this.fillSplit(this.fromPid, this.splitOf, this.splitSub);
+        if (this.copyIid && this.fromPid) await this.fillCopy(this.fromPid, this.copyIid);
+      }
       // 受信箱のメモや再発などで題名が入ったときも、似た課題を出す
       this.titleQ.set(this.title);
     } catch (e) {
@@ -564,7 +599,7 @@ export class IssueNew implements OnInit {
   private attachments = inject(AttachmentService);
   readonly maxFiles = MAX_ATTACHMENTS;
   /** 下書きから開いたか（ファイルは下書きに残らないことを知らせるため） */
-  readonly fromDraft = !!this.route.snapshot.queryParamMap.get('draft');
+  readonly fromDraft = !!this.qp.get('draft');
   /** ためたファイルと、画像なら手元で作った一時的な URL（小さな絵に使う。外したとき・離れるときに返す） */
   pending = signal<{ file: File; url: string | null }[]>([]);
   viewer = signal<{ list: ViewerImage[]; index: number } | null>(null);
@@ -659,6 +694,14 @@ export class IssueNew implements OnInit {
     this.showDetail.set(true);
   }
 
+  /** やめる（窓のとき）：書きかけを捨てて閉じる。外・Esc・✕ で閉じたときは、下書きに残る */
+  discard() {
+    this.submitted = true; // 閉じるときに、しまい直さない
+    clearTimeout(this.draftTimer);
+    this.drafts.remove(this.draftId);
+    this.embed?.close();
+  }
+
   /** 何か触ったら、少し待ってから下書きにしまう（1文字ごとに書き込まないように） */
   touch() {
     if (!this.draftable || this.submitted) return;
@@ -677,6 +720,10 @@ export class IssueNew implements OnInit {
       doneCriteria: this.doneCriteria, description: this.description, labelIds: this.labelIds(),
       occurredOn: this.occurredOn, impact: this.impact, showDetail: this.showDetail(),
       estimate: this.estimate,
+      src: {
+        memoId: this.memoId, relatedFrom: this.relatedFrom, recurrenceOf: this.recurrenceOf, splitFrom: this.splitFrom,
+        notes: { from: this.fromNumber(), copy: this.copyNumber(), recur: this.recurNumber(), split: this.splitNote() },
+      },
     };
     const empty = !v.title.trim() && !v.type && !v.importance && v.dueMs == null && !v.doneCriteria.trim()
       && !v.description.trim() && !v.labelIds.length && !v.occurredOn && !v.impact.trim() && v.estimate == null;
@@ -688,10 +735,10 @@ export class IssueNew implements OnInit {
    * 下書きから開いたときに、中身を入れる。プロジェクトが今も登録できるものなら、そちらに切り替えてから。
    * 期限は日時そのものを戻す（「今日中」は書いた日の今日なので、選んだボタンではなく日時で戻す）
    */
-  private async restoreDraft() {
-    const id = this.route.snapshot.queryParamMap.get('draft');
-    const d = id ? this.drafts.get(id) : null;
-    if (!d || d.kind !== 'issue') return;
+  private async restoreDraft(): Promise<boolean> {
+    // 下書きから開いたときも、メモ・複製などの元から開き直したときも、同じ名前の下書きがあれば続きを開く
+    const d = this.drafts.get(this.draftId);
+    if (!d || d.kind !== 'issue') return false;
     const v = d.data as IssueDraft;
     if (v.pid && v.pid !== this.pid() && this.projects().some((p) => p.id === v.pid)) await this.selectProject(v.pid);
     this.title = v.title;
@@ -713,6 +760,18 @@ export class IssueNew implements OnInit {
     this.impact = v.impact;
     this.showDetail.set(v.showDetail);
     this.estimate = v.estimate ?? null;
+    // どこから開いたか（プロジェクトを選び直したあとに入れる。選び直すと、ひも付けが外れるため）
+    if (v.src) {
+      this.memoId = v.src.memoId;
+      this.relatedFrom = v.src.relatedFrom;
+      this.recurrenceOf = v.src.recurrenceOf;
+      this.splitFrom = v.src.splitFrom;
+      this.fromNumber.set(v.src.notes.from);
+      this.copyNumber.set(v.src.notes.copy);
+      this.recurNumber.set(v.src.notes.recur);
+      this.splitNote.set(v.src.notes.split);
+    }
+    return true;
   }
 
   selectType(t: IssueType) {
@@ -754,7 +813,7 @@ export class IssueNew implements OnInit {
     this.error.set('');
     try {
       const pid = this.pid()!;
-      const { iid } = await this.issues.create(pid, {
+      const { iid, number } = await this.issues.create(pid, {
         title: this.title.trim(),
         type: this.type()!,
         importance: this.importance()!,
@@ -783,6 +842,11 @@ export class IssueNew implements OnInit {
         return;
       }
       // 切り出したときは、親の課題に戻る（切り出し済みになったことを、その場で確かめられるように）
+      // 窓として開いていたら、閉じて知らせるだけ（今の画面はそのまま。できた課題は見張りで届く）
+      if (this.embed) {
+        this.embed.done({ pid, iid, number });
+        return;
+      }
       // かんばんの ＋ から来たら、そのかんばんへ戻る（登録の途中で別のプロジェクトに替えたら、ふだんどおり）
       if (this.ret?.startsWith(`/p/${pid}/`)) await this.router.navigateByUrl(this.ret);
       else await this.router.navigate(this.splitFrom ? ['/p', pid, 'i', this.splitFrom.iid] : ['/p', pid]);

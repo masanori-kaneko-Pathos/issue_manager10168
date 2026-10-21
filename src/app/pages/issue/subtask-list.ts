@@ -15,6 +15,7 @@ import { HelpTip } from '../../shared/help-tip';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { ReminderService } from '../../core/reminder/reminder.service';
 import { ReminderDialog } from './reminder-dialog';
+import { IssueFormService } from '../../core/issue/issue-form.service';
 
 /**
  * 課題の詳細の「サブタスク」の欄。見張り・追加・□・行の編集・並べ替えを、この中で済ませる。
@@ -103,9 +104,9 @@ import { ReminderDialog } from './reminder-dialog';
                     }
                     @if (canEdit()) {
                       <button type="button" role="menuitem" (click)="startEdit(s)">{{ 'subtask.edit' | t }}</button>
-                      <a role="menuitem" [routerLink]="['/p', pid(), 'new']"
-                        [queryParams]="{ splitOf: issue().id, sub: s.id }" (click)="menuFor.set(null)">
-                        {{ 'subtask.split' | t }}</a>
+                      <button type="button" role="menuitem"
+                        (click)="menuFor.set(null); issueForm.open(pid(), { splitOf: issue().id, sub: s.id })">
+                        {{ 'subtask.split' | t }}</button>
                       <button type="button" role="menuitem" class="danger" (click)="remove(s)">{{ 'subtask.delete' | t }}</button>
                     }
                   </div>
@@ -218,6 +219,7 @@ export class SubtaskList implements OnInit {
   private stop: Unsubscribe | null = null;
   private stopReminders: Unsubscribe | null = null;
   private reminderService = inject(ReminderService);
+  protected issueForm = inject(IssueFormService);
   /** サブタスクに置いた、自分のリマインド（sid → リマインド） */
   private reminders = signal(new Map<string, Reminder>());
   /** リマインドの窓を開いているサブタスク */

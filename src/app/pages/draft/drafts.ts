@@ -9,6 +9,7 @@ import { relativeTime } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { ProjectNewDialog } from '../../shared/project-new-dialog';
 import { Crumbs, HOME } from '../../shared/crumbs';
+import { IssueFormService } from '../../core/issue/issue-form.service';
 
 /** 下書きの一覧（新しく作るものの書きかけ。この端末にだけ残る） */
 @Component({
@@ -77,6 +78,7 @@ export class Drafts implements OnInit {
   private ps = inject(ProjectService);
   private undo = inject(UndoService);
   private router = inject(Router);
+  private issueForm = inject(IssueFormService);
   private clock = inject(Clock);
   private i18n = inject(I18nService);
   readonly crumbs = [HOME];
@@ -104,7 +106,7 @@ export class Drafts implements OnInit {
 
   /** 続きを書く：課題は登録画面へ、プロジェクトは作成の窓をこのページの上に開く */
   open(d: Draft) {
-    if (d.kind === 'issue') this.router.navigate(['/new'], { queryParams: { draft: d.id } });
+    if (d.kind === 'issue') this.issueForm.open(d.pid, { draft: d.id });
     else this.projectDraft.set(d.id);
   }
 

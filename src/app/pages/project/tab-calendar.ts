@@ -16,6 +16,7 @@ import { PeopleFilter, whoFromQuery, whoQuery } from '../../shared/people-filter
 import { TrashDrop } from '../../shared/trash-drop';
 import { DeleteDialog } from '../issue/delete-dialog';
 import { UndoService } from '../../core/undo/undo.service';
+import { IssueFormService } from '../../core/issue/issue-form.service';
 
 type Mode = 'month' | 'week';
 interface Day { key: string; d: number; dow: number; inRange: boolean; }
@@ -100,8 +101,8 @@ function addDays(dt: Date, n: number): Date {
               <span class="date">{{ day.d }}</span>
               @if (items.length) { <span class="count">{{ items.length }}</span> }
               @if (ctx.canCreate()) {
-                <a class="add" [routerLink]="['/p', ctx.pid(), 'new']" [queryParams]="{ due: day.key }"
-                  [attr.aria-label]="'calendar.addOn' | t: { date: day.key }" (click)="$event.stopPropagation()">＋</a>
+                <button type="button" class="add" [attr.aria-label]="'calendar.addOn' | t: { date: day.key }"
+                  (click)="$event.stopPropagation(); issueForm.open(ctx.pid(), { due: day.key })">＋</button>
               }
             </div>
             <div class="items">
@@ -186,8 +187,9 @@ function addDays(dt: Date, n: number): Date {
       width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; }
     .cell-head { display: flex; align-items: center; gap: 4px; font-size: 12px; }
     .cell-head .count { display: none; }
-    .add { margin-left: auto; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center;
-      justify-content: center; text-decoration: none; color: var(--primary); font-weight: bold; opacity: 0; }
+    .add { margin-left: auto; width: 22px; height: 22px; padding: 0; border: none; border-radius: 50%; background: none;
+      display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
+      color: var(--primary); font-size: inherit; font-weight: bold; opacity: 0; cursor: pointer; }
     .cell:hover .add, .add:focus { opacity: 1; }
     .items { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
     .item { display: block; font-size: 11px; line-height: 1.4; padding: 1px 4px; border-radius: 4px;
@@ -241,6 +243,7 @@ export class ProjectCalendar implements OnInit {
   /** 落としたあと、モーダルで確かめ中の変更 */
   pending = signal<{ issue: Issue; date: string } | null>(null);
   private undo = inject(UndoService);
+  protected issueForm = inject(IssueFormService);
   /** ゴミ箱に落とした課題（削除の窓で確かめ中） */
   deleting = signal<Issue | null>(null);
   /** ゴミ箱を出すか：削除できるのは管理者だけ。アーカイブ中は出さない */

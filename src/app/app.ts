@@ -4,10 +4,11 @@ import { computed, inject } from '@angular/core';
 import { AuthService } from './core/auth/auth.service';
 import { AppHeader } from './shared/app-header';
 import { UndoToast } from './shared/undo-toast';
+import { IssueFormHost } from './shared/issue-form-host';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, AppHeader, UndoToast],
+  imports: [RouterOutlet, AppHeader, UndoToast, IssueFormHost],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })

@@ -23,14 +23,14 @@
             }
             <button type="button" role="menuitem" (click)="copyLink()">{{ 'detailMenu.copyLink' | t }}</button>
             @if (canCreate()) {
-              <a role="menuitem" [routerLink]="['/p', pid, 'new']" [queryParams]="{ copy: i.id }"
-                (click)="menuOpen.set(false)">{{ 'detailMenu.duplicate' | t }}</a>
+              <button type="button" role="menuitem" (click)="menuOpen.set(false); issueForm.open(pid, { copy: i.id })">
+                {{ 'detailMenu.duplicate' | t }}</button>
             }
             @if (canCreate() && (i.status === 'resolved' || i.status === 'closed')) {
-              <a role="menuitem" [routerLink]="['/p', pid, 'new']" [queryParams]="{ from: i.id }"
-                (click)="menuOpen.set(false)">{{ 'prevention.create' | t }}</a>
-              <a role="menuitem" [routerLink]="['/p', pid, 'new']" [queryParams]="{ recur: i.id }"
-                (click)="menuOpen.set(false)">{{ 'detailMenu.recur' | t }}</a>
+              <button type="button" role="menuitem" (click)="menuOpen.set(false); issueForm.open(pid, { from: i.id })">
+                {{ 'prevention.create' | t }}</button>
+              <button type="button" role="menuitem" (click)="menuOpen.set(false); issueForm.open(pid, { recur: i.id })">
+                {{ 'detailMenu.recur' | t }}</button>
             }
             @if (showMerge() && !projectArchived()) {
               @if (role() === 'member') {
@@ -588,7 +588,8 @@
               @if (showRecommend()) {
                 <p class="recommend">{{ 'prevention.recommend' | t }}
                   @if (canCreate()) {
-                    <a [routerLink]="['/p', pid, 'new']" [queryParams]="{ from: i.id }">{{ 'prevention.create' | t }}</a>
+                    <button type="button" class="link" (click)="issueForm.open(pid, { from: i.id })">
+                      {{ 'prevention.create' | t }}</button>
                   }
                 </p>
               }
