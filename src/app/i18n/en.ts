@@ -573,6 +573,7 @@ export const en: Dict = {
     purgeConfirm: 'Delete #{{n}} "{{title}}" permanently? Its history and comments will also be deleted. This cannot be undone.',
     empty: 'The trash is empty.',
     open: 'Open trash',
+    dropHere: 'Drop here to delete',
   },
   members: {
     role: 'Role',

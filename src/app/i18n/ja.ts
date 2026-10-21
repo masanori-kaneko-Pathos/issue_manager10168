@@ -569,6 +569,7 @@ export const ja = {
     purgeConfirm: '#{{n}}「{{title}}」を完全に削除しますか？ 経緯とコメントも消え、元に戻せません。',
     empty: '削除フォルダは空です。',
     open: '削除フォルダを開く',
+    dropHere: 'ドロップで削除',
   },
   members: {
     role: '役割',

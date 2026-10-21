@@ -24,6 +24,8 @@ import { StatusDialog } from '../../shared/status-dialog';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { PeopleFilter, whoFromQuery, whoQuery } from '../../shared/people-filter';
 import { Avatar } from '../../shared/avatar';
+import { TrashDrop } from '../../shared/trash-drop';
+import { DeleteDialog } from '../issue/delete-dialog';
 
 type ColKey = 'open' | 'in_progress' | 'resolved' | 'done' | 'on_hold';
 type DueFilter = 'today' | 'week' | 'overdue';
@@ -58,7 +60,7 @@ const EMPTY_PAYLOAD = {
   selector: 'app-tab-board',
   imports: [CdkDropListGroup, CdkDropList, CdkDrag, NgTemplateOutlet,
     CdkScrollable, RouterLink, TPipe, HelpTip, StatusDialog, LabelChip, PriorityMark, DueDialog, PeopleFilter,
-    Avatar],
+    Avatar, TrashDrop, DeleteDialog],
   template: `
     <div class="quick">
       <app-people-filter [members]="ctx.assignable()" [counts]="ctx.activeCount()" [value]="who()"
@@ -147,6 +149,7 @@ const EMPTY_PAYLOAD = {
               }
             </section>
           }
+          @if (canTrash()) { <app-trash-drop [show]="!!dragging()" (dropped)="deleting.set($event)" /> }
         </div>
       } @else {
         <!-- 期限別：期限の列へドラッグできる（落とすと期限の変更の窓）。担当者別：見るだけ -->
@@ -176,6 +179,7 @@ const EMPTY_PAYLOAD = {
               </div>
             </section>
           }
+          @if (canTrash()) { <app-trash-drop [show]="!!dragging()" (dropped)="deleting.set($event)" /> }
         </div>
       }
     }
@@ -249,6 +253,10 @@ const EMPTY_PAYLOAD = {
     @if (pendingDue(); as p) {
       <app-due-dialog [issue]="p.issue" [date]="p.date" [pickDate]="p.pick" [pid]="ctx.pid()" [members]="ctx.members()"
         (done)="pendingDue.set(null)" (cancel)="pendingDue.set(null)" />
+    }
+    @if (deleting(); as d) {
+      <app-delete-dialog [pid]="ctx.pid()" [issue]="d" [members]="ctx.members()"
+        (done)="onDeleted(d)" (cancel)="deleting.set(null)" />
     }
   `,
   styles: `
@@ -380,6 +388,10 @@ export class ProjectBoard implements OnInit {
   /** 期限切れの列には落とせない（わざわざ過去にする場面がないため。どうしても過去にするなら、詳細から） */
   readonly dueEnter = (_drag: CdkDrag<Issue>, drop: CdkDropList<string>) => drop.data !== 'overdue';
   menuFor = signal<string | null>(null);
+  /** ゴミ箱に落とした課題（削除の窓で確かめ中） */
+  deleting = signal<Issue | null>(null);
+  /** ゴミ箱を出すか：削除できるのは管理者だけ。アーカイブ中は出さない */
+  canTrash = computed(() => this.ctx.role() === 'admin' && !this.ctx.archived());
   /** URL から読んだ「選んだ人」（抜けた人が混ざっていることもある） */
   private whoRaw = signal<string[]>([]);
   /** 絞り込みに使う人。担当者になれる人だけ残す（抜けた人は黙って外す。だれも残らなければ全員） */
@@ -708,6 +720,13 @@ export class ProjectBoard implements OnInit {
 
   async onDialogDone() {
     this.pending.set(null);
+  }
+
+  /** 削除できた：削除フォルダから元のステータスに戻す「元に戻す」を出す */
+  onDeleted(i: Issue) {
+    this.deleting.set(null);
+    this.undo.offer('delete.moved', { n: String(i.number) },
+      () => this.issueService.restoreIssue(this.ctx.pid(), i.id, this.myUid, this.tz()));
   }
 
   // ---- 表示用 ----

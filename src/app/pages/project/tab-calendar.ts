@@ -13,6 +13,9 @@ import { ProjectContext } from './project-context';
 import { dateKey } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { PeopleFilter, whoFromQuery, whoQuery } from '../../shared/people-filter';
+import { TrashDrop } from '../../shared/trash-drop';
+import { DeleteDialog } from '../issue/delete-dialog';
+import { UndoService } from '../../core/undo/undo.service';
 
 type Mode = 'month' | 'week';
 interface Day { key: string; d: number; dow: number; inRange: boolean; }
@@ -34,7 +37,8 @@ function addDays(dt: Date, n: number): Date {
 
 @Component({
   selector: 'app-tab-calendar',
-  imports: [RouterLink, TPipe, CdkDropListGroup, CdkDropList, CdkDrag, DueDialog, PriorityMark, PeopleFilter],
+  imports: [RouterLink, TPipe, CdkDropListGroup, CdkDropList, CdkDrag, DueDialog, PriorityMark, PeopleFilter,
+    TrashDrop, DeleteDialog],
   host: { '(document:keydown.escape)': 'pickerOpen.set(false)' },
   template: `
     <div class="toolbar">
@@ -121,12 +125,18 @@ function addDays(dt: Date, n: number): Date {
             </div>
           </div>
         }
+        @if (canTrash()) { <app-trash-drop [show]="!!dragging()" (dropped)="deleting.set($event)" /> }
       </div>
     }
     @if (pending(); as p) {
       <app-due-dialog [issue]="p.issue" [date]="p.date" [pid]="ctx.pid()" [members]="ctx.members()"
         (done)="onDialogDone()" (cancel)="pending.set(null)" />
     }
+    @if (deleting(); as d) {
+      <app-delete-dialog [pid]="ctx.pid()" [issue]="d" [members]="ctx.members()"
+        (done)="onDeleted(d)" (cancel)="deleting.set(null)" />
+    }
+
   `,
   styles: `
     /* 左（人）・真ん中（‹ 年月 › 今日）・右（月｜週）。左右が同じ幅を取り合うので、真ん中はいつも真ん中 */
@@ -230,6 +240,11 @@ export class ProjectCalendar implements OnInit {
   dragging = signal<Issue | null>(null);
   /** 落としたあと、モーダルで確かめ中の変更 */
   pending = signal<{ issue: Issue; date: string } | null>(null);
+  private undo = inject(UndoService);
+  /** ゴミ箱に落とした課題（削除の窓で確かめ中） */
+  deleting = signal<Issue | null>(null);
+  /** ゴミ箱を出すか：削除できるのは管理者だけ。アーカイブ中は出さない */
+  canTrash = computed(() => this.ctx.role() === 'admin' && !this.ctx.archived());
   /** ドラッグを離した直後のクリックで、詳細が開かないようにする目印 */
   private justDragged = false;
 
@@ -438,8 +453,11 @@ export class ProjectCalendar implements OnInit {
   onDragEnded() {
     this.dragging.set(null);
     this.frozen.set(null);
+    // 離した直後のクリックだけ止める。クリックが届いたあとで目印を戻す
     this.justDragged = true;
+    setTimeout(() => (this.justDragged = false));
   }
+
   open(i: Issue) {
     if (this.justDragged) return;
     this.router.navigate(['/p', this.ctx.pid(), 'i', i.id]);
@@ -448,4 +466,11 @@ export class ProjectCalendar implements OnInit {
   onDialogDone() {
     this.pending.set(null);
   }
+
+   /** 削除できた：「元に戻す」を出す */
+   onDeleted(i: Issue) {
+    this.deleting.set(null);
+    this.undo.offer('delete.moved', { n: String(i.number) },
+      () => this.issueService.restoreIssue(this.ctx.pid(), i.id, this.myUid, this.tz()));
+  } 
 }
