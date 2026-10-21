@@ -446,6 +446,9 @@ export const ja = {
     prevCol: '前の列へ', nextCol: '次の列へ',
     colsN: '{{n}}列',
     assigneeDropHint: 'カードをドロップで、担当者を変更できます',
+    toSubtask: 'サブタスクにする', toSubtaskDone: '#{{n}} のサブタスクにしました',
+    dropToIssue: 'ドロップで課題に',
+    byLabel: '分け方',
   },
   assigneeDialog: { title: '担当者を変える' },
   who: {

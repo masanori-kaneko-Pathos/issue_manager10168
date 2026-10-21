@@ -149,6 +149,8 @@ export interface NewSubtask {
   assigneeId: string;
   dueAt: Date | null;
   order: number;
+  /** 最初から入れておくメモ（受信箱のメモを重ねたとき、その本文）。無ければ空 */
+  memo?: string;
 }
 
 /** サブタスクを直すときの値（変えた欄だけ入れる。dueAt の null は「期限を外す」） */
@@ -862,7 +864,7 @@ export class IssueService {
    * サブタスクを足す。経緯に「足した」を残し、担当者が自分以外なら知らせる（同じ封筒で）。
    * 宛先が今もメンバーかを読んでから書くので、トランザクションにする
    */
-  async addSubtask(pid: string, issue: Issue, v: NewSubtask, uid: string, tz: string) {
+  async addSubtask(pid: string, issue: Issue, v: NewSubtask, uid: string, tz: string): Promise<string> {
     const issueRef = doc(db, 'projects', pid, 'issues', issue.id);
     const ref = doc(this.subtaskCol(pid, issue.id));
     await runTransaction(db, async (tx) => {
@@ -870,7 +872,7 @@ export class IssueService {
         [{ to: v.assigneeId, type: 'subtaskAssigned', detail: v.title }]);
       tx.set(ref, {
         title: v.title, assigneeId: v.assigneeId, dueAt: v.dueAt ? Timestamp.fromDate(v.dueAt) : null,
-        status: 'todo', memo: '', order: v.order,
+        status: 'todo', memo: v.memo ?? '', order: v.order,
         createdBy: uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), updatedBy: uid,
       });
       tx.set(doc(collection(issueRef, 'events')), {
@@ -878,6 +880,8 @@ export class IssueService {
       });
       notes.forEach((n) => tx.set(n.ref, n.data));
     });
+    // 作ったサブタスクの id（受信箱のメモから作ったとき、「元に戻す」で消すため）
+    return ref.id;
   }
 
   /** サブタスクを直す（変えた欄だけ）。担当者を自分以外に替えたら、新しい担当者に知らせる。経緯には残さない */

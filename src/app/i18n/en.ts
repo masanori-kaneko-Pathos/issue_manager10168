@@ -449,6 +449,9 @@ export const en: Dict = {
     prevCol: 'Previous column', nextCol: 'Next column',
     colsN: '{{n}} columns',
     assigneeDropHint: 'Drop a card on another person\'s column to change the assignee',
+    toSubtask: 'Make a subtask', toSubtaskDone: 'Added as a subtask of #{{n}}',
+    dropToIssue: 'Drop here to create an issue',
+    byLabel: 'Group by',
   },
   assigneeDialog: { title: 'Change assignee' },
   who: {

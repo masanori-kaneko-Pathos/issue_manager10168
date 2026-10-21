@@ -10,7 +10,9 @@ import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth/auth.service';
 import { Clock } from '../../core/time/clock';
 import { ConflictError, EMPTY_STATUS_PAYLOAD, IssueService, conflictWho } from '../../core/issue/issue.service';
-import { DEFAULT_SETTINGS, InboxMemo, Issue, IssueStatus, Level, labelsOf, hasWorkaround } from '../../core/models';
+import {
+  DEFAULT_SETTINGS, InboxMemo, Issue, IssueStatus, Level, MAX_SUBTASKS, Subtask, labelsOf, hasWorkaround,
+} from '../../core/models';
 import { LabelChip } from '../../shared/label-chip';
 import { PriorityMark } from '../../shared/priority-mark';
 import { compareIssues, isManualPriority, isStale, priorityOf } from '../../core/issue/priority';
@@ -29,6 +31,7 @@ import { DeleteDialog } from '../issue/delete-dialog';
 import { AssigneeDialog } from '../../shared/assignee-dialog';
 import { InboxService } from '../../core/inbox/inbox.service';
 import { IssueFormService } from '../../core/issue/issue-form.service';
+import { ChipMenu } from '../../shared/chip-menu';
 
 type ColKey = 'open' | 'in_progress' | 'resolved' | 'done' | 'on_hold';
 type DueFilter = 'today' | 'week' | 'overdue';
@@ -69,8 +72,8 @@ const EMPTY_PAYLOAD = {
   selector: 'app-tab-board',
   imports: [CdkDropListGroup, CdkDropList, CdkDrag, NgTemplateOutlet,
     CdkScrollable, RouterLink, TPipe, HelpTip, StatusDialog, LabelChip, PriorityMark, DueDialog, PeopleFilter,
-    Avatar, TrashDrop, DeleteDialog, AssigneeDialog],
-  host: { '(window:resize)': 'measure()', '(document:keydown.escape)': 'colsOpen.set(false)' },
+    Avatar, TrashDrop, DeleteDialog, AssigneeDialog, ChipMenu],
+    host: { '(window:resize)': 'measure()' },
   template: `
     <div class="quick">
       <app-people-filter [members]="ctx.assignable()" [counts]="ctx.activeCount()" [value]="who()"
@@ -81,42 +84,15 @@ const EMPTY_PAYLOAD = {
             {{ 'inbox.title' | t }} {{ inbox.count() }}</button>
         </div>
       }
-      <div class="chips" role="group" [attr.aria-label]="'board.by' | t">
-        @for (v of views; track v) {
-          <button type="button" [class.on]="by() === v" [attr.aria-pressed]="by() === v"
-            (click)="setBy(v)">{{ 'board.views.' + v | t }}</button>
-        }
-      </div>
-      @if (!isMobile()) {
-        <div class="cols-pick">
-          <!-- 押すボタンはチップの基準のまま（.chips の中に置く） -->
-          <div class="chips">
-            <button type="button" aria-haspopup="menu" [attr.aria-expanded]="colsOpen()" (click)="colsOpen.set(!colsOpen())">
-              {{ 'board.colsLabel' | t }}：{{ colsPick() ? ('board.colsN' | t: { n: '' + colsPick() }) : ('board.colsAll' | t) }}
-              <span aria-hidden="true">▾</span></button>
-          </div>
-          @if (colsOpen()) {
-            <div class="backdrop" (click)="colsOpen.set(false)"></div>
-            <div class="menu" role="menu">
-              @for (n of colsOptions; track n) {
-                <button type="button" role="menuitemradio" [attr.aria-checked]="colsPick() === n" [class.on]="colsPick() === n"
-                  (click)="colsOpen.set(false); setCols(n)">
-                  <span class="tick" aria-hidden="true">{{ colsPick() === n ? '✓' : '' }}</span>
-                  {{ n ? ('board.colsN' | t: { n: '' + n }) : ('board.colsAll' | t) }}</button>
-              }
-            </div>
-          }
-        </div>
-      }
-
+      <app-chip-menu [label]="'board.byLabel' | t" [options]="byMenu()" [value]="by()" (picked)="setBy($any($event))" />
       <!-- 「期限」の表示では、列そのものが期限で分かれているので出さない -->
       @if (by() !== 'due') {
-        <div class="chips">
-          <button type="button" [class.on]="!due()" (click)="setDue(null)">{{ 'board.dueAll' | t }}</button>
-          @for (d of dueOptions; track d) {
-            <button type="button" [class.on]="due() === d" (click)="setDue(d)">{{ 'board.due.' + d | t }}</button>
-          }
-        </div>
+        <app-chip-menu [label]="'issue.due' | t" [options]="dueMenu()" [value]="due() ?? 'all'" [active]="!!due()"
+          (picked)="pickDue($event)" />
+      }
+      @if (!isMobile()) {
+        <app-chip-menu [label]="'board.colsLabel' | t" [options]="colsMenu()" [value]="colsPick()"
+          (picked)="setCols(+$event)" />
       }
       @if (by() === 'assignee') {
         <span class="view-note">{{ 'board.assigneeDropHint' | t }}</span>
@@ -156,7 +132,7 @@ const EMPTY_PAYLOAD = {
             [cdkDropListEnterPredicate]="noEnter">
             @for (m of inbox.active(); track m.id) {
               <article class="card memo" cdkDrag [cdkDragData]="m" [cdkDragStartDelay]="{ touch: 300, mouse: 0 }"
-                (cdkDragStarted)="onMemoDragStart(m)" (cdkDragEnded)="onDragEnd()" (cdkDragMoved)="onDragMoved($event)">
+                (cdkDragStarted)="onMemoDragStart(m)" (cdkDragEnded)="onMemoDragEnd(m)" (cdkDragMoved)="onDragMoved($event)">
                 <div class="body">
                   <span class="title">{{ m.title }}</span>
                   @if (m.body) { <span class="memo-b">{{ firstLine(m.body) }}</span> }
@@ -186,9 +162,12 @@ const EMPTY_PAYLOAD = {
                 @if (c === 'done') { <span class="note">{{ 'board.doneNote' | t }}</span> }
               </header>
                 <div class="cards" cdkDropList [cdkDropListData]="c" [cdkDropListEnterPredicate]="predicates[c]"
+                  [cdkDropListSortingDisabled]="!!draggingMemo()"
                   [cdkDropListAutoScrollDisabled]="true" (cdkDropListDropped)="onDrop($event)">
+                  @if (draggingMemo() && c === 'open') { <p class="drop-hint">{{ 'board.dropToIssue' | t }}</p> }
                   @for (i of byCol()[c]; track i.id) {
-                    <article class="card" cdkDrag [cdkDragData]="i" [cdkDragDisabled]="!canDrag(i)" (cdkDragMoved)="onDragMoved($event)"
+                    <article class="card" [attr.data-iid]="i.id" [class.target]="hoverCard()?.id === i.id"
+                      cdkDrag [cdkDragData]="i" [cdkDragDisabled]="!canDrag(i)" (cdkDragMoved)="onDragMoved($event)"
                       [cdkDragStartDelay]="{ touch: 300, mouse: 0 }"
                       (cdkDragStarted)="onDragStart(i)" (cdkDragEnded)="onDragEnd()"
                       [attr.data-p]="isActive(i) ? prio(i) : null" [class.closed]="i.status === 'closed'">
@@ -221,9 +200,11 @@ const EMPTY_PAYLOAD = {
               <div class="cards" cdkDropList [cdkDropListData]="c.key"
                 [cdkDropListSortingDisabled]="true" [cdkDropListEnterPredicate]="altEnter"
                 [cdkDropListAutoScrollDisabled]="true" (cdkDropListDropped)="onDueDrop($event)">
+                @if (draggingMemo() && altOk(c.key)) { <p class="drop-hint">{{ 'board.dropToIssue' | t }}</p> }
                 @for (i of c.issues; track i.id) {
                   @let movable = canMoveDue(i);
-                  <article class="card" [class.static]="!movable" [attr.data-p]="prio(i)" (cdkDragMoved)="onDragMoved($event)"
+                  <article class="card" [attr.data-iid]="i.id" [class.target]="hoverCard()?.id === i.id"
+                    [class.static]="!movable" [attr.data-p]="prio(i)" (cdkDragMoved)="onDragMoved($event)"
                     cdkDrag [cdkDragData]="i" [cdkDragDisabled]="!movable" [cdkDragStartDelay]="{ touch: 300, mouse: 0 }"
                     (cdkDragStarted)="onDragStart(i)" (cdkDragEnded)="onDragEnd()">
                     <ng-container [ngTemplateOutlet]="cardBody" [ngTemplateOutletContext]="{ $implicit: i }" />
@@ -258,6 +239,7 @@ const EMPTY_PAYLOAD = {
 
     <!-- カードの中身（3つの表示で共通） -->
     <ng-template #cardBody let-i>
+      @if (hoverCard()?.id === i.id) { <div class="sub-hint">{{ 'board.toSubtask' | t }}</div> }
       @if (isOverdue(i)) { <div class="band">{{ 'board.overdue' | t }}</div> }
       <div class="body">
         <div class="top">
@@ -358,17 +340,6 @@ const EMPTY_PAYLOAD = {
 
     .cards { flex: 1 1 auto; min-height: 40px; overflow-y: auto; display: flex; flex-direction: column;
       gap: 8px; padding: 0 8px 8px; }
-    /* 列の数のメニュー（ほかの ▾ のメニューと同じ形） */
-    .cols-pick { position: relative; }
-    .backdrop { position: fixed; inset: 0; z-index: 51; }
-    .cols-pick .menu { position: absolute; left: 0; top: calc(100% + 4px); z-index: 52; min-width: 140px;
-      display: flex; flex-direction: column; padding: 6px 0; border-radius: 10px;
-      background: var(--surface); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2); }
-    .cols-pick .menu button { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 16px;
-      border: none; background: none; color: var(--text); font-size: 14px; text-align: left; cursor: pointer; }
-    .cols-pick .menu button:hover { background: var(--surface-alt); }
-    .cols-pick .menu button.on { font-weight: bold; color: var(--primary); }
-    .tick { width: 14px; }
     /* カードは縮ませない（overflow: hidden のカードは 0 まで縮められてしまう。はみ出した分は列の中でスクロール） */
     .cards > * { flex: none; }
     /* 左に受信箱の帯（横に流れない）、右にかんばん（送りボタンは、かんばんの場所の左右の端） */
@@ -379,6 +350,15 @@ const EMPTY_PAYLOAD = {
     .strip-link { color: var(--text); text-decoration: none; }
     .strip-link:hover { text-decoration: underline; }
     .card.memo { border-left-color: var(--primary); }
+    /* メモを重ねている課題のカード */
+    .card.target { outline: 3px solid var(--primary); outline-offset: -1px; background: var(--primary-bg); }
+    .sub-hint { padding: 2px 10px; font-size: 11px; font-weight: bold; background: var(--primary); color: var(--on-primary); }
+    .drop-hint { margin: 0; padding: 10px; border: 2px dashed var(--primary); border-radius: 8px;
+      background: var(--primary-bg); color: var(--primary); font-size: 12px; font-weight: bold; text-align: center; }
+    /* つかんだメモの元の場所（影）は出さない。ほかの列に入ったときに、カードを押し下げないように */
+    .card.memo.cdk-drag-placeholder { display: none; }
+    /* 影が無いので、離したときに絵をすべらせて戻さない（戻る先が画面の左上になってしまうため） */
+    .card.memo.cdk-drag-animating { transition: none; }
     .memo-b { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .old { align-self: flex-start; font-size: 11px; padding: 1px 6px; border-radius: 8px;
       background: var(--warning-bg); color: var(--warning-text); }
@@ -536,9 +516,92 @@ export class ProjectBoard implements OnInit {
     return body.split('\n')[0];
   }
 
+  /** メモを重ねている課題（光らせる。離したら、この課題のサブタスクにする） */
+  hoverCard = signal<Issue | null>(null);
+  /** カードに重ねて使ったメモ（列に落ちたほうの処理を、二重に動かさないための目印） */
+  private consumed: string | null = null;
+
   onMemoDragStart(m: InboxMemo) {
+    this.consumed = null;
     this.draggingMemo.set(m);
     this.raf = requestAnimationFrame(this.autoScroll);
+  }
+
+  /** 離したとき：カードが光っていれば、その課題のサブタスクにする */
+  onMemoDragEnd(m: InboxMemo) {
+    this.clearDwell();
+    const target = this.hoverCard();
+    this.hoverCard.set(null);
+    this.onDragEnd();
+    if (!target) return;
+    this.consumed = m.id;
+    this.memoToSubtask(m, target);
+  }
+
+  /**
+   * 受信箱のメモを重ねて、サブタスクにできる課題か。
+   * サブタスクのルール（canEditParent）と同じ：管理者・提起者・担当者で、クローズ・統合・削除・アーカイブ中は不可。30件まで
+   */
+  canSubtask(i: Issue) {
+    const r = this.ctx.role();
+    if (this.ctx.archived() || (r !== 'admin' && r !== 'member')) return false;
+    if (['closed', 'deleted', 'merged'].includes(i.status)) return false;
+    if (r !== 'admin' && i.reporterId !== this.myUid && i.assigneeId !== this.myUid) return false;
+    return (i.subtaskTotal ?? 0) < MAX_SUBTASKS;
+  }
+
+  /** 指の下のカードを確かめる（CDK のつかんだ絵は、指の下の判定に入らないので、その下のカードが見える） */
+  /** 光るのを待っているカード（0.5秒止まったら光らせる） */
+  private dwell: { id: string; timer: ReturnType<typeof setTimeout> } | null = null;
+
+  private clearDwell() {
+    if (this.dwell) clearTimeout(this.dwell.timer);
+    this.dwell = null;
+  }
+
+  /**
+   * 指の下のカードを確かめる。カードの上で 0.5秒止まったら光らせる（通り過ぎるだけでは光らない）。
+   * 光っているカードから外れたら、すぐ消す
+   */
+  private findTarget(p: { x: number; y: number }) {
+    const el = document.elementFromPoint(p.x, p.y)?.closest<HTMLElement>('[data-iid]');
+    const i = el ? this.issues().find((x) => x.id === el.dataset['iid']) ?? null : null;
+    const t = i && this.canSubtask(i) ? i : null;
+    if (t && t.id === this.hoverCard()?.id) return;          // 光っているカードの上にいる
+    if (this.hoverCard()) this.hoverCard.set(null);          // 光っているカードから外れた
+    if (!t) {
+      this.clearDwell();
+      return;
+    }
+    if (this.dwell?.id === t.id) return;                     // このカードで待っている途中
+    this.clearDwell();
+    this.dwell = { id: t.id, timer: setTimeout(() => {
+      this.dwell = null;
+      this.hoverCard.set(t);
+    }, 300) };
+  }
+
+  /**
+   * メモを、課題のサブタスクにする。タイトル＝メモのタイトル、メモ＝本文、担当者＝課題の担当者、期限なし。
+   * メモはゴミ箱へ。「元に戻す」は、サブタスクを消してメモを戻す
+   */
+  private async memoToSubtask(m: InboxMemo, i: Issue) {
+    const pid = this.ctx.pid();
+    try {
+      const subs = await this.issueService.listSubtasks(pid, i.id);
+      if (subs.length >= MAX_SUBTASKS) return;
+      const assigneeId = this.ctx.assignable().some((x) => x.uid === i.assigneeId) ? i.assigneeId : this.myUid;
+      const order = subs.reduce((mx, s) => Math.max(mx, s.order), 0) + 1;
+      const sid = await this.issueService.addSubtask(pid, i,
+        { title: m.title, assigneeId, dueAt: null, order, memo: m.body.slice(0, 2000) }, this.myUid, this.tz());
+      await this.inbox.discard(m.id);
+      this.undo.offer('board.toSubtaskDone', { n: String(i.number) }, async () => {
+        await this.issueService.deleteSubtask(pid, i.id, { id: sid, title: m.title } as Subtask, this.myUid, this.tz());
+        await this.inbox.restore(m.id);
+      });
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   /** ゴミ箱に落とした：課題なら削除の窓、メモならゴミ箱へ（元に戻すつき） */
@@ -594,8 +657,15 @@ export class ProjectBoard implements OnInit {
       return 0;
     }
   })());
-  /** 列の数のメニューが開いているか */
-  colsOpen = signal(false);
+  /** プルダウンの中身（言語を切り替えても、すぐ言葉が変わるように computed で） */
+  byMenu = computed(() => this.views.map((v) => ({ value: v, label: this.i18n.t('board.views.' + v) })));
+  dueMenu = computed(() => [
+    { value: 'all', label: this.i18n.t('board.dueAll') },
+    ...this.dueOptions.map((d) => ({ value: d, label: this.i18n.t('board.due.' + d) })),
+  ]);
+  colsMenu = computed(() => this.colsOptions.map((n) => ({
+    value: n, label: n ? this.i18n.t('board.colsN', { n: String(n) }) : this.i18n.t('board.colsAll'),
+  })));
   /** 列の幅：選んだ数で箱を割る。列がそれより少ないときは、ある列の数で割る（右に空きを残さない） */
   colFlex = computed(() => {
     const pick = this.colsPick();
@@ -749,10 +819,11 @@ export class ProjectBoard implements OnInit {
    */
   onDueDrop(e: CdkDragDrop<string, string, Issue>) {
     this.dragging.set(null);
-    if (e.previousContainer === e.container) return;
+    if (e.previousContainer === e.container || !e.isPointerOverContainer) return;
     // 受信箱のメモ：その列の期限か担当者を入れて、登録の窓を開く
     const data = e.item.data as Issue | InboxMemo;
     if (isMemo(data)) {
+      if (this.consumed === data.id || this.hoverCard()) return;
       const key = e.container.data;
       if (this.altOk(key)) {
         this.issueForm.open(this.ctx.pid(),
@@ -844,6 +915,13 @@ export class ProjectBoard implements OnInit {
     this.due.set(d === null || this.due() === d ? null : d);
     this.updateUrl();
   }
+
+  /** 期限のプルダウンで選んだ（'all' は「すべて」） */
+  pickDue(v: string | number) {
+    this.due.set(v === 'all' ? null : (v as DueFilter));
+    this.updateUrl();
+  }
+
   /** 列の分け方を変える（スマホでは、最初の列に戻る） */
   setBy(v: ViewBy) {
     this.by.set(v);
@@ -910,6 +988,7 @@ export class ProjectBoard implements OnInit {
   /** 課題のカードでも受信箱のメモでも、使うのは指の位置だけ */
   onDragMoved(e: Pick<CdkDragMove<unknown>, 'pointerPosition'>) {
     this.pointer = e.pointerPosition;
+    if (this.draggingMemo()) this.findTarget(e.pointerPosition);
   }
 
   /**
@@ -941,9 +1020,12 @@ export class ProjectBoard implements OnInit {
   };
   onDrop(e: CdkDragDrop<ColKey, ColKey, Issue>) {
     this.dragging.set(null);
-    if (e.previousContainer === e.container) return;
+    // 指が列の上にないところで離したら、何もしない（CDK は「最後に入った列」に落としたことにしてしまうため）
+    if (e.previousContainer === e.container || !e.isPointerOverContainer) return;
     const data = e.item.data as Issue | InboxMemo;
     if (isMemo(data)) {
+      // カードに重ねてサブタスクにしたなら、列に落ちたことは無視する（離した順番は CDK しだいなので、両方を見る）
+      if (this.consumed === data.id || this.hoverCard()) return;
       if (e.container.data === 'open') this.issueForm.open(this.ctx.pid(), { memo: data.id });
       return;
     }
