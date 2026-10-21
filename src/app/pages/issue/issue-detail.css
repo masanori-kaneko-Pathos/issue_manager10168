@@ -176,6 +176,12 @@ a.add-link { display: inline-flex; align-items: center; text-decoration: none; }
 .inline-edit .row button { white-space: nowrap; }
 .icon { display: inline-flex; align-items: center; justify-content: center; }
 .icon.danger:hover:not(:disabled) { color: var(--danger-text); }
+.link-adds { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+/* 原因・対策、回避策の窓（ほかの窓と同じ重ね方） */
+.modal { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; }
+/* 幕は下、窓は上（メニュー用の .backdrop の z-index: 51 を受け継がないように、窓の中だけ決め直す） */
+.modal > .backdrop { position: absolute; inset: 0; z-index: 0; background: rgba(0, 0, 0, 0.4); }
+.modal > .dialog { z-index: 1; }
 /* コメントの直す・消すは、マウスを乗せられる端末では、乗せたコメント（キーボードで移ったものも）だけ見せる。
    隠すのは visibility なので、出し入れで行の高さや文字の位置は動かない */
 @media (hover: hover) and (pointer: fine) {

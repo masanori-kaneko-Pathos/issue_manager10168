@@ -103,6 +103,11 @@ export interface NewIssue {
   relatedFrom?: IssueLink | null;
   /** 再発として登録するときの、元の課題（同じプロジェクト） */
   recurrenceOf?: { iid: string; number: number } | null;
+  /**
+   * ほかの課題とつないで登録する（詳細の「新しく作ってつなぐ」）。種類は元の課題から見たもの：
+   * relates＝関連、waitsFor＝元の課題が、この新しい課題の完了を待つ
+   */
+  linkFrom?: { kind: 'relates' | 'waitsFor'; iid: string; number: number } | null;
   /** サブタスクを課題に切り出すときの、親の課題とサブタスク（同じプロジェクト） */
   splitFrom?: { iid: string; sid: string; number: number } | null;
   /** 工数の見積（工数がオンのときだけ。未入力なら書かない） */
@@ -239,6 +244,23 @@ export class IssueService {
           { kind: 'recurrence', dir: 'in', pid, iid: issueRef.id, by: uid, at: serverTimestamp() });
         tx.set(doc(collection(src, 'events')), {
           type: 'link', link: { action: 'add', kind: 'recurrence', dir: 'in', pid, iid: issueRef.id, number },
+          by: uid, tz, at: serverTimestamp(),
+        });
+      }
+      // ほかの課題とつなぐ：元の課題（out）と新しい課題（in）に1枚ずつ、両方の経緯に残す（登録と同じ封筒で）
+      if (input.linkFrom) {
+        const { kind, iid: srcId, number: srcNumber } = input.linkFrom;
+        const src = doc(projectRef, 'issues', srcId);
+        tx.set(doc(src, 'links', relationId(kind, 'out', pid, issueRef.id)),
+          { kind, dir: 'out', pid, iid: issueRef.id, by: uid, at: serverTimestamp() });
+        tx.set(doc(issueRef, 'links', relationId(kind, 'in', pid, srcId)),
+          { kind, dir: 'in', pid, iid: srcId, by: uid, at: serverTimestamp() });
+        tx.set(doc(collection(src, 'events')), {
+          type: 'link', link: { action: 'add', kind, dir: 'out', pid, iid: issueRef.id, number },
+          by: uid, tz, at: serverTimestamp(),
+        });
+        tx.set(doc(collection(issueRef, 'events')), {
+          type: 'link', link: { action: 'add', kind, dir: 'in', pid, iid: srcId, number: srcNumber },
           by: uid, tz, at: serverTimestamp(),
         });
       }

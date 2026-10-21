@@ -60,7 +60,12 @@ interface IssueDraft {
     relatedFrom: IssueLink | null;
     recurrenceOf: { iid: string; number: number } | null;
     splitFrom: { iid: string; sid: string; number: number } | null;
-    notes: { from: number | null; copy: number | null; recur: number | null; split: { n: number; title: string } | null };
+    linkFrom?: { iid: string; number: number } | null;
+    linkKind?: 'relates' | 'waitsFor';
+    notes: {
+      from: number | null; copy: number | null; recur: number | null; split: { n: number; title: string } | null;
+      link?: { n: number; title: string } | null;
+    };
   };
 }
 
@@ -75,6 +80,17 @@ interface IssueDraft {
       <h1>{{ 'issueNew.title' | t }}</h1>
       @if (fromNumber(); as n) { <p class="notice">{{ 'prevention.creating' | t: { n: '' + n } }}</p> }
       @if (copyNumber(); as n) { <p class="notice">{{ 'copy.creating' | t: { n: '' + n } }}</p> }
+      @if (linkNote(); as l) {
+        <div class="notice link-note">
+          <p>{{ 'links.newCreating' | t: { n: '' + l.n, title: l.title } }}</p>
+          <div class="chips">
+            @for (k of linkKinds; track k) {
+              <button type="button" [class.on]="linkKind() === k" [attr.aria-pressed]="linkKind() === k"
+                (click)="linkKind.set(k); touch()">{{ 'links.newKinds.' + k | t: { n: '' + l.n } }}</button>
+            }
+          </div>
+        </div>
+      }
       @if (recurNumber(); as n) { <p class="notice">{{ 'links.recurCreating' | t: { n: '' + n } }}</p> }
       @if (splitNote(); as s) { <p class="notice">{{ 'subtask.splitCreating' | t: { n: '' + s.n, title: s.title } }}</p> }      
       <!-- 入力・選択・ボタンの操作は、どれも form まで上がってくるので、ここで1回だけ受けて下書きにしまう -->
@@ -261,6 +277,8 @@ interface IssueDraft {
     .chips { margin: 4px 0 8px; }
     .link { align-self: flex-start; }
     .notice { background: var(--warning-bg); padding: 12px; border-radius: 8px; margin: 0; font-weight: normal; }
+    .link-note { display: flex; flex-direction: column; gap: 8px; }
+    .link-note p { margin: 0; }
     .similar { margin-top: 4px; padding: 10px 12px; border-radius: 8px; font-weight: normal;
       background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
     .similar p { margin: 0 0 6px; font-size: 13px; }
@@ -318,6 +336,14 @@ export class IssueNew implements OnInit {
   /** 登録したあとに戻る画面（かんばんの列の ＋ から来たとき）。同じプロジェクトの中の道だけ受け付ける */
   private readonly ret = this.qp.get('ret');
   copyNumber = signal<number | null>(null);
+    /** 新しく作ってつなぐときの、元の課題の id（詳細の「新しく作ってつなぐ」から来たとき） */
+    private readonly linkOfIid = this.qp.get('linkFrom');
+    private linkFrom: { iid: string; number: number } | null = null;
+    /** 窓の上に出す「#12『〇〇』とつなぐ」 */
+    linkNote = signal<{ n: number; title: string } | null>(null);
+    /** つなぎ方（元の課題から見た種類） */
+    linkKind = signal<'relates' | 'waitsFor'>('relates');
+    readonly linkKinds = ['relates', 'waitsFor'] as const;
   /** 再発として登録するときの、元の課題の id（詳細画面の「再発として新しく登録」から来たとき） */
   private readonly recurIid = this.qp.get('recur');
   private recurrenceOf: { iid: string; number: number } | null = null;
@@ -341,8 +367,9 @@ export class IssueNew implements OnInit {
       : this.fromIid ? 'from:' + this.fromIid
         : this.recurIid ? 'recur:' + this.recurIid
           : this.splitOf && this.splitSub ? `split:${this.splitOf}_${this.splitSub}`
-            : this.copyIid ? 'copy:' + this.copyIid
-              : crypto.randomUUID());
+          : this.copyIid ? 'copy:' + this.copyIid
+          : this.linkOfIid ? 'link:' + this.linkOfIid
+            : crypto.randomUUID());
   private draftTimer: ReturnType<typeof setTimeout> | undefined;
   /** 何か触ったか（触っていなければしまわない） */
   private touched = false;
@@ -413,7 +440,7 @@ export class IssueNew implements OnInit {
   similar = computed(() => {
     const typed = bigrams(this.titleQ());
     if (typed.size < 3) return [];
-    const skip = new Set([this.relatedFrom?.iid, this.recurrenceOf?.iid, this.splitFrom?.iid]);
+    const skip = new Set([this.relatedFrom?.iid, this.recurrenceOf?.iid, this.splitFrom?.iid, this.linkFrom?.iid]);
     return this.pool()
       .filter((p) => p.issue.status !== 'deleted' && p.issue.status !== 'merged' && !skip.has(p.issue.id))
       .map((p) => ({ issue: p.issue, score: coverage(typed, p.grams) }))
@@ -500,6 +527,7 @@ export class IssueNew implements OnInit {
         if (this.recurIid && this.fromPid) await this.fillRecurrence(this.fromPid, this.recurIid);
         if (this.splitOf && this.splitSub && this.fromPid) await this.fillSplit(this.fromPid, this.splitOf, this.splitSub);
         if (this.copyIid && this.fromPid) await this.fillCopy(this.fromPid, this.copyIid);
+        if (this.linkOfIid && this.fromPid) await this.fillLink(this.fromPid, this.linkOfIid);
       }
       // 受信箱のメモや再発などで題名が入ったときも、似た課題を出す
       this.titleQ.set(this.title);
@@ -521,6 +549,8 @@ export class IssueNew implements OnInit {
       this.recurNumber.set(null);
       this.splitFrom = null;
       this.splitNote.set(null);
+      this.linkFrom = null;
+      this.linkNote.set(null);
     }
     // ラベルはプロジェクトごとに違うので、切り替えたら選び直してもらう
     this.labelIds.set([]);
@@ -694,6 +724,14 @@ export class IssueNew implements OnInit {
     this.showDetail.set(true);
   }
 
+  /** 新しく作ってつなぐ：元の課題の番号と題名だけ読む（中身は入れない。別の課題なので、まっさらから書く） */
+  private async fillLink(pid: string, iid: string) {
+    const src = await this.issues.get(pid, iid);
+    if (!src || this.pid() !== pid) return;
+    this.linkFrom = { iid: src.id, number: src.number };
+    this.linkNote.set({ n: src.number, title: src.title });
+  }
+
   /** やめる（窓のとき）：書きかけを捨てて閉じる。外・Esc・✕ で閉じたときは、下書きに残る */
   discard() {
     this.submitted = true; // 閉じるときに、しまい直さない
@@ -722,7 +760,11 @@ export class IssueNew implements OnInit {
       estimate: this.estimate,
       src: {
         memoId: this.memoId, relatedFrom: this.relatedFrom, recurrenceOf: this.recurrenceOf, splitFrom: this.splitFrom,
-        notes: { from: this.fromNumber(), copy: this.copyNumber(), recur: this.recurNumber(), split: this.splitNote() },
+        linkFrom: this.linkFrom, linkKind: this.linkKind(),
+        notes: {
+          from: this.fromNumber(), copy: this.copyNumber(), recur: this.recurNumber(), split: this.splitNote(),
+          link: this.linkNote(),
+        },
       },
     };
     const empty = !v.title.trim() && !v.type && !v.importance && v.dueMs == null && !v.doneCriteria.trim()
@@ -770,6 +812,9 @@ export class IssueNew implements OnInit {
       this.copyNumber.set(v.src.notes.copy);
       this.recurNumber.set(v.src.notes.recur);
       this.splitNote.set(v.src.notes.split);
+      this.linkFrom = v.src.linkFrom ?? null;
+      this.linkKind.set(v.src.linkKind ?? 'relates');
+      this.linkNote.set(v.src.notes.link ?? null);
     }
     return true;
   }
@@ -828,6 +873,7 @@ export class IssueNew implements OnInit {
         relatedFrom: this.relatedFrom,
         recurrenceOf: this.recurrenceOf,
         splitFrom: this.splitFrom,
+        linkFrom: this.linkFrom ? { ...this.linkFrom, kind: this.linkKind() } : null,
       }, this.myUid, this.tz(), this.memoId ?? undefined);
       writeLastProject(pid);
       // 登録できたので、下書きは要らない（このあと画面を離れても、しまい直さない）

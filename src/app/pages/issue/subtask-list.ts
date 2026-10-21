@@ -11,7 +11,6 @@ import { Issue, MAX_SUBTASKS, Member, Reminder, Subtask } from '../../core/model
 import { dateKey, formatDateTime, shortDue, zonedTime } from '../../core/time/time';
 import { enterKey } from '../../core/dom';
 import { MemberSelect } from '../../shared/member-select';
-import { HelpTip } from '../../shared/help-tip';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { ReminderService } from '../../core/reminder/reminder.service';
 import { ReminderDialog } from './reminder-dialog';
@@ -23,17 +22,16 @@ import { IssueFormService } from '../../core/issue/issue-form.service';
  */
 @Component({
   selector: 'app-subtask-list',
-  imports: [FormsModule, RouterLink, CdkDropList, CdkDrag, CdkDragHandle, MemberSelect, HelpTip, TPipe, ReminderDialog],
+  imports: [FormsModule, RouterLink, CdkDropList, CdkDrag, CdkDragHandle, MemberSelect, TPipe, ReminderDialog],
   host: { '(document:keydown.escape)': 'menuFor.set(null); editing.set(null)' },
   template: `
-    <div class="head">
-      @if (counted().length) {
+    @if (counted().length) {
+      <div class="head">
         <span class="count">{{ 'subtask.progress' | t: { done: '' + doneCount(), total: '' + counted().length } }}</span>
         <span class="bar" role="progressbar" aria-valuemin="0" [attr.aria-valuemax]="counted().length"
           [attr.aria-valuenow]="doneCount()"><span class="fill" [style.width.%]="pct()"></span></span>
-      }
-      <app-help-tip [keys]="['subtask.help']" />
-    </div>
+      </div>
+    }
 
     <ul class="list" cdkDropList [cdkDropListData]="list()" [cdkDropListDisabled]="!canEdit() || !!editing()"
       (cdkDropListDropped)="onDrop($event)">
@@ -122,13 +120,25 @@ import { IssueFormService } from '../../core/issue/issue-form.service';
       @if (full()) {
         <p class="help">{{ 'subtask.max' | t: { n: '' + max } }}</p>
       } @else if (adding()) {
-        <div class="add">
+        <!-- 足すときから、編集と同じ欄を出す（名前で Enter ならすぐ足せる。続けて足せるよう、開いたまま） -->
+        <div class="edit add-form">
           <input id="st-add" [(ngModel)]="newTitle" maxlength="200" [placeholder]="'subtask.add' | t"
-            [attr.aria-label]="'subtask.name' | t" [disabled]="busy()" (keydown)="onAddKey($event)"
-            (blur)="onAddBlur()" />
-          <!-- 押した瞬間に欄から外れて閉じないよう、mousedown の既定の動きを止める -->
-          <button type="button" class="add-btn" [disabled]="busy() || !newTitle.trim()"
-            (mousedown)="$event.preventDefault()" (click)="add()">{{ 'subtask.addBtn' | t }}</button>
+            [attr.aria-label]="'subtask.name' | t" [disabled]="busy()" (keydown)="onAddKey($event)" />
+          <div class="edit-row">
+            <label>{{ 'issue.assignee' | t }}
+              <app-member-select [members]="members()" [value]="nAssignee()" (picked)="nAssignee.set($event)" />
+            </label>
+            <label>{{ 'issue.due' | t }}
+              <input type="date" [(ngModel)]="nDate" [max]="parentDueKey()" />
+            </label>
+          </div>
+          <p class="help">{{ 'subtask.dueHelp' | t }}</p>
+          <textarea [(ngModel)]="nMemo" rows="2" maxlength="2000" [placeholder]="'subtask.memo' | t"></textarea>
+          <div class="actions">
+            <button type="button" class="link" (click)="closeAdd()">{{ 'workflow.cancel' | t }}</button>
+            <button type="button" class="primary" [disabled]="busy() || !newTitle.trim()" (click)="add()">
+              {{ 'subtask.addBtn' | t }}</button>
+          </div>
         </div>
       } @else {
         <button type="button" class="open-add" (click)="openAdd()">{{ 'subtask.openAdd' | t }}</button>
@@ -146,7 +156,8 @@ import { IssueFormService } from '../../core/issue/issue-form.service';
     .count { font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
     .bar { flex: 1; max-width: 200px; height: 6px; border-radius: 3px; background: var(--surface-muted); overflow: hidden; }
     .fill { display: block; height: 100%; background: var(--success); }
-    .list { list-style: none; margin: 4px 0 0; padding: 0; }
+    .list { list-style: none; margin: 0; padding: 0; }
+    .head + .list { margin-top: 4px; }
     .row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border);
       background: var(--surface); }
     .grip { padding: 2px 2px 0; color: var(--text-subtle); cursor: grab; user-select: none; touch-action: none; }
@@ -174,6 +185,7 @@ import { IssueFormService } from '../../core/issue/issue-form.service';
     .menu button:hover, .menu a:hover { background: var(--surface-alt); }
     .menu .danger { color: var(--danger-text); }
     .edit { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+    .add-form { margin-top: 6px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
     .edit input, .edit textarea { font-size: 16px; padding: 6px 10px; }
     .edit-row { display: flex; flex-wrap: wrap; gap: 8px 16px; }
     .edit-row label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
@@ -191,7 +203,7 @@ import { IssueFormService } from '../../core/issue/issue-form.service';
     .primary:disabled { background: var(--disabled); }
     .cdk-drag-preview { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2); }
     .cdk-drag-placeholder { opacity: 0.3; }
-    .open-add { margin-top: 6px; min-height: 36px; padding: 0 4px; border: none; background: none;
+    .open-add { margin-top: 0; min-height: 36px; padding: 0 4px; border: none; background: none;
       color: var(--primary); font-size: 14px; cursor: pointer; }
   `,
 })
@@ -232,6 +244,10 @@ export class SubtaskList implements OnInit {
   busy = signal(false);
   error = signal('');
   newTitle = '';
+  /** 追加の欄の、担当者・期限（日付だけ）・メモ */
+  nAssignee = signal('');
+  nDate = '';
+  nMemo = '';
   /** 追加の欄を開いているか（ふだんは「＋ サブタスクを追加」のボタンだけ） */
   adding = signal(false);
   // 行の編集中の値（1行ずつしか開かないので、入れ物は共通）
@@ -296,37 +312,49 @@ export class SubtaskList implements OnInit {
       this.pid(), this.issue().id, s.id, s.status === 'doing' ? 'todo' : 'doing', this.myUid));
   }
 
+  /** 最初の担当者：親の担当者（担当者になれなければ自分） */
+  private defaultAssignee() {
+    const i = this.issue();
+    return this.members().some((m) => m.uid === i.assigneeId) ? i.assigneeId : this.myUid;
+  }
+
+  /** 追加の欄を開く（中身は空から。担当者は親の担当者） */
   openAdd() {
+    this.newTitle = '';
+    this.nDate = '';
+    this.nMemo = '';
+    this.nAssignee.set(this.defaultAssignee());
     this.adding.set(true);
     setTimeout(() => document.getElementById('st-add')?.focus());
   }
 
-  /** Enter で足す（続けて足せるよう、欄は開いたまま）。Esc で閉じる */
+  closeAdd() {
+    this.newTitle = '';
+    this.adding.set(false);
+  }
+
+  /** 名前の欄で Enter：すぐ足す（続けて足せるよう、欄は開いたまま）。Esc：閉じる */
   onAddKey(e: KeyboardEvent) {
     if (e.key === 'Escape') {
-      this.newTitle = '';
-      this.adding.set(false);
+      this.closeAdd();
       return;
     }
     enterKey(e, () => this.add());
   }
 
-  /** 何も打たずに外を押したら閉じる（打ちかけなら、消さずに開いたまま） */
-  onAddBlur() {
-    if (!this.newTitle.trim()) this.adding.set(false);
-  }
-
-  /** タイトルだけで足す。担当者は親の担当者（いなければ自分）、期限は空、並びは一番下 */
+  /** 足す。並びは一番下。期限は親の期限を超えない（直すときと同じ計算） */
   add() {
     const title = this.newTitle.trim();
     if (!title || this.full() || this.busy()) return;
-    const i = this.issue();
-    const assigneeId = this.members().some((m) => m.uid === i.assigneeId) ? i.assigneeId : this.myUid;
     const order = (this.list().at(-1)?.order ?? 0) + 1;
+    const assigneeId = this.nAssignee() || this.defaultAssignee();
     return this.run(async () => {
-      await this.issueService.addSubtask(this.pid(), i, { title, assigneeId, dueAt: null, order },
-        this.myUid, this.tz());
+      await this.issueService.addSubtask(this.pid(), this.issue(),
+        { title, assigneeId, dueAt: this.dueFrom(this.nDate), order, memo: this.nMemo.trim() }, this.myUid, this.tz());
+      // 続けて足せるように、担当者は残し、ほかは空に戻す
       this.newTitle = '';
+      this.nDate = '';
+      this.nMemo = '';
       setTimeout(() => document.getElementById('st-add')?.focus());
     });
   }

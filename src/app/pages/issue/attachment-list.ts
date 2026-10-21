@@ -74,7 +74,9 @@ export function sizeText(n: number) {
             <label class="add">{{ 'attach.add' | t }}
               <input type="file" multiple hidden (change)="onPick($event)" />
             </label>
-            <span class="hint">{{ 'attach.dropHint' | t }}</span>
+          @if (hint()) {
+          <span class="hint">{{ 'attach.dropHint' | t }}</span>
+          }
           </div>
         } @else {
           <p class="hint">{{ 'attach.max' | t: { n: '' + max } }}</p>
@@ -157,6 +159,8 @@ export class AttachmentList {
   broken = signal(new Set<string>());
   /** 大きく見ている画像（null＝閉じている） */
   viewer = signal<{ list: ViewerImage[]; index: number } | null>(null);
+  /** ドラッグの説明の文を出すか（課題の詳細では、見出しの ? に入れるので出さない） */
+  hint = input(true);
 
   constructor() {
     // 画像の添付が増えたら、その URL をもらう（もらった分は控えておき、二度は頼まない）
@@ -285,9 +289,9 @@ export class AttachmentList {
         onProgress: (p) => this.uploading.update((u) => u.map((x) => (x.id === id ? { ...x, p } : x))),
       });
     } catch (e) {
-        console.error(e);
-        const key = (e as Error).message === 'tooBig' ? 'attach.tooBig' : 'attach.failed';
-        this.errors.update((x) => [...x, { key, name: f.name }]);
+      console.error(e);
+      const key = (e as Error).message === 'tooBig' ? 'attach.tooBig' : 'attach.failed';
+      this.errors.update((x) => [...x, { key, name: f.name }]);
     } finally {
       this.uploading.update((u) => u.filter((x) => x.id !== id));
     }

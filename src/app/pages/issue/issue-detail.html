@@ -21,10 +21,22 @@
               }
               <div class="sep" role="separator"></div>
             }
+            @if (isActive(i) && !workaroundOn() && canEditWorkaround() && i.status !== 'deleted' && !projectArchived()) {
+              <button type="button" role="menuitem" (click)="menuOpen.set(false); openWorkaround()">
+                {{ 'workaround.open' | t }}</button>
+            }
             <button type="button" role="menuitem" (click)="copyLink()">{{ 'detailMenu.copyLink' | t }}</button>
             @if (canCreate()) {
               <button type="button" role="menuitem" (click)="menuOpen.set(false); issueForm.open(pid, { copy: i.id })">
                 {{ 'detailMenu.duplicate' | t }}</button>
+            }
+            @if (canLink()) {
+              <button type="button" role="menuitem" (click)="menuOpen.set(false); linkOpen.set(true)">
+                {{ 'links.add' | t }}</button>
+              @if (canCreate()) {
+                <button type="button" role="menuitem" (click)="menuOpen.set(false); issueForm.open(pid, { linkFrom: i.id })">
+                  {{ 'links.createNew' | t }}</button>
+              }
             }
             @if (canCreate() && (i.status === 'resolved' || i.status === 'closed')) {
               <button type="button" role="menuitem" (click)="menuOpen.set(false); issueForm.open(pid, { from: i.id })">
@@ -543,26 +555,34 @@
                 <span class="pre">{{ i.doneCriteria }}</span>
               }
             </dd>
+            @if (canAttach() || issueFiles().length) {
+              <dt>{{ 'attach.title' | t }} @if (canAttach()) { <app-help-tip [keys]="['attach.dropHint']" /> }</dt>
+              <dd>
+                <app-attachment-list [pid]="pid" [iid]="iid" [items]="issueFiles()" [canAdd]="canAttach()"
+                  [isAdmin]="role() === 'admin'" [archived]="projectArchived()" [nameOf]="nameFn" [hint]="false" />
+              </dd>
+            }
             @if (canEditSubtasks() || canWork() || (i.subtaskTotal ?? 0) > 0) {
-              <dt>{{ 'subtask.title' | t }}</dt>
+              <dt>{{ 'subtask.title' | t }} <app-help-tip [keys]="['subtask.help']" /></dt>
               <dd>
                 <app-subtask-list [pid]="pid" [issue]="i" [members]="assignable()" [nameOf]="nameFn"
                   [canEdit]="canEditSubtasks()" [canWork]="canWork()" [canRemind]="canRemind()"
                   [projectName]="projectName()" />
               </dd>
             }
-            @if (canAttach() || issueFiles().length) {
-              <dt>{{ 'attach.title' | t }}</dt>
-              <dd>
-                <app-attachment-list [pid]="pid" [iid]="iid" [items]="issueFiles()" [canAdd]="canAttach()"
-                  [isAdmin]="role() === 'admin'" [archived]="projectArchived()" [nameOf]="nameFn" />
-              </dd>
+            <!-- 原因・対策：まだ書いていなければ、ほかの欄と同じ「押して書く」。押すと窓 -->
+            @if (!i.cause && !i.countermeasure && showCauseButton() && canEditCause()) {
+              <dt>{{ 'causeEdit.title' | t }}</dt>
+              <dd><button type="button" class="text-btn" (click)="openCause()">
+                <span class="muted">{{ 'field.empty' | t }}</span></button></dd>
             }
             @if (i.cause) {
-              <dt>{{ 'workflow.cause' | t }}</dt><dd class="pre">{{ i.cause }}</dd>
+              <dt>{{ 'workflow.cause' | t }}</dt>
+              <dd>@if (showCauseButton() && canEditCause()) {<button type="button" class="text-btn" (click)="openCause()"><span class="pre">{{ i.cause }}</span></button>} @else {<span class="pre">{{ i.cause }}</span>}</dd>
             }
             @if (i.countermeasure) {
-              <dt>{{ 'workflow.countermeasure' | t }}</dt><dd class="pre">{{ i.countermeasure }}</dd>
+              <dt>{{ 'workflow.countermeasure' | t }}</dt>
+              <dd>@if (showCauseButton() && canEditCause()) {<button type="button" class="text-btn" (click)="openCause()"><span class="pre">{{ i.countermeasure }}</span></button>} @else {<span class="pre">{{ i.countermeasure }}</span>}</dd>
             }
             @if (i.causeCategory) {
               <dt>{{ 'workflow.causeCategory' | t }}</dt><dd>{{ 'causeCategories.' + i.causeCategory | t }}</dd>
@@ -593,7 +613,7 @@
             </section>
           }
 
-          @if (relations().length || canLink()) {
+          @if (relations().length) {
             <section class="links">
               <h2>{{ 'links.title' | t }} <app-help-tip [keys]="['links.help']" /></h2>
               @for (g of linkGroups(); track g.key) {
@@ -621,9 +641,6 @@
                 }
               }
               @if (linkError()) { <p class="error" role="alert">{{ linkError() | t }}</p> }
-              @if (canLink()) {
-                <button type="button" class="add-link" (click)="linkOpen.set(true)">{{ 'links.add' | t }}</button>
-              }
             </section>
           }
           @if (linkOpen()) {
@@ -632,19 +649,11 @@
           }
 
           @if (i.status !== 'deleted' && !projectArchived()) {
-            <section class="tools">
-              @if (showCauseButton()) {
-                <button type="button" [disabled]="!canEditCause()" (click)="openCause()">{{ 'causeEdit.open' | t }}</button>
-              }
-              @if (isActive(i) && !workaroundOn()) {
-                <button type="button" [disabled]="!canEditWorkaround()" (click)="openWorkaround()">
-                  {{ 'workaround.open' | t }}</button>
-              }
-              @if (toolDenied().length) { <app-help-tip kind="denied" [keys]="toolDenied()" /> }
-            </section>
-
             @if (causePanel()) {
-              <section class="panel">
+              <!-- 外・Esc は閉じるだけ（書きかけは残る）。「やめる」は捨てる -->
+              <div class="modal" (keydown.escape)="causePanel.set(false)">
+              <div class="backdrop" (click)="causePanel.set(false)"></div>
+              <section class="dialog narrow" role="dialog" aria-modal="true">
                 <h2>{{ 'causeEdit.title' | t }}</h2>
                 <p class="help">{{ 'causeEdit.help' | t }}</p>
                 <label class="field">{{ 'workflow.cause' | t }}
@@ -679,13 +688,16 @@
                 <div class="row">
                   <button type="button" class="link" (click)="discardCause()">{{ 'workflow.cancel' | t }}</button>
                   <button type="button" class="primary" [disabled]="busy() || !!causeConflict()?.blocked"
-                    (click)="confirmCause()">{{ 'edit.save' | t }}</button>
+                  (click)="confirmCause()">{{ 'edit.save' | t }}</button>
                 </div>
               </section>
+              </div>
             }
 
             @if (waPanel()) {
-              <section class="panel">
+              <div class="modal" (keydown.escape)="waPanel.set(false)">
+              <div class="backdrop" (click)="waPanel.set(false)"></div>
+              <section class="dialog narrow" role="dialog" aria-modal="true">
                 <h2>{{ 'workaround.title' | t }}</h2>
                 <p class="help">{{ 'workaround.help' | t }}</p>
                 <textarea [ngModel]="waText" (ngModelChange)="waText = $event; stashWa()" rows="3" maxlength="2000"
@@ -705,9 +717,10 @@
                 <div class="row">
                   <button type="button" class="link" (click)="discardWa()">{{ 'workflow.cancel' | t }}</button>
                   <button type="button" class="primary" [disabled]="busy() || !!waConflict()?.blocked"
-                    (click)="confirmWorkaround()">{{ 'edit.save' | t }}</button>
+                  (click)="confirmWorkaround()">{{ 'edit.save' | t }}</button>
                 </div>
               </section>
+              </div>
             }
             @if (waSaved()) {
               <div class="wa-saved" role="status">
