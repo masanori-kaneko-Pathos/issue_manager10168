@@ -9,6 +9,7 @@ import { priorityOf } from '../../core/issue/priority';
 import { dateKey } from '../../core/time/time';
 import { ProjectContext } from './project-context';
 import { I18nService, TPipe } from '../../i18n/i18n';
+import { RecurMark } from '../../shared/recur-mark';
 
 type Scale = 'day' | 'week';
 /** 1日の幅（px） */
@@ -31,7 +32,7 @@ type Row = { kind: 'group'; key: string; label: string; n: number } | ({ kind: '
  */
 @Component({
   selector: 'app-tab-gantt',
-  imports: [RouterLink, TPipe, DueDialog],
+  imports: [RouterLink, TPipe, DueDialog, RecurMark],
   template: `
     @if (!enabled()) {
       <p class="help">{{ 'gantt.off' | t }}</p>
@@ -75,7 +76,9 @@ type Row = { kind: 'group'; key: string; label: string; n: number } | ({ kind: '
               } @else {
                 <div class="row" [class.done]="r.issue.status === 'resolved'">
                   <a class="cell" [routerLink]="['/p', ctx.pid(), 'i', r.issue.id]" [title]="r.issue.title">
-                    <span class="num">#{{ r.issue.number }}</span> <span class="t">{{ r.issue.title }}</span>
+                    <span class="num">#{{ r.issue.number }}</span>
+                    @if (r.issue.recurringId) { <app-recur-mark /> }
+                    <span class="t">{{ r.issue.title }}</span>
                   </a>
                   <div class="lane" [style.background]="weekendBg()">
                     @if (barOf(r); as b) {
@@ -120,7 +123,9 @@ type Row = { kind: 'group'; key: string; label: string; n: number } | ({ kind: '
     .help { font-size: 12px; color: var(--text-muted); margin: 6px 0; }
     .scroller { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
     .chart { --left: 220px; position: relative; min-width: 100%; }
-    .row { display: flex; height: 36px; border-bottom: 1px solid var(--border); }
+    /* 行は、styles.css の基準の .row（右寄せのボタンの並び）と名前が同じ。基準から入り込む3つを打ち消す */
+    .row { display: flex; height: 36px; border-bottom: 1px solid var(--border);
+      align-items: stretch; justify-content: flex-start; gap: 0; }
     .cell { position: sticky; left: 0; z-index: 2; flex: none; width: var(--left); box-sizing: border-box;
       display: flex; align-items: center; gap: 4px; padding: 0 8px; background: var(--surface);
       border-right: 1px solid var(--border); color: var(--text); text-decoration: none; font-size: 13px; overflow: hidden; }

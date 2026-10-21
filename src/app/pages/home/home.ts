@@ -24,11 +24,12 @@ import { MineBoard } from './mine-board';
 import { MineCalendar } from './mine-calendar';
 import { TabInk } from '../../shared/tab-ink';
 import { MemoRow } from '../../shared/memo-row';
+import { RecurMark } from '../../shared/recur-mark';
 
 @Component({
   selector: 'app-home',
   imports: [RouterLink, TPipe, PriorityMark, ProjectNewDialog, DeleteProjectDialog,
-    MineBoard, MineCalendar, TabInk, MemoRow],
+    MineBoard, MineCalendar, TabInk, MemoRow, RecurMark],
   template: `
     <main>
       <!-- 知らせ・ようこそ・招待は、2列の上に全幅で -->
@@ -156,7 +157,7 @@ import { MemoRow } from '../../shared/memo-row';
                     <span class="prio-none"></span>
                   }
                   <a class="ititle" [routerLink]="['/p', i.projectId, 'i', i.id]">
-                    <span class="num">#{{ i.number }}</span> {{ i.title }}</a>
+                    <span class="num">#{{ i.number }}</span> @if (i.recurringId) { <app-recur-mark [size]="11" /> } {{ i.title }}</a>
                   <span class="iproj">{{ projectName(i.projectId) }}</span>
                   @if (isActive(i)) {
                     <span class="idue" [class.overdue]="isOverdue(i)" [title]="remaining(i)">{{ dueLabel(i) }}</span>
@@ -178,7 +179,7 @@ import { MemoRow } from '../../shared/memo-row';
                 <li>
                   <span class="prio-none"></span>
                   <a class="ititle" [routerLink]="['/p', i.projectId, 'i', i.id]">
-                    <span class="num">#{{ i.number }}</span> {{ i.title }}</a>
+                    <span class="num">#{{ i.number }}</span> @if (i.recurringId) { <app-recur-mark [size]="11" /> } {{ i.title }}</a>
                   <span class="iproj">{{ projectName(i.projectId) }}</span>
                 </li>
               }

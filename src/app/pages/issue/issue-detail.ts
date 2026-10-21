@@ -43,6 +43,7 @@ import { DraftService, fieldPlace } from '../../core/draft/draft.service';
 import { Avatar } from '../../shared/avatar';
 import { Crumbs, Crumb, HOME } from '../../shared/crumbs';
 import { IssueFormService } from '../../core/issue/issue-form.service';
+import { RecurMark } from '../../shared/recur-mark';
 
 
 /** 経緯の「編集した欄」の項目名 → 翻訳キー（issue.〇〇）。名前が違うものだけ書く */
@@ -70,7 +71,7 @@ function sameField(k: keyof IssueEdits, a: Issue, b: Issue): boolean {
   selector: 'app-issue-detail',
   imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, StatusDialog, PriorityMark, LinkDialog,
     MergeDialog, LabelPicker, MemberSelect, SubtaskList, CommentBox, RequestDialog, DeleteDialog, ReminderDialog,
-    AttachmentList, Avatar, Crumbs],
+    AttachmentList, Avatar, Crumbs, RecurMark],
   host: {
     '(document:keydown.escape)':
       'menuOpen.set(false); statusMenu.set(false); prioMenu.set(false); typeMenu.set(false); closeField()',

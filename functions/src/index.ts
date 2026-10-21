@@ -889,6 +889,7 @@ interface AccountPlan {
   myRole: string;
   others: { uid: string; role: string }[];
   issues: DocumentReference[];   // 自分が担当の、未完了の課題
+  recur: DocumentReference[];    // 自分が担当か、作った人の、定期課題の雛形
 }
 
 /**
@@ -910,10 +911,11 @@ export const imDeleteAccount = onCall({ region: 'asia-northeast1' }, async (req)
   const mine = await db.collectionGroup('members').where('uid', '==', uid).get();
   const plans = await Promise.all(mine.docs.map(async (m): Promise<AccountPlan> => {
     const projectRef = m.ref.parent.parent!;
-    const [project, members, assigned] = await Promise.all([
+    const [project, members, assigned, recurring] = await Promise.all([
       projectRef.get(),
       projectRef.collection('members').get(),
       projectRef.collection('issues').where('assigneeId', '==', uid).get(),
+      projectRef.collection('recurring').get(),
     ]);
     const others = members.docs.filter((d) => d.id !== uid).map((d) => ({ uid: d.id, role: d.get('role') as string }));
     const kind = !others.length ? 'purge'
@@ -922,6 +924,7 @@ export const imDeleteAccount = onCall({ region: 'asia-northeast1' }, async (req)
       pid: projectRef.id, name: (project.get('name') as string) ?? '', kind,
       myName: (m.get('displayName') as string) ?? '', myRole: m.get('role') as string, others,
       issues: assigned.docs.filter((d) => OPEN.includes(d.get('status'))).map((d) => d.ref),
+      recur: recurring.docs.filter((d) => d.get('assigneeId') === uid || d.get('createdBy') === uid).map((d) => d.ref),
     };
   }));
 
@@ -939,10 +942,15 @@ export const imDeleteAccount = onCall({ region: 'asia-northeast1' }, async (req)
   // ④ 抜けるプロジェクト：1つずつトランザクションで（引き継ぎ・名前を残す・メンバーから外す・記録・知らせ）
   for (const p of plans.filter((x) => x.kind === 'leave')) {
     const projectRef = db.doc(`projects/${p.pid}`);
-    const to = handovers[p.pid];
+    // 引き継ぐ人：担当者になれる人のときだけ（課題がなくて選ばれていないこともある）
+    const picked = handovers[p.pid];
+    const to = p.others.some((o) => o.uid === picked && o.role !== 'viewer') ? picked : undefined;
+    // 雛形の「作った人」を引き取る、ほかの管理者（抜けられるのは、ほかに管理者がいるときだけなので、いる）
+    const admin = p.others.find((o) => o.role === 'admin')?.uid;
     await db.runTransaction(async (tx) => {
-      // 読むのが先、書くのが後
+      // 読むのが先、書くのが後（課題も雛形も、書く前に全部読む）
       const snaps = p.issues.length ? await tx.getAll(...p.issues) : [];
+      const rsnaps = p.recur.length ? await tx.getAll(...p.recur) : [];
       let moved = 0;
       for (const s of snaps) {
         // ③のあとに、ほかの人が担当を変えた・終わらせたものは触らない
@@ -953,6 +961,19 @@ export const imDeleteAccount = onCall({ region: 'asia-northeast1' }, async (req)
           reason, by: uid, tz, at: FieldValue.serverTimestamp(),
         });
         moved++;
+      }
+
+      // 定期課題の雛形：担当が本人なら引き継ぐ人（いなければ管理者）に、作った人が本人なら管理者に替える
+      // （替えないと、次の回で「担当できない」と止まるため）
+      for (const s of rsnaps) {
+        if (!s.exists) continue;
+        const u: Record<string, string> = {};
+        if (s.get('assigneeId') === uid) {
+          const a = to ?? admin;
+          if (a) u['assigneeId'] = a;
+        }
+        if (s.get('createdBy') === uid && admin) u['createdBy'] = admin;
+        if (Object.keys(u).length) tx.update(s.ref, { ...u, updatedAt: FieldValue.serverTimestamp() });
       }
       // 名前を残してから消す（コメントや経緯で「—」にしないため。抜けるときと同じ）
       tx.update(projectRef, { [`formerMembers.${uid}`]: p.myName });

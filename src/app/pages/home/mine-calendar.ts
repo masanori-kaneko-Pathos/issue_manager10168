@@ -8,6 +8,7 @@ import { dateKey, shortDue } from '../../core/time/time';
 import { PriorityMark } from '../../shared/priority-mark';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { MonthPicker } from '../../shared/month-picker';
+import { RecurMark } from '../../shared/recur-mark';
 
 type Mine = Issue & { projectId: string };
 interface Day { key: string; d: number; dow: number; inRange: boolean; }
@@ -29,7 +30,7 @@ function addDays(dt: Date, n: number): Date {
 /** ホームの「自分の課題」のカレンダー（月・見るだけ）。押した日の課題を、表の下に並べる */
 @Component({
   selector: 'app-mine-calendar',
-  imports: [RouterLink, TPipe, PriorityMark, MonthPicker],
+  imports: [RouterLink, TPipe, PriorityMark, MonthPicker, RecurMark],
   template: `
     <div class="cal-head">
       <button type="button" class="arrow" [attr.aria-label]="'calendar.prev' | t" (click)="move(-1)">‹</button>
@@ -55,7 +56,7 @@ function addDays(dt: Date, n: number): Date {
             @for (i of items.slice(0, 3); track i.id) {
               <a class="item" [routerLink]="['/p', i.projectId, 'i', i.id]" [attr.data-p]="active(i) ? prio(i) : null"
                 [class.overdue]="overdue(i)" [title]="i.title" (click)="$event.stopPropagation()">
-                <span class="num">#{{ i.number }}</span> {{ i.title }}</a>
+                <span class="num">#{{ i.number }}</span> @if (i.recurringId) { <app-recur-mark [size]="11" /> } {{ i.title }}</a>
             }
             @if (items.length > 3) { <span class="more">+{{ items.length - 3 }}</span> }
           </div>
@@ -71,7 +72,7 @@ function addDays(dt: Date, n: number): Date {
         @for (i of list; track i.id) {
           <li>
             @if (active(i)) { <app-priority-mark [level]="prio(i)" [manual]="manual(i)" /> } @else { <span class="prio-none"></span> }
-            <a class="ititle" [routerLink]="['/p', i.projectId, 'i', i.id]"><span class="num">#{{ i.number }}</span> {{ i.title }}</a>
+            <a class="ititle" [routerLink]="['/p', i.projectId, 'i', i.id]"><span class="num">#{{ i.number }}</span> @if (i.recurringId) { <app-recur-mark [size]="11" /> } {{ i.title }}</a>
             <span class="iproj">{{ nameOf()(i.projectId) }}</span>
             <span class="idue" [class.overdue]="overdue(i)">{{ dueLabel(i) }}</span>
           </li>

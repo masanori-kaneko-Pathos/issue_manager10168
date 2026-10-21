@@ -7,6 +7,7 @@ import { compareIssues, isManualPriority, priorityOf } from '../../core/issue/pr
 import { shortDue } from '../../core/time/time';
 import { PriorityMark } from '../../shared/priority-mark';
 import { I18nService, TPipe } from '../../i18n/i18n';
+import { RecurMark } from '../../shared/recur-mark';
 
 type Mine = Issue & { projectId: string };
 
@@ -16,7 +17,7 @@ type Mine = Issue & { projectId: string };
  */
 @Component({
   selector: 'app-mine-board',
-  imports: [RouterLink, TPipe, PriorityMark],
+  imports: [RouterLink, TPipe, PriorityMark, RecurMark],
   template: `
     <div class="board">
       @for (c of cols; track c) {
@@ -32,6 +33,7 @@ type Mine = Issue & { projectId: string };
                   <div class="top">
                     @if (active(i)) { <app-priority-mark [level]="prio(i)" [manual]="manual(i)" /> }
                     <span class="num">#{{ i.number }}</span>
+                    @if (i.recurringId) { <app-recur-mark /> }
                     <span class="proj">{{ nameOf()(i.projectId) }}</span>
                   </div>
                   <span class="title">{{ i.title }}</span>

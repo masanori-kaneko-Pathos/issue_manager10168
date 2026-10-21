@@ -37,6 +37,7 @@ const FILTER_FROM = 7;
     <section class="dialog" role="dialog" aria-modal="true">
       <h2>{{ 'handover.title.' + mode() | t: { name: target().displayName, role: i18n.t('roles.' + (role() ?? 'viewer')) } }}</h2>
       <p class="help">{{ 'handover.note.' + mode() | t }}</p>
+      @if (myRecurCount(); as n) { <p class="help">{{ 'handover.recurAskAdmin' | t: { n: '' + n } }}</p> }
 
       @if (issues().length || templates().length) {
         <div class="pens-head">
@@ -211,6 +212,15 @@ export class HandoverDialog {
   /** その人が担当の、定期課題の雛形 */
   templates = computed(() => this.canRecur()
     ? this.allRecur().filter((r) => r.assigneeId === this.target().uid) : []);
+  /**
+   * 管理者でない人が、自分の担当を渡す・自分から抜けるとき：自分が担当の定期課題の数（窓では直せないので、一言だけ出す）。
+   * 雛形を書けるのは管理者だけ（ルール）なので、窓には行を出さない
+   */
+  myRecurCount = computed(() => {
+    if (this.canRecur() || !(this.mode() === 'self' || this.mode() === 'leave')) return 0;
+    if (!this.ctx.project()?.settings?.features?.recurring) return 0;
+    return this.allRecur().filter((r) => r.assigneeId === this.target().uid).length;
+  });
   /** 引き継げる人：本人以外の、管理者とメンバー（閲覧者は担当者になれない） */
   successors = computed(() => this.ctx.members().filter((m) => m.uid !== this.target().uid && m.role !== 'viewer'));
   /** ペンの札：自分が先頭、あとは名前順。人が多いときは名前で絞る（選んでいるペンは、絞っても残す） */

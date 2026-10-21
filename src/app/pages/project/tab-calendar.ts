@@ -18,6 +18,7 @@ import { DeleteDialog } from '../issue/delete-dialog';
 import { UndoService } from '../../core/undo/undo.service';
 import { IssueFormService } from '../../core/issue/issue-form.service';
 import { MonthPicker } from '../../shared/month-picker';
+import { RecurMark } from '../../shared/recur-mark';
 
 type Mode = 'month' | 'week';
 interface Day { key: string; d: number; dow: number; inRange: boolean; }
@@ -40,7 +41,7 @@ function addDays(dt: Date, n: number): Date {
 @Component({
   selector: 'app-tab-calendar',
   imports: [RouterLink, TPipe, CdkDropListGroup, CdkDropList, CdkDrag, DueDialog, PriorityMark, PeopleFilter,
-    TrashDrop, DeleteDialog, MonthPicker],
+    TrashDrop, DeleteDialog, MonthPicker, RecurMark],
   template: `
     <div class="toolbar">
       <app-people-filter [members]="ctx.assignable()" [counts]="ctx.activeCount()" [value]="who()"
@@ -94,7 +95,7 @@ function addDays(dt: Date, n: number): Date {
                     <span class="bang" role="img" [attr.aria-label]="'due.overdue' | t" [title]="'due.overdue' | t">!</span>
                   }
                   @if (isActive(i)) { <app-priority-mark [level]="prio(i)" [manual]="manual(i)" /> }
-                  <span class="num">#{{ i.number }}</span> {{ i.title }}
+                  <span class="num">#{{ i.number }}</span> @if (i.recurringId) { <app-recur-mark [size]="11" /> } {{ i.title }}
                 </div>
               }
               @if (mode() === 'month' && items.length > 3) {

@@ -663,6 +663,7 @@ export const en: Dict = {
       role: 'Change {{name}} to "{{role}}"',
       leave: 'Leave this project',
       self: 'Hand over my issues',
+      recurAskAdmin: 'You are the assignee of {{n}} recurring issues. An admin can change who gets the next ones on the Recurring issues page (otherwise they stop at the next run and admins are notified).',
     },
     note: {
       handover: 'Closed and rejected issues keep their assignee as a record.',
