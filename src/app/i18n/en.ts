@@ -447,7 +447,9 @@ export const en: Dict = {
     colsLabel: 'Columns', colsAll: 'All',
     prevCol: 'Previous column', nextCol: 'Next column',
     colsN: '{{n}} columns',
+    assigneeDropHint: 'Drop a card on another person\'s column to change the assignee',
   },
+  assigneeDialog: { title: 'Change assignee' },
   who: {
     open: 'Filter by assignee',
     all: 'Everyone',

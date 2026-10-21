@@ -444,7 +444,9 @@ export const ja = {
     colsLabel: '表示する列', colsAll: '全部',
     prevCol: '前の列へ', nextCol: '次の列へ',
     colsN: '{{n}}列',
+    assigneeDropHint: 'カードをドロップで、担当者を変更できます',
   },
+  assigneeDialog: { title: '担当者を変える' },
   who: {
     open: '担当者で絞り込む',
     all: '全員',

@@ -26,6 +26,7 @@ import { PeopleFilter, whoFromQuery, whoQuery } from '../../shared/people-filter
 import { Avatar } from '../../shared/avatar';
 import { TrashDrop } from '../../shared/trash-drop';
 import { DeleteDialog } from '../issue/delete-dialog';
+import { AssigneeDialog } from '../../shared/assignee-dialog';
 
 type ColKey = 'open' | 'in_progress' | 'resolved' | 'done' | 'on_hold';
 type DueFilter = 'today' | 'week' | 'overdue';
@@ -62,7 +63,7 @@ const EMPTY_PAYLOAD = {
   selector: 'app-tab-board',
   imports: [CdkDropListGroup, CdkDropList, CdkDrag, NgTemplateOutlet,
     CdkScrollable, RouterLink, TPipe, HelpTip, StatusDialog, LabelChip, PriorityMark, DueDialog, PeopleFilter,
-    Avatar, TrashDrop, DeleteDialog],
+    Avatar, TrashDrop, DeleteDialog, AssigneeDialog],
     host: { '(window:resize)': 'measure()', '(document:keydown.escape)': 'colsOpen.set(false)' },
   template: `
     <div class="quick">
@@ -106,7 +107,7 @@ const EMPTY_PAYLOAD = {
         </div>
       }
       @if (by() === 'assignee') {
-        <span class="view-note">{{ 'board.viewOnly' | t }}</span>
+        <span class="view-note">{{ 'board.assigneeDropHint' | t }}</span>
       } @else if (by() === 'due') {
         <span class="view-note">{{ 'board.dueDropHint' | t }}</span>
       } @else if (ctx.role() === 'viewer') {
@@ -170,7 +171,7 @@ const EMPTY_PAYLOAD = {
           [style.height.px]="boardH()" (scroll)="onBoardScroll()">
           @for (c of altCols(); track c.key) {
             <section class="col" [attr.data-col]="c.key" [style.flex]="colFlex()"
-              [class.allowed]="!!dragging() && c.key !== 'overdue'" [class.blocked]="!!dragging() && c.key === 'overdue'">
+              [class.allowed]="!!dragging() && altOk(c.key)" [class.blocked]="!!dragging() && !altOk(c.key)">
               <header class="col-head">
                 <span class="col-name">{{ c.label }}</span>
                 <span class="count">{{ c.issues.length }}</span>
@@ -181,11 +182,11 @@ const EMPTY_PAYLOAD = {
                     [attr.aria-label]="'project.newIssue' | t" [title]="'project.newIssue' | t">＋</a>
                 }
               </header>
-              <div class="cards" cdkDropList [cdkDropListData]="c.key" [cdkDropListDisabled]="by() !== 'due'"
-                [cdkDropListSortingDisabled]="true" [cdkDropListEnterPredicate]="dueEnter"
+              <div class="cards" cdkDropList [cdkDropListData]="c.key"
+                [cdkDropListSortingDisabled]="true" [cdkDropListEnterPredicate]="altEnter"
                 [cdkDropListAutoScrollDisabled]="true" (cdkDropListDropped)="onDueDrop($event)">
                 @for (i of c.issues; track i.id) {
-                  @let movable = by() === 'due' && canMoveDue(i);
+                  @let movable = canMoveDue(i);
                   <article class="card" [class.static]="!movable" [attr.data-p]="prio(i)" (cdkDragMoved)="onDragMoved($event)"
                     cdkDrag [cdkDragData]="i" [cdkDragDisabled]="!movable" [cdkDragStartDelay]="{ touch: 300, mouse: 0 }"
                     (cdkDragStarted)="onDragStart(i)" (cdkDragEnded)="onDragEnd()">
@@ -287,6 +288,10 @@ const EMPTY_PAYLOAD = {
     @if (pendingDue(); as p) {
       <app-due-dialog [issue]="p.issue" [date]="p.date" [pickDate]="p.pick" [pid]="ctx.pid()" [members]="ctx.members()"
         (done)="pendingDue.set(null)" (cancel)="pendingDue.set(null)" />
+    }
+    @if (pendingAssignee(); as p) {
+      <app-assignee-dialog [pid]="ctx.pid()" [issue]="p.issue" [to]="p.to" [members]="ctx.members()" [nameOf]="nameFn"
+        (done)="pendingAssignee.set(null)" (cancel)="pendingAssignee.set(null)" />
     }
     @if (deleting(); as d) {
       <app-delete-dialog [pid]="ctx.pid()" [issue]="d" [members]="ctx.members()"
@@ -436,8 +441,19 @@ export class ProjectBoard implements OnInit {
   pending = signal<{ issue: Issue; t: Transition } | null>(null);
   /** 期限のかんばんで落としたあと、窓で確かめ中の変更（pick があれば、窓で日付も選ぶ） */
   pendingDue = signal<{ issue: Issue; date: string; pick: { min: string; max: string | null } | null } | null>(null);
-  /** 期限切れの列には落とせない（わざわざ過去にする場面がないため。どうしても過去にするなら、詳細から） */
-  readonly dueEnter = (_drag: CdkDrag<Issue>, drop: CdkDropList<string>) => drop.data !== 'overdue';
+  /** 期限・担当者のかんばんで、落とせる列か（CDK に渡す判定。枠の色も同じ判定を使う） */
+  readonly altEnter = (_drag: CdkDrag<Issue>, drop: CdkDropList<string>) => this.altOk(drop.data);
+  /**
+   * 期限：期限切れの列には落とせない（わざわざ過去にする場面がないため。どうしても過去にするなら、詳細から）。
+   * 担当者：担当者になれる人（管理者・メンバー）の列だけ。抜けた人の列には落とせない（ルールでも断られるため）
+   */
+  altOk(key: string) {
+    return this.by() === 'due' ? key !== 'overdue' : this.ctx.assignable().some((m) => m.uid === key);
+  }
+  /** 担当者のかんばんで落としたあと、窓で確かめ中の変更 */
+  pendingAssignee = signal<{ issue: Issue; to: string } | null>(null);
+  /** 窓に渡す名前の引き方（テンプレートでは矢印関数が書けないので、ここで作る） */
+  readonly nameFn = (uid: string) => this.ctx.nameOf(uid);
   menuFor = signal<string | null>(null);
   /** ゴミ箱に落とした課題（削除の窓で確かめ中） */
   deleting = signal<Issue | null>(null);
@@ -620,7 +636,7 @@ export class ProjectBoard implements OnInit {
     return dateKey(endOfDayIn(DUE_COL_DAYS[col] ?? 0, tz), tz);
   }
 
-  /** 期限を変えられるか：管理者・提起者・担当者で、クローズ前（ルールの editAllowed・カレンダーと同じ） */
+  /** 期限・担当者を変えられるか：管理者・提起者・担当者で、クローズ前（ルールの editAllowed・カレンダーと同じ） */
   canMoveDue(i: Issue) {
     if (i.status === 'closed' || this.ctx.archived()) return false;
     const r = this.ctx.role();
@@ -634,6 +650,12 @@ export class ProjectBoard implements OnInit {
   onDueDrop(e: CdkDragDrop<string, string, Issue>) {
     this.dragging.set(null);
     if (e.previousContainer === e.container) return;
+    // 担当者のかんばん：別の人の列に落としたら、担当者を変える窓
+    if (this.by() === 'assignee') {
+      const to = e.container.data;
+      if (this.altOk(to) && to !== e.item.data.assigneeId) this.pendingAssignee.set({ issue: e.item.data, to });
+      return;
+    }
     const tz = this.tz();
     const day = (n: number) => dateKey(endOfDayIn(n, tz), tz);
     const col = e.container.data as DueCol;
