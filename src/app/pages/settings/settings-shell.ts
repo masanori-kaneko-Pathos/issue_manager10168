@@ -2,16 +2,16 @@ import { Component } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { TPipe } from '../../i18n/i18n';
 import { SETTINGS_NAV } from '../../shared/settings-nav';
+import { Crumbs, HOME } from '../../shared/crumbs';
 
 /** 設定の入れ物：上に「‹ 設定」の帯、左に索引、右に各ページ（GitHub の設定と同じ形）。スマホは索引を上に横並び */
 @Component({
   selector: 'app-settings-shell',
-  imports: [RouterLink, RouterLinkActive, RouterOutlet, TPipe],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, TPipe, Crumbs],
   template: `
     <div class="head">
       <div class="head-in">
-        <a routerLink="/" class="back" [attr.aria-label]="'common.back' | t" [title]="'common.back' | t">‹</a>
-        <h1>{{ 'settings.title' | t }}</h1>
+        <app-crumbs [items]="crumbs"><h1>{{ 'settings.title' | t }}</h1></app-crumbs>
       </div>
     </div>
     <div class="layout">
@@ -56,4 +56,5 @@ import { SETTINGS_NAV } from '../../shared/settings-nav';
 })
 export class SettingsShell {
     readonly items = SETTINGS_NAV; 
+    readonly crumbs = [HOME];
 }

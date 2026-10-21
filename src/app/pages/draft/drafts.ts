@@ -8,13 +8,14 @@ import { Clock } from '../../core/time/clock';
 import { relativeTime } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { ProjectNewDialog } from '../../shared/project-new-dialog';
+import { Crumbs, HOME } from '../../shared/crumbs';
 
 /** 下書きの一覧（新しく作るものの書きかけ。この端末にだけ残る） */
 @Component({
   selector: 'app-drafts',
-  imports: [RouterLink, TPipe, ProjectNewDialog],
+  imports: [RouterLink, TPipe, ProjectNewDialog, Crumbs],
   template: `
-    <header class="bar"><a routerLink="/" class="link">{{ 'common.back' | t }}</a></header>
+    <header class="bar"><app-crumbs [items]="crumbs"><span>{{ 'drafts.title' | t }}</span></app-crumbs></header>
     <main>
       <h1>{{ 'drafts.title' | t }}</h1>
       <p class="help">{{ 'drafts.help' | t }}</p>
@@ -78,7 +79,7 @@ export class Drafts implements OnInit {
   private router = inject(Router);
   private clock = inject(Clock);
   private i18n = inject(I18nService);
-
+  readonly crumbs = [HOME];
   /** プロジェクト名を引くための表（読めなくても、名前が出ないだけ） */
   private names = signal(new Map<string, string>());
   /** 開いているプロジェクトの下書き（作成の窓を、この下書きを入れて開く） */

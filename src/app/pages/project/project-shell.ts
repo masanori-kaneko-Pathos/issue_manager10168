@@ -10,11 +10,12 @@ import { CsvExportDialog } from './csv-export-dialog';
 import { ArchiveDialog } from './archive-dialog';
 import { ProjectService } from '../../core/project/project.service';
 import { DeleteProjectDialog } from './delete-project-dialog';
+import { Crumbs, HOME } from '../../shared/crumbs';
 
 @Component({
   selector: 'app-project-shell',
   imports: [RouterLink, RouterLinkActive, RouterOutlet, TPipe, HelpTip, HandoverDialog,
-     CsvExportDialog, ArchiveDialog, DeleteProjectDialog],
+     CsvExportDialog, ArchiveDialog, DeleteProjectDialog, Crumbs],
   providers: [ProjectContext],
   host: { '(document:keydown.escape)': 'menuOpen.set(false)' },
   template: `@if (ctx.loading()) {
@@ -29,11 +30,12 @@ import { DeleteProjectDialog } from './delete-project-dialog';
   <div class="head">
     <div class="head-in">
       <div class="title-row">
-        <a routerLink="/" class="back" [attr.aria-label]="'project.back' | t" [title]="'project.back' | t">‹</a>
-        <h1>
-          <span class="name" [title]="ctx.project()!.name">{{ ctx.project()!.name }}</span>
-          <span class="role">{{ 'roles.' + ctx.role() | t }}</span>
-        </h1>
+        <app-crumbs [items]="crumbs">
+          <h1>
+            <span class="name" [title]="ctx.project()!.name">{{ ctx.project()!.name }}</span>
+            <span class="role">{{ 'roles.' + ctx.role() | t }}</span>
+          </h1>
+        </app-crumbs>
 
         <div class="more">
           <button type="button" class="more-btn" [attr.aria-expanded]="menuOpen()"
@@ -204,6 +206,7 @@ import { DeleteProjectDialog } from './delete-project-dialog';
 export class ProjectHome {
   protected ctx = inject(ProjectContext);
   private route = inject(ActivatedRoute);
+  readonly crumbs = [HOME];
   /** プロジェクト名の横の「⋮」メニュー（削除フォルダ。今後、アーカイブ・CSV出力などもここに置く） */
   menuOpen = signal(false);
   leaveOpen = signal(false);

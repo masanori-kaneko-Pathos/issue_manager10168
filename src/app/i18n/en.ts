@@ -44,6 +44,9 @@ export const en: Dict = {
     loadError: 'Could not load. Please reload the page.',
     saveError: 'Could not save. Please try again.',
   },
+
+  crumbs: { nav: 'Breadcrumb', home: 'Home', inbox: 'Inbox', drafts: 'Drafts' },
+
   projects: {
     title: 'Projects',
     namePlaceholder: 'New project name',

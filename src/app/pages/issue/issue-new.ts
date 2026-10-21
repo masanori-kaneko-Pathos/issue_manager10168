@@ -18,6 +18,7 @@ import { AttachmentService, checkFile } from '../../core/attachment/attachment.s
 import { MAX_ATTACHMENTS } from '../../core/models';
 import { sizeText } from './attachment-list';
 import { ImageViewer, ViewerImage } from '../../shared/image-viewer';
+import { Crumbs, Crumb, HOME } from '../../shared/crumbs';
 
 const LAST_PROJECT_KEY = 'issuemanager.lastProject';
 
@@ -56,9 +57,9 @@ interface IssueDraft {
 
 @Component({
   selector: 'app-issue-new',
-  imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelPicker, MemberSelect, ImageViewer],
+  imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelPicker, MemberSelect, ImageViewer, Crumbs],
   template: `
-    <header class="bar"><a [routerLink]="backLink()" class="link">{{ 'common.back' | t }}</a></header>
+    <header class="head"><app-crumbs [items]="crumbs()"><span>{{ 'issueNew.title' | t }}</span></app-crumbs></header>
     <main>
       <h1>{{ 'issueNew.title' | t }}</h1>
       @if (fromNumber(); as n) { <p class="notice">{{ 'prevention.creating' | t: { n: '' + n } }}</p> }
@@ -231,7 +232,7 @@ interface IssueDraft {
     }
   `,
   styles: `
-    .bar { padding: 8px 16px; border-bottom: 1px solid var(--border); }
+    .head { padding: 8px 16px; border-bottom: 1px solid var(--border); }
     main { max-width: 640px; margin: 0 auto; padding: 16px 16px 48px; }
     h1 { font-size: 20px; }
     form { display: flex; flex-direction: column; gap: 16px; }
@@ -319,8 +320,21 @@ export class IssueNew implements OnInit {
     const src = this.fromIid || this.recurIid || this.splitOf || this.copyIid;
     return this.route.snapshot.queryParamMap.get('draft') ? ['/drafts']
       : this.memoId ? ['/inbox']
-      : src && this.fromPid ? ['/p', this.fromPid, 'i', src]
-        : this.fromPid ? ['/p', this.fromPid] : ['/'];
+        : src && this.fromPid ? ['/p', this.fromPid, 'i', src]
+          : this.fromPid ? ['/p', this.fromPid] : ['/'];
+  });
+
+  /** 道しるべ：来た所に合わせて「ホーム › 下書き」「ホーム › 受信箱」「ホーム › プロジェクト名 › #12」 */
+  crumbs = computed<Crumb[]>(() => {
+    if (this.route.snapshot.queryParamMap.get('draft')) return [HOME, { key: 'crumbs.drafts', link: '/drafts' }];
+    if (this.memoId) return [HOME, { key: 'crumbs.inbox', link: '/inbox' }];
+    if (!this.fromPid) return [HOME];
+    const src = this.fromIid || this.recurIid || this.splitOf || this.copyIid;
+    const name = this.projects().find((p) => p.id === this.fromPid)?.name ?? '';
+    const n = this.fromNumber() ?? this.recurNumber() ?? this.splitNote()?.n ?? this.copyNumber();
+    return [HOME,
+      ...(name ? [{ label: name, link: ['/p', this.fromPid] }] : []),
+      ...(src && n != null ? [{ label: '#' + n, link: ['/p', this.fromPid, 'i', src] }] : [])];
   });
   readonly myUid = auth.currentUser!.uid;
   readonly types = ISSUE_TYPES;
@@ -617,10 +631,10 @@ export class IssueNew implements OnInit {
     this.progress.set(list.map(() => 0));
     const results = await Promise.allSettled(list.map((x, k) => this.attachments.upload(
       pid, iid, x.file, this.myUid, this.tz(), {
-        onProgress: (p) => this.progress.update((all) => all && all.map((x, j) => (j === k ? p : x))),
-      })));
-      return results.flatMap((r, k) => (r.status === 'rejected' ? [list[k].file.name] : []));
-  }  
+      onProgress: (p) => this.progress.update((all) => all && all.map((x, j) => (j === k ? p : x))),
+    })));
+    return results.flatMap((r, k) => (r.status === 'rejected' ? [list[k].file.name] : []));
+  }
 
   /**
    * 複製：中身を元の課題から入れる。期限は入れない（新しい課題の期限は、そのとき決めるもの）。
@@ -659,11 +673,11 @@ export class IssueNew implements OnInit {
       pid: this.pid(), title: this.title, type: this.type(), importance: this.importance(),
       dueMs: this.dueAt()?.getTime() ?? null, assigneeId: this.assigneeId(),
       doneCriteria: this.doneCriteria, description: this.description, labelIds: this.labelIds(),
-      occurredOn: this.occurredOn, impact: this.impact, showDetail: this.showDetail(),      
+      occurredOn: this.occurredOn, impact: this.impact, showDetail: this.showDetail(),
       estimate: this.estimate,
     };
     const empty = !v.title.trim() && !v.type && !v.importance && v.dueMs == null && !v.doneCriteria.trim()
-    && !v.description.trim() && !v.labelIds.length && !v.occurredOn && !v.impact.trim() && v.estimate == null;
+      && !v.description.trim() && !v.labelIds.length && !v.occurredOn && !v.impact.trim() && v.estimate == null;
     if (empty) this.drafts.remove(this.draftId);
     else this.drafts.save({ id: this.draftId, kind: 'issue', title: v.title.trim(), pid: v.pid, data: v });
   }

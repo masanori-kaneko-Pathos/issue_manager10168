@@ -41,6 +41,7 @@ import { AttachmentService } from '../../core/attachment/attachment.service';
 import { AttachmentList } from './attachment-list';
 import { DraftService, fieldPlace } from '../../core/draft/draft.service';
 import { Avatar } from '../../shared/avatar';
+import { Crumbs, Crumb, HOME } from '../../shared/crumbs';
 
 
 /** 経緯の「編集した欄」の項目名 → 翻訳キー（issue.〇〇）。名前が違うものだけ書く */
@@ -68,7 +69,7 @@ function sameField(k: keyof IssueEdits, a: Issue, b: Issue): boolean {
   selector: 'app-issue-detail',
   imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, StatusDialog, PriorityMark, LinkDialog,
     MergeDialog, LabelPicker, MemberSelect, SubtaskList, CommentBox, RequestDialog, DeleteDialog, ReminderDialog,
-    AttachmentList, Avatar],
+    AttachmentList, Avatar, Crumbs],
   host: {
     '(document:keydown.escape)':
       'menuOpen.set(false); statusMenu.set(false); prioMenu.set(false); typeMenu.set(false); closeField()',
@@ -203,6 +204,11 @@ export class IssueDetail implements OnInit {
   private linkStops = new Map<string, Unsubscribe>();
   /** ほかのプロジェクトの名前（読めたものだけ） */
   projectNames = signal<Record<string, string>>({});
+  /** 道しるべ：ホーム › プロジェクト名 › #12（プロジェクト名が読めるまでは、ホームだけ） */
+  crumbs = computed<Crumb[]>(() => [
+    HOME,
+    ...(this.projectName() ? [{ label: this.projectName(), link: ['/p', this.pid] }] : []),
+  ]);
   linkOpen = signal(false);
   linkError = signal('');
   /** 付けられるのは、管理者とメンバー（アーカイブ中・削除フォルダの中は不可） */
