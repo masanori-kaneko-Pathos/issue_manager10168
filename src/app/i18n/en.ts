@@ -450,6 +450,9 @@ export const en: Dict = {
     noMatch: 'No one found',
     count: '{{n}} open',
   },
+  memberSelect: {
+    search: 'Filter by name',
+  },
   savedFilter: {
     open: 'Saved filters',
     none: 'No saved filters',

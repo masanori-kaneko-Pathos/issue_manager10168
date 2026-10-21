@@ -447,6 +447,9 @@ export const ja = {
     noMatch: '見つかりません',
     count: '未完了 {{n}}件',
   },
+  memberSelect: {
+    search: '名前で絞る',
+  },
   savedFilter: {
     open: '保存した絞り込み',
     none: '保存した絞り込みはありません',
