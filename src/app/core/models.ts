@@ -78,6 +78,7 @@ export interface InboxMemo {
   updatedAt: Timestamp;
   discardedAt?: Timestamp;  // ゴミ箱に入れた日時（ゴミ箱の中だけ）
   expireAt?: Timestamp;     // この日時を過ぎると、Firestore が自動で消す（TTL。ゴミ箱の中だけ）
+  pinned?: boolean;         // ピン止め（上に並ぶ。吹き出し・ホーム・受信箱のページで同じ）
 }
 
 /** 管理ログ（今は書くだけ。見る画面は後日） */

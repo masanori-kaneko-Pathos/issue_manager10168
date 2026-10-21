@@ -11,7 +11,10 @@ service cloud.firestore {
       allow update: if request.auth != null && request.auth.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['displayName', 'timeZone', 'language', 'defaultView', 'dueReminders', 'dailyGroup',
-                       'dailyTime', 'introHidden', 'photoURL', 'emailNotify', 'email'])
+                       'dailyTime', 'introHidden', 'photoURL', 'emailNotify', 'email', 'pinnedProjects'])
+        // ホームで上に留めたプロジェクト（id の並び。20件まで）
+        && (!('pinnedProjects' in request.resource.data)
+            || (request.resource.data.pinnedProjects is list && request.resource.data.pinnedProjects.size() <= 20))
         // メールアドレスの写しは、ログインのアドレスと同じ値にそろえるときだけ
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['email'])
             || request.resource.data.email == request.auth.token.email)
@@ -52,9 +55,10 @@ service cloud.firestore {
         // 直す・ゴミ箱に入れる・戻す
         allow update: if request.auth != null && request.auth.uid == uid
           && request.resource.data.keys()
-               .hasOnly(['title', 'body', 'createdAt', 'updatedAt', 'discardedAt', 'expireAt'])
+               .hasOnly(['title', 'body', 'createdAt', 'updatedAt', 'discardedAt', 'expireAt', 'pinned'])
           && request.resource.data.diff(resource.data).affectedKeys()
-               .hasOnly(['title', 'body', 'updatedAt', 'discardedAt', 'expireAt'])
+               .hasOnly(['title', 'body', 'updatedAt', 'discardedAt', 'expireAt', 'pinned'])
+          && request.resource.data.get('pinned', false) is bool
           && validMemo()
           && (!('expireAt' in request.resource.data) || request.resource.data.expireAt is timestamp);
       }

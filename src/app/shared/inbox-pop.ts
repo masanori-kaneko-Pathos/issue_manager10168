@@ -1,7 +1,8 @@
-import { Component, OnInit, computed, inject, output, signal } from '@angular/core';
+import { ApplicationRef, Component, OnInit, computed, inject, output, signal } from '@angular/core';
+import { smoothly } from '../core/smoothly';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { InboxService, splitMemo, stableOrder } from '../core/inbox/inbox.service';
+import { InboxService, pinnedStable, splitMemo } from '../core/inbox/inbox.service';
 import { MemoRow } from './memo-row';
 import { IS_TOUCH, enterKey } from '../core/dom';
 import { TPipe } from '../i18n/i18n';
@@ -22,7 +23,9 @@ import { TPipe } from '../i18n/i18n';
       </div>
       <ul class="recent">
         @for (m of recent(); track m.id) {
-          <li><app-memo-row [memo]="m" [compact]="true" touchUi="menu" (leave)="close.emit()" /></li>
+          <li [style.view-transition-name]="'pop-memo-' + m.id">
+            <app-memo-row [memo]="m" [compact]="true" touchUi="menu" (leave)="close.emit()" (saved)="bump(m.id)" />
+          </li>
         } @empty {
           <li class="empty">{{ 'inbox.empty' | t }}</li>
         }
@@ -84,7 +87,15 @@ export class InboxPop implements OnInit {
   private body = computed(() => splitMemo(this.inbox.draft()).body);
   /** 開いた時点の並び（直したメモが、開いている間に上へ跳ねないように） */
   private order = signal<string[] | null>(null);
-  recent = computed(() => stableOrder(this.inbox.active(), this.order()).slice(0, 3));
+  /** ピン止めが上。それぞれの中は、開いた時点の並び（直したメモは、bump で上へ） */
+  recent = computed(() => pinnedStable(this.inbox.active(), this.order()).slice(0, 3));
+  private appRef = inject(ApplicationRef);
+
+  /** 直し終えたメモを、0.5秒待ってから、ピン止めしていない群の一番上へ、すーっと動かす（受信箱のページと同じ） */
+  bump(id: string) {
+    setTimeout(() => smoothly(this.appRef,
+      () => this.order.update((o) => (o ? [id, ...o.filter((x) => x !== id)] : o))), 500);
+  }
 
   ngOnInit() {
     this.order.set(this.inbox.active().map((m) => m.id));

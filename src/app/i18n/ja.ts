@@ -44,7 +44,7 @@ export const ja = {
   },
 
   crumbs: { nav: 'いまの場所', home: 'ホーム', inbox: '受信箱', drafts: '下書き' },
-
+  nav: { title: 'メニュー', open: 'メニューを開く' },
   projects: {
     title: 'プロジェクト',
     namePlaceholder: '新しいプロジェクト名',
@@ -55,6 +55,11 @@ export const ja = {
     removedNoticeUnknown: 'プロジェクトのメンバーから外れたため、表示できなくなりました。',
     dismiss: '閉じる',
     leftNotice: '「{{project}}」から抜けました。',
+    showMore: 'ほか {{n}} 件を表示', 
+    showLess: '折りたたむ',
+    pin: 'ピン止め', 
+    unpin: 'ピンを外す', 
+    pinMax: 'ピン止めできるのは20件までです。',
   },
   projectNew: {
     title: 'プロジェクトを作成',
@@ -727,6 +732,11 @@ export const ja = {
     editHelp: '1行目がタイトル、2行目から詳しいこと。Enter か外を押すと保存、Esc で直さずに戻します。Shift＋Enter で改行。',
     editHelpTouch: '1行目がタイトル、2行目から詳しいこと。外を押すと保存します。',
     editedAgo: '{{t}}に編集',
+    pin: 'ピン止め', 
+    unpin: 'ピンを外す', 
+    select: '「{{title}}」を選ぶ',
+    bulkDiscard: 'ゴミ箱へ', 
+    discardedN: '{{n}}件をゴミ箱に移しました。',
   },
   drafts: {
     title: '下書き',

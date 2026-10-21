@@ -19,10 +19,11 @@ import { Avatar } from './avatar';
 import { SETTINGS_NAV } from './settings-nav';
 import { NoticeActions } from './notice-actions';
 import { IssueFormService } from '../core/issue/issue-form.service';
+import { NavDrawer } from './nav-drawer';
 
 @Component({
   selector: 'app-header',
-  imports: [RouterLink, TPipe, HelpTip, SearchBox, ProjectNewDialog, InboxPop, Avatar, NoticeActions],
+  imports: [RouterLink, TPipe, HelpTip, SearchBox, ProjectNewDialog, InboxPop, Avatar, NoticeActions, NavDrawer],
   host: {
     '(document:keydown.escape)':
       'open.set(false); addOpen.set(false); bellOpen.set(false); rowMenu.set(null); penOpen.set(false)',
@@ -30,6 +31,11 @@ import { IssueFormService } from '../core/issue/issue-form.service';
   },
   template: `
     <header class="app-header">
+      <!-- 狭い画面だけ：押すと、左から引き出しが出る -->
+      <button type="button" class="nav-btn" [attr.aria-label]="'nav.open' | t" [title]="'nav.open' | t"
+        [attr.aria-expanded]="navOpen()" (click)="navOpen.set(true)">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16" /></svg></button>
       <a routerLink="/" class="brand">{{ 'app.title' | t }}</a>
       <app-search-box />
       <div class="pen-wrap">
@@ -151,11 +157,20 @@ import { IssueFormService } from '../core/issue/issue-form.service';
         <app-project-new-dialog (close)="projectNewOpen.set(false)" />
       }
     }
+    @if (navOpen()) {
+      @defer (on immediate) {
+        <app-nav-drawer (close)="navOpen.set(false)" />
+      }
+    }
   `,
   styles: `
     .app-header { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 8px;
       height: 52px; padding: 0 12px; background: var(--primary); color: var(--on-primary); }
     .brand { color: var(--on-primary); text-decoration: none; font-weight: bold; font-size: 16px; }
+    /* ☰：どの画面でも。押すと、左から引き出し（ホーム・受信箱・下書き・プロジェクト） */
+    .nav-btn { display: inline-flex; width: 36px; height: 36px; padding: 0; border: none; border-radius: 50%;
+      align-items: center; justify-content: center; background: none; color: var(--on-primary); cursor: pointer; }
+    .nav-btn:hover { background: rgba(255, 255, 255, 0.15); }
     .spacer { flex: 1; }
     .add-btn { width: 36px; height: 36px; border-radius: 50%; border: none; background: var(--on-primary);
       color: var(--primary); font-size: 22px; font-weight: bold; line-height: 1; cursor: pointer; }
@@ -272,6 +287,8 @@ export class AppHeader {
   private clock = inject(Clock);
   private i18n = inject(I18nService);
   bellOpen = signal(false);
+  /** 引き出しが開いているか */
+  navOpen = signal(false);
   /** ペンの吹き出し（開け閉めは受信箱のサービスが持つ。ホームや受信箱のページからも開くため） */
   penOpen = this.inbox.penOpen;
 

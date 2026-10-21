@@ -1,6 +1,6 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import {
-  Timestamp, addDoc, collection, deleteDoc, deleteField, doc, getDoc, onSnapshot, serverTimestamp, updateDoc,
+  Timestamp, addDoc, collection, deleteDoc, deleteField, doc, getDoc, onSnapshot, serverTimestamp, updateDoc, writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { AuthService } from '../auth/auth.service';
@@ -32,10 +32,10 @@ export class InboxService {
   penOpen = signal(false);
   private flashTimer: ReturnType<typeof setTimeout> | undefined;
 
-  /** 未整理のメモ（更新が新しい順。直したメモが上に来る） */
+  /** 未整理のメモ（ピン止めが上。その中も残りも、更新が新しい順） */
   active = computed(() => this.items()
     .filter((m) => !m.discardedAt)
-    .sort((a, b) => b.updatedAt.toMillis() - a.updatedAt.toMillis()));
+    .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.updatedAt.toMillis() - a.updatedAt.toMillis()));
   /** ゴミ箱のメモ（捨てた順。自動で消える日時を過ぎたものは、実際に消えるまでの間も出さない） */
   trash = computed(() => {
     const now = this.clock.now();
@@ -111,6 +111,36 @@ export class InboxService {
     return deleteDoc(doc(this.col(), id));
   }
 
+  /** ピン止めの付け外し（updatedAt は変えない＝「直した」扱いにしない） */
+  setPinned(id: string, on: boolean) {
+    return updateDoc(doc(this.col(), id), { pinned: on });
+  }
+
+  /** まとめて書く（1回500件までなので、400件ずつ） */
+  private async many(ids: string[], data: Record<string, unknown>) {
+    for (let i = 0; i < ids.length; i += 400) {
+      const batch = writeBatch(db);
+      ids.slice(i, i + 400).forEach((id) => batch.update(doc(this.col(), id), data));
+      await batch.commit();
+    }
+  }
+
+  setPinnedMany(ids: string[], on: boolean) {
+    return this.many(ids, { pinned: on });
+  }
+
+  /** まとめてゴミ箱へ（30日で自動で消える） */
+  discardMany(ids: string[]) {
+    return this.many(ids, {
+      discardedAt: serverTimestamp(), expireAt: Timestamp.fromMillis(Date.now() + INBOX_TRASH_DAYS * DAY),
+    });
+  }
+
+  /** まとめてゴミ箱から戻す（元に戻す） */
+  restoreMany(ids: string[]) {
+    return this.many(ids, { discardedAt: deleteField(), expireAt: deleteField() });
+  }
+
   /** 7日以上たったメモか（時計で判定するので、開いたままでも日付が変われば付く） */
   isOld(m: InboxMemo) {
     return this.clock.now() - m.createdAt.toMillis() >= INBOX_OLD_DAYS * DAY;
@@ -145,4 +175,12 @@ export function stableOrder<T extends { id: string }>(all: T[], order: string[] 
     ...all.filter((m) => !pos.has(m.id)),
     ...all.filter((m) => pos.has(m.id)).sort((a, b) => pos.get(a.id)! - pos.get(b.id)!),
   ];
+}
+
+/**
+ * ピン止めの群と、そうでない群に分け、それぞれの中は、ある時点（order）の並びのまま保つ。
+ * 受信箱のページと、ペンの吹き出しで使う
+ */
+export function pinnedStable<T extends { id: string; pinned?: boolean }>(all: T[], order: string[] | null): T[] {
+  return [...stableOrder(all.filter((m) => m.pinned), order), ...stableOrder(all.filter((m) => !m.pinned), order)];
 }

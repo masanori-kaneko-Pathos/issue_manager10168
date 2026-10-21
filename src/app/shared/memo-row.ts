@@ -30,7 +30,7 @@ import { IssueFormService } from '../core/issue/issue-form.service';
     } @else {
       <div class="row">
         <button type="button" class="main" [title]="'inbox.edit' | t" (click)="startEdit()">
-          <span class="t">{{ memo().title }}</span>
+          <span class="t">@if (memo().pinned) {<svg class="pin-mark" viewBox="0 0 24 24" width="12" height="12" role="img" [attr.aria-label]="'notify.pinned' | t" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M9 3h6l-1 6 3 3H7l3-3z" /><path d="M12 15v6" /></svg>}{{ memo().title }}</span>
           @if (memo().body) { <span class="b">{{ firstLine(memo().body) }}</span> }
           @if (!compact()) {
             <span class="meta">{{ edited() ? ('inbox.editedAgo' | t: { t: when() }) : when() }}
@@ -45,15 +45,19 @@ import { IssueFormService } from '../core/issue/issue-form.service';
             <div class="m-backdrop" (click)="menuOpen.set(false)"></div>
             <div class="m-menu" role="menu" [class.left]="menuLeft()">
               <button type="button" role="menuitem" (click)="toIssue()">{{ 'inbox.toIssue' | t }}</button>
+              <button type="button" role="menuitem" (click)="togglePin()">
+                {{ (memo().pinned ? 'inbox.unpin' : 'inbox.pin') | t }}</button>
               <button type="button" role="menuitem" (click)="startEdit()">{{ 'inbox.edit' | t }}</button>
               <button type="button" role="menuitem" class="danger" (click)="remove()">{{ 'inbox.popDelete' | t }}</button>
             </div>
           }
         } @else {
           <div class="acts" [class.always]="touch" role="group" [attr.aria-label]="'inbox.memoMenu' | t">
-            <button type="button" class="ic" [title]="'inbox.edit' | t" [attr.aria-label]="'inbox.edit' | t" (click)="startEdit()">
-              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor"
-                stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z" /></svg>
+            <button type="button" class="ic" [class.on]="!!memo().pinned" [attr.aria-pressed]="!!memo().pinned"
+              [title]="(memo().pinned ? 'inbox.unpin' : 'inbox.pin') | t"
+              [attr.aria-label]="(memo().pinned ? 'inbox.unpin' : 'inbox.pin') | t" (click)="togglePin()">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" [attr.fill]="memo().pinned ? 'currentColor' : 'none'"
+                stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M9 3h6l-1 6 3 3H7l3-3z" /><path d="M12 15v6" /></svg>
             </button>
             <button type="button" class="ic" [title]="'inbox.toIssue' | t" [attr.aria-label]="'inbox.toIssue' | t" (click)="toIssue()">
               <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor"
@@ -90,6 +94,8 @@ import { IssueFormService } from '../core/issue/issue-form.service';
       border: none; border-radius: 6px; background: none; color: var(--text-muted); cursor: pointer; }
     .ic:hover { background: var(--surface-muted); color: var(--text); }
     .ic.danger:hover { color: var(--danger-text); }
+    .ic.on { color: var(--primary); }
+    .pin-mark { vertical-align: -1px; margin-right: 4px; color: var(--primary); }
     @media (hover: hover) and (pointer: fine) {
       .row:hover { background: var(--surface-alt); }
       .row:hover .acts, .row:focus-within .acts { display: flex; position: absolute; right: 4px; top: 50%;
@@ -119,6 +125,8 @@ export class MemoRow implements OnInit {
   touchUi = input<'menu' | 'icons'>('icons');
   /** 最初から直す状態で出す（検索などから ?m= で来たとき） */
   startEditing = input(false);
+  /** 直し終えた（保存できた）。受信箱のページと吹き出しが、少し待ってから上へ動かす */
+  saved = output<void>();
   /** 別の画面へ移る（吹き出しを閉じるため） */
   leave = output<void>();
 
@@ -195,6 +203,7 @@ export class MemoRow implements OnInit {
     try {
       await this.inbox.update(m.id, title, body);
       this.editing.set(false);
+      this.saved.emit();
     } catch (e) {
       console.error(e);
       this.error.set('common.saveError');
@@ -207,6 +216,17 @@ export class MemoRow implements OnInit {
     this.menuOpen.set(false);
     this.leave.emit();
     this.issueForm.open(null, { memo: this.memo().id });
+  }
+
+  /** ピン止めの付け外し */
+  async togglePin() {
+    this.menuOpen.set(false);
+    try {
+      await this.inbox.setPinned(this.memo().id, !this.memo().pinned);
+    } catch (e) {
+      console.error(e);
+      this.error.set('common.saveError');
+    }
   }
 
   /** ゴミ箱へ（30日で自動で消える）。下に「元に戻す」 */

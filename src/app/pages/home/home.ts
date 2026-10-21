@@ -25,6 +25,7 @@ import { MineCalendar } from './mine-calendar';
 import { TabInk } from '../../shared/tab-ink';
 import { MemoRow } from '../../shared/memo-row';
 import { RecurMark } from '../../shared/recur-mark';
+import { PROJECT_FOLD, orderProjects } from '../../core/project/project-order';
 
 @Component({
   selector: 'app-home',
@@ -201,14 +202,21 @@ import { RecurMark } from '../../shared/recur-mark';
               <p class="small">{{ 'common.loading' | t }}</p>
             } @else {
               <ul class="plist">
-                @for (p of activeProjects(); track p.id) {
-                  <li>
+                @for (p of shownProjects(); track p.id) {
+                  @let on = pinned().has(p.id);
+                  <li [class.pinned]="on">
                     <a class="pname" [routerLink]="['/p', p.id]" [title]="p.name">{{ p.name }}</a>
                     @if (reqCount()[p.id]; as n) {
                       <a class="req-chip" [routerLink]="['/p', p.id, 'requests']" [title]="'request.waiting' | t">
                         {{ 'request.homeChip' | t: { n: '' + n } }}</a>
                     }
                     <span class="role">{{ 'roles.' + p.role | t }}</span>
+                    <button type="button" class="pin" [class.on]="on" [attr.aria-pressed]="on"
+                      [attr.aria-label]="(on ? 'projects.unpin' : 'projects.pin') | t" [title]="(on ? 'projects.unpin' : 'projects.pin') | t"
+                      (click)="togglePin(p)">
+                      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" [attr.fill]="on ? 'currentColor' : 'none'"
+                        stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+                        <path d="M9 3h6l-1 6 3 3H7l3-3z" /><path d="M12 15v6" /></svg></button>
                   </li>
                 } @empty {
                   <li class="first">
@@ -217,6 +225,13 @@ import { RecurMark } from '../../shared/recur-mark';
                   </li>
                 }
               </ul>
+              @if (activeProjects().length > projectFold) {
+                <button type="button" class="link fold-btn" [attr.aria-expanded]="showAllProjects()"
+                  (click)="showAllProjects.set(!showAllProjects())">
+                  {{ (showAllProjects() ? 'projects.showLess' : 'projects.showMore')
+                    | t: { n: '' + (activeProjects().length - projectFold) } }}
+                  <span class="tri" [class.up]="showAllProjects()" aria-hidden="true">▾</span></button>
+              }            
               @if (archivedProjects().length) {
                 <button type="button" class="link fold-btn" [attr.aria-expanded]="showArchived()"
                   (click)="showArchived.set(!showArchived())">
@@ -264,13 +279,16 @@ import { RecurMark } from '../../shared/recur-mark';
                   <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg></button>
             </div>
             <ul class="mlist">
-              @for (m of inbox.active().slice(0, 3); track m.id) {
+              @for (m of inbox.active().slice(0, memoFold); track m.id) {
                 <!-- ペンの吹き出しと同じ1行（押すとその場で直す・課題にする・ゴミ箱へ） -->
                 <li><app-memo-row [memo]="m" [compact]="true" touchUi="menu" /></li>
               } @empty {
                 <li class="small">{{ 'inbox.empty' | t }}</li>
               }
             </ul>
+              @if (inbox.count() > memoFold) {
+              <a routerLink="/inbox" class="more-link">{{ 'inbox.seeAll' | t: { n: '' + (inbox.count() - memoFold) } }}</a>
+            }
           </section>
         </aside>
       </div>
@@ -306,11 +324,16 @@ import { RecurMark } from '../../shared/recur-mark';
     .layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); grid-template-areas: 'side mine';
       gap: 32px; align-items: start; }
     .mine { grid-area: mine; min-width: 0; scroll-margin-top: 64px; }
-    .side { grid-area: side; display: flex; flex-direction: column; gap: 16px; position: sticky; top: 68px; }
+    /* 画面に止まる列。窓が低いときは、列の中だけスクロール（受信箱がページの下に沈まないように） */
+    .side { grid-area: side; display: flex; flex-direction: column; gap: 16px; position: sticky; top: 68px;
+      max-height: calc(100vh - 84px); overflow-y: auto; }
+    .more-link { display: inline-flex; align-items: center; min-height: 32px; font-size: 13px;
+      color: var(--primary); text-decoration: none; }
+    .more-link:hover { text-decoration: underline; }
     @media (max-width: 959px) {
       .layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: none; gap: 24px; }
       .mine, .side { grid-area: auto; }
-      .side { position: static; }
+      .side { position: static; max-height: none; overflow: visible; }
     }
 
     /* 左の箱（プロジェクト・受信箱） */
@@ -332,6 +355,17 @@ import { RecurMark } from '../../shared/recur-mark';
     .pname:hover, .mname:hover { background: var(--surface-alt); }
     .mname { font-size: 13px; }
     .role { flex: none; font-size: 11px; padding: 1px 6px; border-radius: 10px; background: var(--chip-bg); }
+    /* ピン：PC は乗せたときだけ（ピン止め中はいつも青で見える）。スマホはいつも出す */
+    .pin { flex: none; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+      padding: 0; border: none; border-radius: 6px; background: none; color: var(--text-subtle); cursor: pointer; }
+    .pin:hover { background: var(--surface-alt); color: var(--text); }
+    .pin.on { color: var(--primary); }
+    @media (hover: hover) and (pointer: fine) {
+      .pin:not(.on) { opacity: 0; }
+      .plist li:hover .pin, .pin:focus-visible { opacity: 1; }
+    }
+    /* ピン止めと、それ以外の間に線 */
+    .plist li.pinned + li:not(.pinned) { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
     .archived .pname { color: var(--text-subtle); }
     .first { flex-direction: column; align-items: flex-start !important; gap: 8px; padding: 4px 0; }
     .req-chip { flex: none; font-size: 11px; padding: 1px 8px; border-radius: 10px; text-decoration: none; white-space: nowrap;
@@ -475,13 +509,45 @@ export class Projects implements OnInit {
 
   projects = signal<ProjectWithRole[]>([]);
   /** 進行中のプロジェクトと、アーカイブ済みのプロジェクト（アーカイブ済みは下にたたむ） */
-  activeProjects = computed(() => this.projects().filter((p) => !p.archived));
+  /** ピン止めしたプロジェクト（アカウントに残す。どの端末でも同じ） */
+  pinned = computed(() => new Set(this.authService.profile()?.pinnedProjects ?? []));
+  readonly maxPins = 20;
+  /** 進行中のプロジェクト：ピン止めが上、その中も残りも名前順（引き出しと同じ並び） */
+  activeProjects = computed(() => orderProjects(this.projects(), this.authService.profile()?.pinnedProjects));
   archivedProjects = computed(() => this.projects().filter((p) => p.archived));
   showArchived = signal(false);
+  /** 左の列に、最初から見せるプロジェクトの数（残りはたたむ。受信箱まで1画面に収まるように） */
+  readonly projectFold = PROJECT_FOLD;
+  showAllProjects = signal(false);
+  shownProjects = computed(() =>
+    this.showAllProjects() ? this.activeProjects() : this.activeProjects().slice(0, this.projectFold));
+  /** 受信箱の欄に見せるメモの数 */
+  readonly memoFold = 3;
   /** アーカイブ済みの行の ⋮（開いているプロジェクトの id） */
   rowMenu = signal<string | null>(null);
   /** メニューを上に開くか（ボタンが画面の下のほうにあって、下に開くと切れるとき） */
   rowMenuUp = signal(false);
+
+  /**
+   * ピン止めの付け外し。抜けた・消えたプロジェクトの id は、ついでに掃除する。
+   * 20件を超えるときは止める（ルールでも断られる）
+   */
+  async togglePin(p: ProjectWithRole) {
+    const alive = new Set(this.projects().map((x) => x.id));
+    const cur = (this.authService.profile()?.pinnedProjects ?? []).filter((x) => alive.has(x));
+    const next = cur.includes(p.id) ? cur.filter((x) => x !== p.id) : [...cur, p.id];
+    if (next.length > this.maxPins) {
+      this.error.set('projects.pinMax');
+      return;
+    }
+    this.error.set('');
+    try {
+      await this.authService.updateProfile({ pinnedProjects: next });
+    } catch (e) {
+      console.error(e);
+      this.error.set('common.saveError');
+    }
+  }
 
   toggleRowMenu(pid: string, e: MouseEvent) {
     if (this.rowMenu() === pid) {

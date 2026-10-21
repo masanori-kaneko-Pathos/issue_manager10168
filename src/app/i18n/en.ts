@@ -46,7 +46,7 @@ export const en: Dict = {
   },
 
   crumbs: { nav: 'Breadcrumb', home: 'Home', inbox: 'Inbox', drafts: 'Drafts' },
-
+  nav: { title: 'Menu', open: 'Open menu' },
   projects: {
     title: 'Projects',
     namePlaceholder: 'New project name',
@@ -57,6 +57,11 @@ export const en: Dict = {
     removedNoticeUnknown: 'You are no longer a member of the project, so it can no longer be shown.',
     dismiss: 'Dismiss',
     leftNotice: 'You left "{{project}}".',
+    showMore: 'Show {{n}} more', 
+    showLess: 'Show less',
+    pin: 'Pin', 
+    unpin: 'Unpin', 
+    pinMax: 'You can pin up to 20 projects.',
   },
   projectNew: {
     title: 'Create project',
@@ -731,6 +736,11 @@ export const en: Dict = {
     editHelp: 'First line is the title, the rest is details. Enter or click outside to save, Esc to cancel. Shift+Enter for a new line.',
     editHelpTouch: 'First line is the title, the rest is details. Tap outside to save.',
     editedAgo: 'edited {{t}}',
+    pin: 'Pin', 
+    unpin: 'Unpin', 
+    select: 'Select "{{title}}"',
+    bulkDiscard: 'Move to trash', 
+    discardedN: 'Moved {{n}} notes to the trash.',
   },
   drafts: {
     title: 'Drafts',
