@@ -170,6 +170,14 @@ export class ProjectService {
 
     /** 承諾：自分のメンバー文書の作成と、招待の削除を同時に行う */
     async acceptInvitation(inv: Invitation, user: User) {
+        // もうメンバーなら、招待を消すだけ（書き直すと「書き換え」扱いになり、ルールに断られて招待が残ってしまう）。
+        // メンバーでなければ、メンバー文書は読めずに断られるので、そのときは「まだメンバーではない」とみなす
+        const memberRef = doc(db, 'projects', inv.projectId, 'members', user.uid);
+        const already = await getDoc(memberRef).then((s) => s.exists()).catch(() => false);
+        if (already) {
+            await deleteDoc(doc(db, 'projects', inv.projectId, 'invitations', inv.email));
+            return;
+        }
         const batch = writeBatch(db);
         batch.set(doc(db, 'projects', inv.projectId, 'members', user.uid), {
             uid: user.uid,

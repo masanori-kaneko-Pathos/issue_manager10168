@@ -20,6 +20,7 @@ import { sizeText } from './attachment-list';
 import { ImageViewer, ViewerImage } from '../../shared/image-viewer';
 import { Crumbs, Crumb, HOME } from '../../shared/crumbs';
 import { ISSUE_NEW_EMBED } from '../../core/issue/issue-form.service';
+import { SearchService } from '../../core/search/search.service';
 
 const LAST_PROJECT_KEY = 'issuemanager.lastProject';
 
@@ -356,6 +357,7 @@ export class IssueNew implements OnInit {
   splitNote = signal<{ n: number; title: string } | null>(null);
   fromNumber = signal<number | null>(null);
   private drafts = inject(DraftService);
+  private search = inject(SearchService);
   /** どこから開いた登録も、下書きにする（書き足した中身は、元から開き直しても戻らないため） */
   private readonly draftable = true;
   /**
@@ -876,6 +878,8 @@ export class IssueNew implements OnInit {
         linkFrom: this.linkFrom ? { ...this.linkFrom, kind: this.linkKind() } : null,
       }, this.myUid, this.tz(), this.memoId ?? undefined);
       writeLastProject(pid);
+      // 検索は、プロジェクトごとの課題を5分取っておくので、捨てて読み直させる（登録した課題が、すぐ検索に出るように）
+      this.search.invalidate();
       // 登録できたので、下書きは要らない（このあと画面を離れても、しまい直さない）
       this.submitted = true;
       clearTimeout(this.draftTimer);

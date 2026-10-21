@@ -331,7 +331,10 @@ service cloud.firestore {
         && d.importance in ['high', 'mid', 'low']
         && d.dueAt is timestamp
         && d.doneCriteria is string && d.doneCriteria.size() > 0
-        && get(/databases/$(database)/documents/projects/$(pid)/members/$(d.assigneeId)).data.role in ['admin', 'member'];
+        // 担当者は、変えたときだけ「担当者になれる人か」を確かめる
+        // （抜けた人が担当のまま残った課題も、題名などほかの欄は直せるように。サブタスクのルールと同じ考え方）
+        && (!d.diff(resource.data).affectedKeys().hasAny(['assigneeId'])
+            || get(/databases/$(database)/documents/projects/$(pid)/members/$(d.assigneeId)).data.role in ['admin', 'member']);
     }
 
     // 優先度の手動変更：担当者と管理者。クローズ・却下は不可
