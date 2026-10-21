@@ -441,6 +441,9 @@ export const ja = {
     dueCols: { overdue: '期限切れ', today: '今日', tomorrow: '明日', week: '1週間以内', later: 'それより先' },
     overdueN: '期限切れ {{n}}',
     dueDropHint: 'カードを列に落とすと、期限を変えられます（理由を書いて確定）。',
+    colsLabel: '表示する列', colsAll: '全部',
+    prevCol: '前の列へ', nextCol: '次の列へ',
+    colsN: '{{n}}列',
   },
   who: {
     open: '担当者で絞り込む',

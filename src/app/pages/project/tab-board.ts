@@ -34,6 +34,8 @@ type ViewBy = 'status' | 'due' | 'assignee';
 type DueCol = 'overdue' | 'today' | 'tomorrow' | 'week' | 'later';
 /** 期限別・担当者別の列（見るだけ） */
 interface AltCol { key: string; label: string; issues: Issue[]; overdue: number; }
+/** 期限の列 → その列の期限（今日から何日後の 23:59）。ドラッグで落としたときの最初の値と、「＋」で登録するときの期限 */
+const DUE_COL_DAYS: Record<string, number> = { today: 0, tomorrow: 1, week: 7, later: 14 };
 const DAY = 24 * 60 * 60 * 1000;
 
 /** 列 → その列に置いたときのステータス */
@@ -61,6 +63,7 @@ const EMPTY_PAYLOAD = {
   imports: [CdkDropListGroup, CdkDropList, CdkDrag, NgTemplateOutlet,
     CdkScrollable, RouterLink, TPipe, HelpTip, StatusDialog, LabelChip, PriorityMark, DueDialog, PeopleFilter,
     Avatar, TrashDrop, DeleteDialog],
+    host: { '(window:resize)': 'measure()', '(document:keydown.escape)': 'colsOpen.set(false)' },
   template: `
     <div class="quick">
       <app-people-filter [members]="ctx.assignable()" [counts]="ctx.activeCount()" [value]="who()"
@@ -71,6 +74,28 @@ const EMPTY_PAYLOAD = {
             (click)="setBy(v)">{{ 'board.views.' + v | t }}</button>
         }
       </div>
+      @if (!isMobile()) {
+        <div class="cols-pick">
+          <!-- 押すボタンはチップの基準のまま（.chips の中に置く） -->
+          <div class="chips">
+            <button type="button" aria-haspopup="menu" [attr.aria-expanded]="colsOpen()" (click)="colsOpen.set(!colsOpen())">
+              {{ 'board.colsLabel' | t }}：{{ colsPick() ? ('board.colsN' | t: { n: '' + colsPick() }) : ('board.colsAll' | t) }}
+              <span aria-hidden="true">▾</span></button>
+          </div>
+          @if (colsOpen()) {
+            <div class="backdrop" (click)="colsOpen.set(false)"></div>
+            <div class="menu" role="menu">
+              @for (n of colsOptions; track n) {
+                <button type="button" role="menuitemradio" [attr.aria-checked]="colsPick() === n" [class.on]="colsPick() === n"
+                  (click)="colsOpen.set(false); setCols(n)">
+                  <span class="tick" aria-hidden="true">{{ colsPick() === n ? '✓' : '' }}</span>
+                  {{ n ? ('board.colsN' | t: { n: '' + n }) : ('board.colsAll' | t) }}</button>
+              }
+            </div>
+          }
+        </div>
+      }
+
       <!-- 「期限」の表示では、列そのものが期限で分かれているので出さない -->
       @if (by() !== 'due') {
         <div class="chips">
@@ -106,31 +131,24 @@ const EMPTY_PAYLOAD = {
         </div>
       }
 
-      <!-- PC：上にも横スクロールのバー（本体と連動）。列が画面に収まっているときは出さない -->
-      @if (!isMobile()) {
-        <div class="top-scroll" #topScroll [class.off]="!overflowing()" (scroll)="onTopScroll()" aria-hidden="true">
-          <div [style.width.px]="scrollWidth()"></div>
-        </div>
-      }
-
+      <div class="board-wrap">
       @if (by() === 'status') {
         <div class="board" #boardEl cdkDropListGroup cdkScrollable [class.dragging]="!!dragging()"
-          (scroll)="onBoardScroll()">
+          [style.height.px]="boardH()" (scroll)="onBoardScroll()">
           @for (c of visibleCols(); track c) {
-            <section class="col" [attr.data-col]="c" [cdkDropListAutoScrollDisabled]="true"
-              [class.allowed]="!!dragging() && canDropInto(c)" [class.blocked]="!!dragging() && !canDropInto(c)"
-              cdkDropList [cdkDropListData]="c" [cdkDropListEnterPredicate]="predicates[c]"
-              (cdkDropListDropped)="onDrop($event)">
+            <section class="col" [attr.data-col]="c" [style.flex]="colFlex()"
+              [class.allowed]="!!dragging() && canDropInto(c)" [class.blocked]="!!dragging() && !canDropInto(c)">
               <header class="col-head">
                 <span class="col-name">{{ 'board.cols.' + c | t }}</span>
                 <span class="count">{{ byCol()[c].length }}</span>
                 @if (c === 'open' && ctx.canCreate()) {
-                  <a class="head-add" [routerLink]="['/p', ctx.pid(), 'new']"
+                  <a class="head-add" [routerLink]="['/p', ctx.pid(), 'new']" [queryParams]="{ ret: here() }"
                     [attr.aria-label]="'project.newIssue' | t" [title]="'project.newIssue' | t">＋</a>
                 }
                 @if (c === 'done') { <span class="note">{{ 'board.doneNote' | t }}</span> }
               </header>
-                <div class="cards">
+                <div class="cards" cdkDropList [cdkDropListData]="c" [cdkDropListEnterPredicate]="predicates[c]"
+                  [cdkDropListAutoScrollDisabled]="true" (cdkDropListDropped)="onDrop($event)">
                   @for (i of byCol()[c]; track i.id) {
                     <article class="card" cdkDrag [cdkDragData]="i" [cdkDragDisabled]="!canDrag(i)" (cdkDragMoved)="onDragMoved($event)"
                       [cdkDragStartDelay]="{ touch: 300, mouse: 0 }"
@@ -148,19 +166,24 @@ const EMPTY_PAYLOAD = {
         </div>
       } @else {
         <!-- 期限別：期限の列へドラッグできる（落とすと期限の変更の窓）。担当者別：見るだけ -->
-        <div class="board" #boardEl cdkDropListGroup cdkScrollable [class.dragging]="!!dragging()" (scroll)="onBoardScroll()">
+        <div class="board" #boardEl cdkDropListGroup cdkScrollable [class.dragging]="!!dragging()"
+          [style.height.px]="boardH()" (scroll)="onBoardScroll()">
           @for (c of altCols(); track c.key) {
-            <section class="col" [attr.data-col]="c.key" [cdkDropListAutoScrollDisabled]="true"
-              cdkDropList [cdkDropListData]="c.key" [cdkDropListDisabled]="by() !== 'due'"
-              [cdkDropListSortingDisabled]="true" [cdkDropListEnterPredicate]="dueEnter"
-              [class.allowed]="!!dragging() && c.key !== 'overdue'" [class.blocked]="!!dragging() && c.key === 'overdue'"
-              (cdkDropListDropped)="onDueDrop($event)">
+            <section class="col" [attr.data-col]="c.key" [style.flex]="colFlex()"
+              [class.allowed]="!!dragging() && c.key !== 'overdue'" [class.blocked]="!!dragging() && c.key === 'overdue'">
               <header class="col-head">
                 <span class="col-name">{{ c.label }}</span>
                 <span class="count">{{ c.issues.length }}</span>
                 @if (c.overdue) { <span class="od">{{ 'board.overdueN' | t: { n: '' + c.overdue } }}</span> }
+                @if (by() === 'due' && c.key !== 'overdue' && ctx.canCreate()) {
+                  <a class="head-add hover" [routerLink]="['/p', ctx.pid(), 'new']"
+                    [queryParams]="{ due: dueDateOf(c.key), ret: here() }"
+                    [attr.aria-label]="'project.newIssue' | t" [title]="'project.newIssue' | t">＋</a>
+                }
               </header>
-              <div class="cards">
+              <div class="cards" cdkDropList [cdkDropListData]="c.key" [cdkDropListDisabled]="by() !== 'due'"
+                [cdkDropListSortingDisabled]="true" [cdkDropListEnterPredicate]="dueEnter"
+                [cdkDropListAutoScrollDisabled]="true" (cdkDropListDropped)="onDueDrop($event)">
                 @for (i of c.issues; track i.id) {
                   @let movable = by() === 'due' && canMoveDue(i);
                   <article class="card" [class.static]="!movable" [attr.data-p]="prio(i)" (cdkDragMoved)="onDragMoved($event)"
@@ -177,6 +200,22 @@ const EMPTY_PAYLOAD = {
           @if (canTrash()) { <app-trash-drop [show]="!!dragging()" (dropped)="deleting.set($event)" /> }
         </div>
       }
+        <!-- 列の数を選んでいるとき：左右の端に、1列ずつ送るボタン（乗せると薄く出る） -->
+        @if (colsPick() && !isMobile() && !dragging()) {
+          @if (canLeft()) {
+            <button type="button" class="pager left" [attr.aria-label]="'board.prevCol' | t" [title]="'board.prevCol' | t"
+              (click)="page(-1)">
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6" /></svg></button>
+          }
+          @if (canRight()) {
+            <button type="button" class="pager right" [attr.aria-label]="'board.nextCol' | t" [title]="'board.nextCol' | t"
+              (click)="page(1)">
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg></button>
+          }
+        }
+      </div>
     }
 
     <!-- カードの中身（3つの表示で共通） -->
@@ -259,8 +298,11 @@ const EMPTY_PAYLOAD = {
     .notice { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; font-size: 13px;
       background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
 
-    .board { position: relative; display: flex; gap: 12px; align-items: flex-start; overflow-x: auto; padding-bottom: 8px; }
-    .col { flex: 1 1 0; min-width: 220px; background: var(--surface-alt); border-radius: 10px;
+    /* 箱は窓の下の端まで（高さは画面が測って入れる）。縦は列の中だけで流れ、横のバーはいつも窓の下に見える */
+    .board { position: relative; box-sizing: border-box; display: flex; gap: 12px; align-items: flex-start;
+      overflow-x: auto; overflow-y: hidden; padding-bottom: 8px; }
+    .col { flex: 1 1 0; min-width: 220px; max-height: 100%; min-height: 0; box-sizing: border-box;
+      background: var(--surface-alt); border-radius: 10px;
       border-top: 4px solid var(--disabled); display: flex; flex-direction: column; }
     .col[data-col='in_progress'] { border-top-color: var(--primary); }
     .col[data-col='resolved'] { border-top-color: var(--success); }
@@ -272,7 +314,30 @@ const EMPTY_PAYLOAD = {
     .count { font-size: 12px; font-weight: normal; padding: 0 8px; border-radius: 10px; background: var(--surface); }
     .note { font-size: 11px; font-weight: normal; color: var(--text-subtle); flex-basis: 100%; }
 
-    .cards { display: flex; flex-direction: column; gap: 8px; padding: 0 8px 8px; min-height: 40px; }
+    .cards { flex: 1 1 auto; min-height: 40px; overflow-y: auto; display: flex; flex-direction: column;
+      gap: 8px; padding: 0 8px 8px; }
+    /* 列の数のメニュー（ほかの ▾ のメニューと同じ形） */
+    .cols-pick { position: relative; }
+    .backdrop { position: fixed; inset: 0; z-index: 51; }
+    .cols-pick .menu { position: absolute; left: 0; top: calc(100% + 4px); z-index: 52; min-width: 140px;
+      display: flex; flex-direction: column; padding: 6px 0; border-radius: 10px;
+      background: var(--surface); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2); }
+    .cols-pick .menu button { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 16px;
+      border: none; background: none; color: var(--text); font-size: 14px; text-align: left; cursor: pointer; }
+    .cols-pick .menu button:hover { background: var(--surface-alt); }
+    .cols-pick .menu button.on { font-weight: bold; color: var(--primary); }
+    .tick { width: 14px; }
+    /* カードは縮ませない（overflow: hidden のカードは 0 まで縮められてしまう。はみ出した分は列の中でスクロール） */
+    .cards > * { flex: none; }
+    .board-wrap { position: relative; }
+    .pager { position: absolute; top: 50%; transform: translateY(-50%); z-index: 5; width: 36px; height: 56px;
+      display: inline-flex; align-items: center; justify-content: center; padding: 0;
+      border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-muted);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); opacity: 0; transition: opacity 0.15s; cursor: pointer; }
+    .pager.left { left: 4px; }
+    .pager.right { right: 4px; }
+    .board-wrap:hover .pager { opacity: 0.75; }
+    .pager:hover, .pager:focus-visible { opacity: 1 !important; color: var(--text); }
     .card { background: var(--surface); border-radius: 8px; border-left: 4px solid var(--disabled);
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); overflow: hidden; cursor: grab; }
     .card[data-p='high'] { border-left-color: var(--danger); }
@@ -299,15 +364,16 @@ const EMPTY_PAYLOAD = {
       align-items: center; justify-content: center; color: var(--primary); text-decoration: none;
       font-size: 18px; font-weight: bold; }
     .head-add:hover { background: var(--surface); }
+        /* 期限の列の ＋ は、マウスの端末では列に乗せたときだけ出す（スマホはいつも出す） */
+    @media (hover: hover) and (pointer: fine) {
+      .head-add.hover { opacity: 0; }
+      .col:hover .head-add.hover, .head-add.hover:focus-visible { opacity: 1; }
+    }
 
     /* ドラッグ中の見た目 */
     .cdk-drag-preview { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); }
     .cdk-drag-placeholder { opacity: 0.3; }
     .cdk-drag-animating { transition: transform 200ms ease; }
-
-    .top-scroll { overflow-x: auto; overflow-y: hidden; height: 14px; margin-bottom: 4px; }
-    .top-scroll > div { height: 1px; }
-    .top-scroll.off { visibility: hidden; height: 0; margin: 0; }
 
     /* スマホ：1列ずつ */
     .col-tabs { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 8px; }
@@ -399,13 +465,74 @@ export class ProjectBoard implements OnInit {
     this.isMobile() ? this.mobileCols : ['open', 'in_progress', 'resolved', 'done', 'on_hold']);
 
   private boardEl = viewChild<ElementRef<HTMLElement>>('boardEl');
-  private topScroll = viewChild<ElementRef<HTMLElement>>('topScroll');
-  /** 本体の横の長さ（上のバーの中身を、同じ長さにするため） */
-  scrollWidth = signal(0);
-  /** 列が画面からはみ出しているか（はみ出していなければ、上のバーは出さない） */
-  overflowing = signal(false);
-  /** 片方を動かしたとき、もう片方の「動いた」の知らせで動かし返さないための目印 */
-  private syncing = false;
+  /** かんばんの箱の高さ（窓の下の端まで。描くたび・窓の大きさが変わるたびに測る） */
+  boardH = signal<number | null>(null);
+  /** 表示する列の数（0＝全部）。画面の大きさで向く数が違うので、端末ごとに覚える */
+  private readonly colsKey = `issuemanager.boardCols.${auth.currentUser!.uid}`;
+  readonly colsOptions = [0, 1, 2, 3, 4];
+  colsPick = signal<number>((() => {
+    try {
+      const n = Number(localStorage.getItem(this.colsKey));
+      return [1, 2, 3, 4].includes(n) ? n : 0;
+    } catch {
+      return 0;
+    }
+  })());
+  /** 列の数のメニューが開いているか */
+  colsOpen = signal(false);
+  /** 列の幅：選んだ数で箱を割る。列がそれより少ないときは、ある列の数で割る（右に空きを残さない） */
+  colFlex = computed(() => {
+    const pick = this.colsPick();
+    if (!pick || this.isMobile()) return null;
+    const total = this.by() === 'status' ? this.visibleCols().length : this.altCols().length;
+    const n = Math.max(1, Math.min(pick, total));
+    return `0 0 calc((100% - ${(n - 1) * 12}px) / ${n})`;
+  });
+
+  setCols(n: number) {
+    this.colsPick.set(n);
+    try {
+      localStorage.setItem(this.colsKey, String(n));
+    } catch {
+      // 覚えられなくても、今の画面には効く
+    }
+  }
+
+  /**
+   * 箱の高さ ＝ 窓の高さ − 箱の上の端（ページの頭から）− 下の余白（main の 16px）。
+   * 小さすぎる窓では 320px を下限にする（そのときだけページが縦に流れる）
+   */
+  measure() {
+    const el = this.boardEl()?.nativeElement;
+    if (!el) return;
+    const top = el.getBoundingClientRect().top + window.scrollY;
+    const h = Math.max(320, Math.floor(window.innerHeight - top - 16));
+    if (h !== this.boardH()) this.boardH.set(h);
+    this.edges();
+  }
+
+  /** 左・右に、まだ送れる列があるか（端まで来た側のボタンは出さない） */
+  canLeft = signal(false);
+  canRight = signal(false);
+
+  private edges() {
+    const el = this.boardEl()?.nativeElement;
+    if (!el) return;
+    const l = el.scrollLeft > 1;
+    const r = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+    if (l !== this.canLeft()) this.canLeft.set(l);
+    if (r !== this.canRight()) this.canRight.set(r);
+  }
+
+  /** 1列分送る。今いる位置を列の幅で数え直してから送るので、半端な位置からでも列の頭にそろって止まる */
+  page(dir: 1 | -1) {
+    const el = this.boardEl()?.nativeElement;
+    const first = el?.querySelector<HTMLElement>('.col');
+    if (!el || !first) return;
+    const step = first.offsetWidth + 12; // 列の幅 ＋ すき間
+    const idx = Math.round(el.scrollLeft / step) + dir;
+    el.scrollTo({ left: Math.max(0, idx * step), behavior: 'smooth' });
+  }
 
   /** すばやい絞り込みをかけた課題 */
   filtered = computed(() => {
@@ -482,6 +609,17 @@ export class ProjectBoard implements OnInit {
     return i.dueAt.toMillis() - now <= 7 * DAY ? 'week' : 'later';
   }
   
+  /** 今の画面の道（登録画面から、このかんばんに戻ってくるため。分け方・人の絞り込みも入っている） */
+  here() {
+    return this.router.url;
+  }
+
+  /** 期限の列の「＋」で登録するときの期限の日（見る人のタイムゾーンの暦で） */
+  dueDateOf(col: string) {
+    const tz = this.tz();
+    return dateKey(endOfDayIn(DUE_COL_DAYS[col] ?? 0, tz), tz);
+  }
+
   /** 期限を変えられるか：管理者・提起者・担当者で、クローズ前（ルールの editAllowed・カレンダーと同じ） */
   canMoveDue(i: Issue) {
     if (i.status === 'closed' || this.ctx.archived()) return false;
@@ -500,10 +638,10 @@ export class ProjectBoard implements OnInit {
     const day = (n: number) => dateKey(endOfDayIn(n, tz), tz);
     const col = e.container.data as DueCol;
     const plan: Partial<Record<DueCol, { date: string; pick: { min: string; max: string | null } | null }>> = {
-      today: { date: day(0), pick: null },
-      tomorrow: { date: day(1), pick: null },
-      week: { date: day(7), pick: { min: day(2), max: day(7) } },
-      later: { date: day(14), pick: { min: day(8), max: null } },
+      today: { date: day(DUE_COL_DAYS['today']), pick: null },
+      tomorrow: { date: day(DUE_COL_DAYS['tomorrow']), pick: null },
+      week: { date: day(DUE_COL_DAYS['week']), pick: { min: day(2), max: day(7) } },
+      later: { date: day(DUE_COL_DAYS['later']), pick: { min: day(8), max: null } },
     };
     const p = plan[col];
     if (p) this.pendingDue.set({ issue: e.item.data, ...p });
@@ -521,14 +659,7 @@ export class ProjectBoard implements OnInit {
   constructor() {
     // 画面を描き直すたびに、本体の横の長さを測り直す（カードの増減・表示の切り替え・窓の大きさの変化に追いつくため）。
     // 値が変わったときだけ入れるので、描き直しが続けて起きることはない
-    afterEveryRender(() => {
-      const el = this.boardEl()?.nativeElement;
-      if (!el) return;
-      const w = el.scrollWidth;
-      const over = w > el.clientWidth + 1;
-      if (w !== this.scrollWidth()) this.scrollWidth.set(w);
-      if (over !== this.overflowing()) this.overflowing.set(over);
-    });
+    afterEveryRender(() => this.measure());
     const onChange = (e: MediaQueryListEvent) => this.isMobile.set(e.matches);
     this.mq.addEventListener('change', onChange);
     inject(DestroyRef).onDestroy(() => {
@@ -658,9 +789,16 @@ export class ProjectBoard implements OnInit {
       const r = el.getBoundingClientRect();
       if (p.x > r.right - zone) el.scrollLeft += speed(p.x - (r.right - zone));
       else if (p.x < r.left + zone) el.scrollLeft -= speed(r.left + zone - p.x);
-      const h = window.innerHeight;
-      if (p.y > h - zone) window.scrollBy(0, speed(p.y - (h - zone)));
-      else if (p.y < zone) window.scrollBy(0, -speed(zone - p.y));
+      // 縦：指の下の列の中を流す（ページはもう縦に伸びないため）
+      const col = [...el.querySelectorAll<HTMLElement>('.cards')].find((c) => {
+        const cr = c.getBoundingClientRect();
+        return p.x >= cr.left && p.x <= cr.right;
+      });
+      if (col) {
+        const cr = col.getBoundingClientRect();
+        if (p.y > cr.bottom - zone) col.scrollTop += speed(p.y - (cr.bottom - zone));
+        else if (p.y < cr.top + zone) col.scrollTop -= speed(cr.top + zone - p.y);
+      }
     }
     this.raf = requestAnimationFrame(this.autoScroll);
   };
@@ -749,12 +887,7 @@ export class ProjectBoard implements OnInit {
   /** 画面の真ん中に一番近い列を、今の列にする */
   onBoardScroll() {
     const el = this.boardEl()?.nativeElement;
-    const top = this.topScroll()?.nativeElement;
-    if (el && top && !this.syncing && Math.abs(top.scrollLeft - el.scrollLeft) >= 1) {
-      this.syncing = true;
-      top.scrollLeft = el.scrollLeft;
-      requestAnimationFrame(() => (this.syncing = false));
-    }
+    this.edges();
     if (!el || !this.isMobile()) return;
     const center = el.scrollLeft + el.clientWidth / 2;
     let best = 0;
@@ -768,18 +901,6 @@ export class ProjectBoard implements OnInit {
     });
     const key = this.tabCols()[best]?.key;
     if (key && key !== this.mobileCol()) this.mobileCol.set(key);
-  }
-
-  /** 上のバーを動かしたら、本体もついてくる */
-  onTopScroll() {
-    const el = this.boardEl()?.nativeElement;
-    const top = this.topScroll()?.nativeElement;
-    // ドラッグ中は、本体の自動スクロールに任せる（上のバーが1拍前の位置へ引き戻さないように）。
-    // 位置がもうそろっていれば、何もしない
-    if (!el || !top || this.syncing || this.dragging() || Math.abs(el.scrollLeft - top.scrollLeft) < 1) return;
-    this.syncing = true;
-    el.scrollLeft = top.scrollLeft;
-    requestAnimationFrame(() => (this.syncing = false));
   }
 
   /** 列名のボタンを押したら、その列までスクロールする */

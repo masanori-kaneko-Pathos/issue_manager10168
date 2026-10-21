@@ -294,6 +294,8 @@ export class IssueNew implements OnInit {
   private relatedFrom: IssueLink | null = null;
   /** 複製するときの、元の課題の id（詳細画面の ⋮「複製する」から来たとき） */
   private readonly copyIid = this.route.snapshot.queryParamMap.get('copy');
+  /** 登録したあとに戻る画面（かんばんの列の ＋ から来たとき）。同じプロジェクトの中の道だけ受け付ける */
+  private readonly ret = this.route.snapshot.queryParamMap.get('ret');
   copyNumber = signal<number | null>(null);
   /** 再発として登録するときの、元の課題の id（詳細画面の「再発として新しく登録」から来たとき） */
   private readonly recurIid = this.route.snapshot.queryParamMap.get('recur');
@@ -781,7 +783,9 @@ export class IssueNew implements OnInit {
         return;
       }
       // 切り出したときは、親の課題に戻る（切り出し済みになったことを、その場で確かめられるように）
-      await this.router.navigate(this.splitFrom ? ['/p', pid, 'i', this.splitFrom.iid] : ['/p', pid]);
+      // かんばんの ＋ から来たら、そのかんばんへ戻る（登録の途中で別のプロジェクトに替えたら、ふだんどおり）
+      if (this.ret?.startsWith(`/p/${pid}/`)) await this.router.navigateByUrl(this.ret);
+      else await this.router.navigate(this.splitFrom ? ['/p', pid, 'i', this.splitFrom.iid] : ['/p', pid]);
     } catch (e) {
       console.error(e);
       this.error.set((e as Error).message === 'split-gone' ? 'subtask.splitGone' : 'common.saveError');

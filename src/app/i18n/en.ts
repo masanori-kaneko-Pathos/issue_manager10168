@@ -444,6 +444,9 @@ export const en: Dict = {
     dueCols: { overdue: 'Overdue', today: 'Today', tomorrow: 'Tomorrow', week: 'Within a week', later: 'Later' },
     overdueN: '{{n}} overdue',
     dueDropHint: 'Drop a card on a column to change its due date (with a reason).',
+    colsLabel: 'Columns', colsAll: 'All',
+    prevCol: 'Previous column', nextCol: 'Next column',
+    colsN: '{{n}} columns',
   },
   who: {
     open: 'Filter by assignee',
