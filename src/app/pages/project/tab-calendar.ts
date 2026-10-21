@@ -85,7 +85,9 @@ function addDays(dt: Date, n: number): Date {
     @if (loading()) {
       <p>{{ 'common.loading' | t }}</p>
     } @else {
-      <div class="grid" [class.week]="mode() === 'week'" cdkDropListGroup>
+      <!-- 月・週を移るたびに表を作り直し、新しい表のマスをすべり込ませる（名札が変わると、@for が作り直す） -->
+      @for (k of [gridKey()]; track k) {
+      <div class="grid" [class.week]="mode() === 'week'" [attr.data-slide]="slideDir()" cdkDropListGroup>
         @for (w of weekdays(); track $index) {
           <div class="dow" [class.sun]="$index === 0" [class.sat]="$index === 6">{{ w }}</div>
         }
@@ -128,6 +130,7 @@ function addDays(dt: Date, n: number): Date {
         }
         @if (canTrash()) { <app-trash-drop [show]="!!dragging()" (dropped)="deleting.set($event)" /> }
       </div>
+      }
     }
     @if (pending(); as p) {
       <app-due-dialog [issue]="p.issue" [date]="p.date" [pid]="ctx.pid()" [members]="ctx.members()"
@@ -173,6 +176,14 @@ function addDays(dt: Date, n: number): Date {
 
     .grid { display: grid; grid-template-columns: repeat(7, 1fr); border-top: 1px solid var(--border);
       border-left: 1px solid var(--border); }
+    /* 月・週を移ったとき：先へは右から、前へは左から、マスがすべり込む。表示の切り替えは、ふわっと */
+    .grid { overflow: hidden; }
+    @keyframes cal-next { from { opacity: 0; translate: 32px 0; } }
+    @keyframes cal-prev { from { opacity: 0; translate: -32px 0; } }
+    @keyframes cal-fade { from { opacity: 0; } }
+    .grid[data-slide='1'] .cell { animation: cal-next 200ms var(--ease-out); }
+    .grid[data-slide='-1'] .cell { animation: cal-prev 200ms var(--ease-out); }
+    .grid[data-slide='0'] .cell { animation: cal-fade 160ms var(--ease-out); }
     .dow { padding: 4px; font-size: 12px; text-align: center; color: var(--text-muted);
       border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); background: var(--surface-alt); }
     .sun { color: var(--danger-text); }
@@ -270,6 +281,18 @@ export class ProjectCalendar implements OnInit {
   mode = signal<Mode>('month');
   /** 表示の基準の日付（'YYYY-MM-DD'）。月なら、その月を出す */
   cursor = signal('');
+  /** すべり込む向き（1＝先へ、-1＝前へ、0＝ふわっと、null＝開いた直後は動かさない） */
+  slideDir = signal<1 | -1 | 0 | null>(null);
+  /** 表の名札：表示（月・週）と最初の日。これが変わると、表を作り直す */
+  gridKey = computed(() => this.mode() + ':' + (this.days()[0]?.key ?? ''));
+
+  /** 表示する日を変える。今より先なら右から、前なら左から（日付は 'YYYY-MM-DD' なので、文字のままで比べられる） */
+  private go(next: string) {
+    const cur = this.cursor();
+    this.slideDir.set(next > cur ? 1 : next < cur ? -1 : 0);
+    this.cursor.set(next);
+  }
+
 
   private tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
   todayKey = computed(() => dateKey(new Date(this.clock.now()), this.tz()));
@@ -358,7 +381,7 @@ export class ProjectCalendar implements OnInit {
 
   /** 月を選ぶ：その月の1日へ（週の表示なら、1日を含む週へ） */
   pickMonth(k: number) {
-    this.cursor.set(keyOf(new Date(Date.UTC(this.pickerYear(), k, 1))));
+    this.go(keyOf(new Date(Date.UTC(this.pickerYear(), k, 1))));
     this.pickerOpen.set(false);
     this.updateUrl();
   }
@@ -377,12 +400,12 @@ export class ProjectCalendar implements OnInit {
     const next = this.mode() === 'week'
       ? addDays(base, 7 * dir)
       : new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + dir, 1));
-    this.cursor.set(keyOf(next));
+      this.go(keyOf(next));
     this.updateUrl();
   }
 
   goToday() {
-    this.cursor.set(this.todayKey());
+    this.go(this.todayKey());
     this.updateUrl();
   }
 
@@ -392,12 +415,14 @@ export class ProjectCalendar implements OnInit {
   }
 
   setMode(m: Mode) {
+    this.slideDir.set(0);
     this.mode.set(m);
     this.updateUrl();
   }
 
   /** 月の「+n」や、スマホでマスを押したときに、その週を開く */
   openWeek(key: string) {
+    this.slideDir.set(0);
     this.cursor.set(key);
     this.mode.set('week');
     this.updateUrl();
