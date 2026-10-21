@@ -453,6 +453,28 @@ export const en: Dict = {
   memberSelect: {
     search: 'Filter by name',
   },
+  emailNotify: {
+    title: 'Email',
+    help: 'We also email the kinds of notifications you check, at the same time as in-app notifications. All are off by default. Emails may land in your spam folder.',
+    to: 'Sent to: {{email}} (your sign-in address)',
+    unverified: 'Emails can’t be sent until your address is verified. Verify it from the notice on Home.',
+    groups: {
+      daily: 'Morning summary',
+      assign: 'Assignments and handovers',
+      comment: 'Comments and mentions',
+      status: 'Status changes',
+      request: 'Requests',
+      reminder: 'Reminders',
+    },
+    groupHelp: {
+      daily: 'Once a day. Counts of overdue and due-today issues',
+      assign: 'Assigned to you, handed over, subtask assignments, recurring issues',
+      comment: 'Comments on your issues and mentions of you',
+      status: 'Resolved, sent back, closed, rejected, due date changes, effect checks, new members, and more',
+      request: 'Delete, merge, and reopen requests and their replies',
+      reminder: 'Reminders you set',
+    },
+  },
   savedFilter: {
     open: 'Saved filters',
     none: 'No saved filters',

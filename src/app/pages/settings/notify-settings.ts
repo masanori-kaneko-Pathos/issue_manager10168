@@ -2,7 +2,8 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { PushService } from '../../core/notification/push.service';
-import { DAILY_GROUPS, DAILY_TIME_STEP, DEFAULT_DAILY_TIME, DailyGroup } from '../../core/models';
+import { DAILY_GROUPS, DAILY_TIME_STEP, DEFAULT_DAILY_TIME, DailyGroup, EMAIL_GROUPS, EmailGroup } from '../../core/models';
+import { auth } from '../../core/firebase';
 import { DEFAULT_DUE_REMINDERS, REMINDER_BUCKETS, ReminderBucket } from '../../core/time/time';
 import { TPipe } from '../../i18n/i18n';
 import { HelpTip } from '../../shared/help-tip';
@@ -39,6 +40,21 @@ type Changes = Parameters<AuthService['updateProfile']>[0];
           @default { <p class="help">{{ 'push.unsupported' | t }}</p> }
         }
         @if (pushError()) { <p class="msg ng">{{ pushError() | t }}</p> }
+      </section>
+
+      <section>
+        <h2>{{ 'emailNotify.title' | t }} <app-help-tip [keys]="['emailNotify.help']" /></h2>
+        <p class="help">{{ 'emailNotify.to' | t: { email: email } }}</p>
+        @if (!verified) { <p class="msg ng">{{ 'emailNotify.unverified' | t }}</p> }
+        @for (g of emailGroups; track g) {
+          <label class="check top">
+            <input type="checkbox" [checked]="emailNotify().includes(g)" [disabled]="!verified" (change)="toggleEmail(g)" />
+            <span class="opt">
+              <span>{{ 'emailNotify.groups.' + g | t }}</span>
+              <span class="help">{{ 'emailNotify.groupHelp.' + g | t }}</span>
+            </span>
+          </label>
+        }
       </section>
 
       <section>
@@ -103,6 +119,9 @@ type Changes = Parameters<AuthService['updateProfile']>[0];
     .link:disabled { color: var(--text-disabled); cursor: default; }
     .check { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 14px; }
     .check input { width: 20px; height: 20px; margin: 0; }
+    .check.top { align-items: flex-start; padding: 4px 0; }
+    .check.top input { margin-top: 2px; flex: none; }
+    .opt { display: flex; flex-direction: column; gap: 2px; }
   `,
 })
 export class NotifySettings implements OnInit {
@@ -118,6 +137,11 @@ export class NotifySettings implements OnInit {
   time = signal(DEFAULT_DAILY_TIME);
   dailyGroup = signal<DailyGroup>('due');
   dueReminders = signal<ReminderBucket[]>(DEFAULT_DUE_REMINDERS);
+  readonly emailGroups = EMAIL_GROUPS;
+  emailNotify = signal<EmailGroup[]>([]);
+  /** 送り先（ログインのメールアドレス）と、確認済みか（確認前は送れないので、チェックを押せなくする） */
+  readonly email = auth.currentUser?.email ?? '';
+  readonly verified = !!auth.currentUser?.emailVerified;
 
   msg = signal<{ key: string; ok: boolean } | null>(null);
   private msgTimer: ReturnType<typeof setTimeout> | undefined;
@@ -135,6 +159,7 @@ export class NotifySettings implements OnInit {
       this.time.set(p.dailyTime ?? DEFAULT_DAILY_TIME);
       this.dailyGroup.set(p.dailyGroup ?? 'due');
       this.dueReminders.set(p.dueReminders ?? DEFAULT_DUE_REMINDERS);
+      this.emailNotify.set(p.emailNotify ?? []);
     }
   }
 
@@ -159,6 +184,15 @@ export class NotifySettings implements OnInit {
     const list = REMINDER_BUCKETS.filter((x) => next.includes(x));
     this.dueReminders.set(list);
     this.persist({ dueReminders: list }, () => this.dueReminders.set(prev));
+  }
+
+  /** メールで受け取るまとまりを入れたり外したりする（並びは選択肢の順にそろえる） */
+  toggleEmail(g: EmailGroup) {
+    const prev = this.emailNotify();
+    const next = prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g];
+    const list = EMAIL_GROUPS.filter((x) => next.includes(x));
+    this.emailNotify.set(list);
+    this.persist({ emailNotify: list }, () => this.emailNotify.set(prev));
   }
 
   /** 先に画面を変えてから保存する。失敗したら画面を元に戻して知らせる */

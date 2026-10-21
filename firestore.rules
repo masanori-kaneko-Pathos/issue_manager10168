@@ -11,7 +11,11 @@ service cloud.firestore {
       allow update: if request.auth != null && request.auth.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['displayName', 'timeZone', 'language', 'defaultView', 'dueReminders', 'dailyGroup',
-                       'dailyTime', 'introHidden', 'photoURL'])
+                       'dailyTime', 'introHidden', 'photoURL', 'emailNotify'])
+        // メールで受け取る通知のまとまり（決まった名前だけ）
+        && (!('emailNotify' in request.resource.data)
+            || (request.resource.data.emailNotify is list
+                && request.resource.data.emailNotify.hasOnly(['daily', 'assign', 'comment', 'status', 'request', 'reminder'])))
         // アイコンの写真：URL か、外したときの null
         && (!('photoURL' in request.resource.data) || request.resource.data.photoURL == null
             || (request.resource.data.photoURL is string && request.resource.data.photoURL.size() <= 2000))

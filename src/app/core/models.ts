@@ -94,6 +94,12 @@ export interface AdminLog {
 /** 毎朝のまとめの形（due＝期限別、priority＝優先度別、assignee＝担当者別） */
 export type DailyGroup = 'due' | 'priority' | 'assignee';
 export const DAILY_GROUPS: DailyGroup[] = ['due', 'priority', 'assignee'];
+/**
+ * メールで受け取る通知のまとまり（初期はどれもオフ）。
+ * ※ functions/src/index.ts の EMAIL_GROUP_OF の値と、ルールの emailNotify の一覧と同じにすること
+ */
+export const EMAIL_GROUPS = ['daily', 'assign', 'comment', 'status', 'request', 'reminder'] as const;
+export type EmailGroup = typeof EMAIL_GROUPS[number];
 /** プロジェクトごとの朝の通知の時刻。0時からの分（0〜1430、10分刻み）か、'off'（受け取らない） */
 export type DailyTime = number | 'off';
 /** 決めていないプロジェクトの時刻（10:00） */

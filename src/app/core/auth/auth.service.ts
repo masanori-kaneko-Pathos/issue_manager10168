@@ -12,7 +12,7 @@ import {
 import { auth, db, firebaseApp } from '../firebase';
 import { I18nService } from '../../i18n/i18n';
 import { ReminderBucket } from '../time/time';
-import { DailyGroup } from '../models';
+import { DailyGroup, EmailGroup } from '../models';
 import { PushService } from '../notification/push.service';
 
 
@@ -27,6 +27,7 @@ export interface UserProfile {
   dailyTime?: number;               // 毎朝のまとめの時刻（0時からの分・10分刻み。無ければ 10:00）
   introHidden?: boolean;            // 「ようこそ」の箱を「後で見る」で閉じた
   photoURL?: string | null;         // アイコンの写真（無い＝入れたことがない、null＝本人が外した）
+  emailNotify?: EmailGroup[];       // メールで受け取る通知のまとまり（無い＝どれも受け取らない）
 }
 
 @Injectable({ providedIn: 'root' })
@@ -118,7 +119,7 @@ export class AuthService {
   async updateProfile(
     changes: Partial<Pick<UserProfile,
     'displayName' | 'timeZone' | 'language' | 'defaultView' | 'dueReminders' | 'dailyGroup' | 'dailyTime'
-    | 'introHidden' | 'photoURL'>>,
+    | 'introHidden' | 'photoURL' | 'emailNotify'>>,
   ) {
     const u = auth.currentUser!;
     await updateDoc(doc(db, 'users', u.uid), changes);

@@ -7,6 +7,8 @@ import { getStorage } from 'firebase-admin/storage';
 import { getAuth } from 'firebase-admin/auth';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { defineSecret } from 'firebase-functions/params';
+import * as nodemailer from 'nodemailer';
 
 initializeApp();
 /** 課題管理アプリのデータベース。名前を指定しないと (default) を読んでしまう */
@@ -589,6 +591,98 @@ const DAILY_KEYS: Record<DailyGroup, string[]> = {
 const PEOPLE_OF: Record<string, string> = { active: 'people', overdueAll: 'overduePeople' };
 const APP_TITLE = { ja: '課題管理', en: 'Issue Tracker' };
 
+// ---- メール ----
+
+/** Gmail のアプリ パスワード（Secret Manager に置く。コードには書かない） */
+const GMAIL_APP_PASSWORD = defineSecret('GMAIL_APP_PASSWORD');
+/** 送り元（アプリ専用の Gmail）。これは秘密ではない */
+const MAIL_FROM = 'issuemanager10168@gmail.com';
+/** メールのリンクの行き先 */
+const APP_URL = 'https://kensyu10168.web.app';
+
+/**
+ * 通知の種類 → メールのまとまり。ここにない種類は、メールにしない。
+ * ※ アプリの models.ts の EMAIL_GROUPS と同じ名前にすること
+ */
+const EMAIL_GROUP_OF: Record<string, string> = {
+  daily: 'daily',
+  assigned: 'assign', handover: 'assign', subtaskAssigned: 'assign', recurring: 'assign',
+  comment: 'comment', mention: 'comment',
+  dueChanged: 'status', resolved: 'status', sentBack: 'status', closed: 'status', rejected: 'status',
+  restored: 'status', watchResolved: 'status', merged: 'status', unblocked: 'status', effectCheck: 'status',
+  recurringStopped: 'status', projectDeleted: 'status', joined: 'status',
+  request: 'request', requestDone: 'request', requestDeclined: 'request',
+  reminder: 'reminder', subtaskReminder: 'reminder',
+};
+
+const MAIL_TEXT = {
+  ja: { open: '開く', footer: 'メールの通知は、通知設定で止められます。', settings: '通知設定' },
+  en: { open: 'Open', footer: 'You can turn off email notifications in your settings.', settings: 'Notification settings' },
+};
+
+/** メールの HTML に入れる文字を、タグとして読まれないようにする */
+function esc(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}
+
+/** 送る道具は、最初に使うときに1回だけ作る（パスワードは、関数が動いている間にしか読めないため） */
+let transporter: nodemailer.Transporter | null = null;
+function mailer() {
+  return transporter ??= nodemailer.createTransport({
+    service: 'gmail', auth: { user: MAIL_FROM, pass: GMAIL_APP_PASSWORD.value() },
+  });
+}
+
+/**
+ * 本人がそのまとまりをオンにしていて、ログインのメールアドレスが確認済みなら、メールを送る。
+ * 宛先のアドレスはログに書かない（uid だけ）
+ */
+async function sendMail(uid: string, user: FirebaseFirestore.DocumentSnapshot, n: DocumentData,
+  lang: 'ja' | 'en', body: string, url: string) {
+  const group = EMAIL_GROUP_OF[n.type];
+  const chosen = (user.get('emailNotify') ?? []) as string[];
+  if (!group || !chosen.includes(group)) return;
+  const account = await getAuth().getUser(uid).catch(() => null);
+  if (!account?.email || !account.emailVerified) return;
+
+  const t = MAIL_TEXT[lang];
+  const project = String(n.projectName ?? '');
+  const detail = n.type === 'daily' ? '' : String(n.detail ?? '');
+  const link = APP_URL + url;
+  const settings = APP_URL + '/settings/notifications';
+  const subject = `[${APP_TITLE[lang]}] ${project ? project + (lang === 'ja' ? '：' : ': ') : ''}${body}`.slice(0, 150);
+  const text = [project, body, detail, `${t.open}: ${link}`, '—', `${t.footer} ${settings}`]
+    .filter(Boolean).join('\n\n');
+  const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#222">
+${project ? `<p style="margin:0 0 4px;color:#666">${esc(project)}</p>` : ''}
+<p style="margin:0 0 12px;font-size:16px">${esc(body)}</p>
+${detail ? `<p style="margin:0 0 12px;white-space:pre-wrap;color:#444">${esc(detail)}</p>` : ''}
+<p style="margin:0 0 20px"><a href="${esc(link)}" style="display:inline-block;padding:10px 18px;background:#1a73e8;color:#fff;border-radius:6px;text-decoration:none">${t.open}</a></p>
+<hr style="border:none;border-top:1px solid #ddd">
+<p style="font-size:12px;color:#888">${t.footer} <a href="${esc(settings)}">${t.settings}</a></p>
+</div>`;
+  await mailer().sendMail({ from: { name: APP_TITLE[lang], address: MAIL_FROM }, to: account.email, subject, text, html });
+  logger.info('mail sent', { uid, type: n.type });
+}
+
+/** 端末ごとにプッシュを送る（今までの処理を、そのまま切り出したもの） */
+async function sendPush(uid: string, devices: FirebaseFirestore.QueryDocumentSnapshot[], data: Record<string, string>) {
+  await Promise.all(devices.map(async (d) => {
+    try {
+      await getMessaging().send({ fid: d.id, data });
+    } catch (e) {
+      const code = (e as { code?: string }).code ?? '';
+      // もう使えない端末（アンインストール・ブラウザのデータ削除など）は、登録を消す
+      if (code.includes('not-registered') || code.includes('unregistered')) {
+        await d.ref.delete();
+        logger.info('removed stale device', { uid, fid: d.id });
+      } else {
+        logger.error('push failed', { uid, fid: d.id, code, error: String(e) });
+      }
+    }
+  }));
+}
+
 /** {{名前}} を値で置き換える */
 function fill(text: string, params: Record<string, string>): string {
   return text.replace(/\{\{(\w+)\}\}/g, (_, k: string) => params[k] ?? '');
@@ -624,36 +718,26 @@ function pushUrl(uid: string, n: DocumentData): string {
  * 出来事の通知（画面が書く）も、朝のまとめ・効果確認（関数が書く）も、すべてここを通る
  */
 export const imOnNotification = onDocumentCreated(
-  { document: 'users/{uid}/notifications/{nid}', database: 'issuemanager', region: 'asia-northeast1' },
+  { document: 'users/{uid}/notifications/{nid}', database: 'issuemanager', region: 'asia-northeast1',
+    secrets: [GMAIL_APP_PASSWORD] },
   async (event) => {
     const n = event.data?.data();
     if (!n) return;
     const uid = event.params.uid;
-    // 宛先の人の端末にだけ送る（端末を登録していなければ、何もしない）
-    const devices = await db.collection(`users/${uid}/devices`).get();
-    if (devices.empty) return;
-    const user = await db.doc(`users/${uid}`).get();
+    // 端末がなくても、メールは送ることがあるので、ここでは帰らない
+    const [user, devices] = await Promise.all([
+      db.doc(`users/${uid}`).get(),
+      db.collection(`users/${uid}/devices`).get(),
+    ]);
     const lang: 'ja' | 'en' = user.get('language') === 'en' ? 'en' : 'ja';
-    // data に入れたものは、すべて文字列にする（サービスワーカーが title・body・url として読む）
-    const data = {
-      title: n.projectName || APP_TITLE[lang],
-      body: pushBody(n, lang),
-      url: pushUrl(uid, n),
-    };
-    await Promise.all(devices.docs.map(async (d) => {
-      try {
-        await getMessaging().send({ fid: d.id, data });
-      } catch (e) {
-        const code = (e as { code?: string }).code ?? '';
-        // もう使えない端末（アンインストール・ブラウザのデータ削除など）は、登録を消す
-        if (code.includes('not-registered') || code.includes('unregistered')) {
-          await d.ref.delete();
-          logger.info('removed stale device', { uid, fid: d.id });
-        } else {
-          logger.error('push failed', { uid, fid: d.id, code, error: String(e) });
-        }
-      }
-    }));
+    const body = pushBody(n, lang);
+    const url = pushUrl(uid, n);
+    // プッシュとメールは、片方が失敗しても、もう片方は送る
+    await Promise.all([
+      sendPush(uid, devices.docs, { title: n.projectName || APP_TITLE[lang], body, url }),
+      sendMail(uid, user, n, lang, body, url)
+        .catch((e) => logger.error('mail failed', { uid, type: n.type, error: String(e) })),
+    ]);
   },
 );
 
