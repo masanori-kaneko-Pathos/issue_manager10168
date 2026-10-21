@@ -309,10 +309,6 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
   styles: `
     .section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     h2 { font-size: 16px; }
-    .primary { display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px;
-      background: var(--primary); color: var(--on-primary); border: none; border-radius: 8px; text-decoration: none; font-size: 14px; }
-    .primary:disabled { background: var(--disabled); }
-    .help { font-size: 12px; color: var(--text-muted); margin: 4px 0; }
     .notice { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 8px 0;
       padding: 4px 12px; border-radius: 8px; background: var(--surface-alt); font-size: 13px; }
     .notice span { flex: 1; min-width: 50%; }
@@ -335,13 +331,8 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
       background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
       padding: 12px; display: flex; flex-direction: column; gap: 6px; }
     .label { font-size: 12px; color: var(--text-muted); margin: 6px 0 0; }
-    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-    .chips button { min-height: 36px; padding: 0 12px; border: 1px solid var(--border-strong); background: var(--surface);
-      border-radius: 18px; font-size: 13px; }
-    .chips button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
     .footer { display: flex; justify-content: space-between; align-items: center;
       border-top: 1px solid var(--border); margin-top: 8px; padding-top: 8px; }
-    .link { background: none; border: none; color: var(--primary); min-height: 40px; font-size: 14px; }
     .close { min-height: 40px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
       border-radius: 8px; font-size: 14px; }
     .sort { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--text-muted); }
@@ -376,15 +367,10 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
     .bulk-wrap { position: sticky; bottom: 12px; z-index: 15; display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
     .bulk-panel { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 10px;
       background: var(--surface); border: 1px solid var(--border-strong); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15); }
-    .bulk-panel textarea, .bulk-panel input[type='datetime-local'] { font-size: 16px; padding: 8px 10px; }
     .bulk-btn { min-height: 36px; padding: 0 12px; border: 1px solid rgba(255, 255, 255, 0.5); border-radius: 18px;
       background: none; color: inherit; font-size: 13px; cursor: pointer; }
     .bulk-btn:hover { background: rgba(255, 255, 255, 0.15); }
-    .bulk-btn.danger { border-color: var(--danger); }
-    .row { display: flex; justify-content: flex-end; gap: 8px; }
-    .primary.danger { background: var(--danger); }
-    .warn { margin: 0; padding: 8px 10px; border-radius: 8px; font-size: 12px;
-      background: var(--warning-bg); color: var(--warning-text); }    
+    .bulk-btn.danger { border-color: var(--danger); }  
     .subs { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
     .subs.all { color: var(--success-text); font-weight: bold; }
     .recur { display: inline-flex; color: var(--text-muted); }

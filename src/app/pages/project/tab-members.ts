@@ -28,8 +28,10 @@ import { Avatar } from '../../shared/avatar';
           <span class="sample-note">{{ 'sample.noInvite' | t }}</span>
         }
       </div>
-      <ul class="list">
-        @for (m of ctx.members(); track m.uid) {
+      @for (g of groups(); track g.role) {
+        <h3 class="role-head">{{ 'roles.' + g.role | t }}<span class="role-n">{{ g.members.length }}</span></h3>
+        <ul class="list">
+        @for (m of g.members; track m.uid) {
           @let n = assignedCount()[m.uid] ?? 0;
           <li class="member">
             <app-avatar [name]="m.displayName" [uid]="m.uid" [photo]="m.photoURL" [size]="28" />
@@ -75,7 +77,8 @@ import { Avatar } from '../../shared/avatar';
             }
           </li>
         }
-      </ul>
+        </ul>
+      }
       @if (roleError()) { <p class="error" role="alert">{{ roleError() | t }}</p> }
     </section>
 
@@ -141,6 +144,10 @@ import { Avatar } from '../../shared/avatar';
     .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .primary.small { min-height: 40px; padding: 0 16px; font-size: 14px; }
     .sample-note { font-size: 12px; color: var(--text-muted); }
+    .role-head { display: flex; align-items: center; gap: 6px; margin: 16px 0 0; font-size: 13px; color: var(--text-muted); }
+    .role-n { font-size: 12px; font-weight: normal; padding: 0 8px; border-radius: 10px; background: var(--surface-alt); }
+    .list { margin-top: 4px; }
+
   `,
 })
 export class ProjectMembers {
@@ -172,6 +179,16 @@ export class ProjectMembers {
     for (const i of this.ctx.openIssues()) map[i.assigneeId] = (map[i.assigneeId] ?? 0) + 1;
     return map;
   });
+
+  /** 役割ごとの見出しで区切る（管理者 → メンバー → 閲覧者）。中は自分が先頭、あとは名前順。0人の役割は出さない */
+  groups = computed(() => this.roleOrder
+    .map((role) => ({
+      role,
+      members: this.ctx.members().filter((m) => m.role === role)
+        .sort((a, b) => Number(b.uid === this.myUid) - Number(a.uid === this.myUid)
+          || a.displayName.localeCompare(b.displayName)),
+    }))
+    .filter((g) => g.members.length));
 
   /** 管理者が、自分以外を操作できる（自分の役割は変えられない＝最後の管理者が必ず残る） */
   manageable(m: Member) {

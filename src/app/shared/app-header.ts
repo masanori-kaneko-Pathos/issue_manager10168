@@ -17,10 +17,11 @@ import { InboxPop } from './inbox-pop';
 import { DraftService } from '../core/draft/draft.service';
 import { Avatar } from './avatar';
 import { SETTINGS_NAV } from './settings-nav';
+import { NoticeActions } from './notice-actions';
 
 @Component({
   selector: 'app-header',
-  imports: [RouterLink, TPipe, HelpTip, SearchBox, ProjectNewDialog, InboxPop, Avatar],
+  imports: [RouterLink, TPipe, HelpTip, SearchBox, ProjectNewDialog, InboxPop, Avatar, NoticeActions],
   host: {
     '(document:keydown.escape)':
       'open.set(false); addOpen.set(false); bellOpen.set(false); rowMenu.set(null); penOpen.set(false)',
@@ -92,31 +93,7 @@ import { SETTINGS_NAV } from './settings-nav';
                   </button>
 
                   <!-- PC：行に乗せたときだけ出るアイコン（メニューを開く1手を省く） -->
-                  <div class="n-hover" role="group" [attr.aria-label]="'notify.actions' | t">
-                    <button type="button" class="n-ic" [title]="(n.read ? 'notify.markUnread' : 'notify.markRead') | t"
-                      [attr.aria-label]="(n.read ? 'notify.markUnread' : 'notify.markRead') | t"
-                      (click)="act(n, n.read ? 'unread' : 'read')">
-                      @if (n.read) {
-                        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="5" fill="currentColor" /></svg>
-                      } @else {
-                        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor"
-                          stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7" /></svg>
-                      }
-                    </button>
-                    <button type="button" class="n-ic" [class.on]="n.pinned"
-                      [title]="(n.pinned ? 'notify.unpin' : 'notify.pin') | t"
-                      [attr.aria-label]="(n.pinned ? 'notify.unpin' : 'notify.pin') | t" (click)="act(n, n.pinned ? 'unpin' : 'pin')">
-                      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" [attr.fill]="n.pinned ? 'currentColor' : 'none'"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M9 3h6l-1 6 3 3H7l3-3z" /><path d="M12 15v6" /></svg>
-                    </button>
-                    <button type="button" class="n-ic danger" [title]="'notify.delete' | t" [attr.aria-label]="'notify.delete' | t"
-                      (click)="act(n, 'delete')">
-                      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor"
-                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M4 7h16" /><path d="M10 11v6M14 11v6" /><path d="M6 7l1 13h10l1-13" /><path d="M9 7V4h6v3" /></svg>
-                    </button>
-                  </div>
+                  <app-notice-actions class="n-hover" [notice]="n" (act)="act(n, $event)" />
 
                   <!-- スマホ：乗せる操作がないので ⋮ のまま -->
                   <button type="button" class="n-more" [attr.aria-label]="'notify.actions' | t" [title]="'notify.actions' | t"
@@ -265,11 +242,6 @@ import { SETTINGS_NAV } from './settings-nav';
     .pin-mark { vertical-align: -1px; margin-right: 4px; color: var(--primary); }
     /* 乗せたときのアイコン：ふだんは隠す */
     .n-hover { display: none; }
-    .n-ic { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0;
-      border: none; border-radius: 6px; background: none; color: var(--text-muted); cursor: pointer; }
-    .n-ic:hover { background: var(--surface-muted); color: var(--text); }
-    .n-ic.on { color: var(--primary); }
-    .n-ic.danger:hover { color: var(--danger-text); }
     /* マウスを乗せられる端末だけ：⋮ を消し、乗せた行（キーボードで移った行も）の右下にアイコンを出す */
     @media (hover: hover) and (pointer: fine) {
       .n-more { display: none; }

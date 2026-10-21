@@ -7,11 +7,12 @@ import { relativeTime } from '../../core/time/time';
 import { Selection } from '../../shared/selection';
 import { BulkBar } from '../../shared/bulk-bar';
 import { I18nService, TPipe } from '../../i18n/i18n';
+import { NoticeActions } from '../../shared/notice-actions';
 
 /** お知らせのページ。選んで、まとめて既読・未読・ピン止め・削除（ベルの小窓は1件ずつ） */
 @Component({
   selector: 'app-notifications',
-  imports: [TPipe, BulkBar],
+  imports: [TPipe, BulkBar, NoticeActions],
   template: `
     <main>
       <div class="head">
@@ -39,11 +40,17 @@ import { I18nService, TPipe } from '../../i18n/i18n';
             <button type="button" class="item" [class.unread]="!n.read" (click)="open(n)">
               <span class="text">
                 @if (!n.read) { <span class="dot" role="img" [attr.aria-label]="'notify.unread' | t"></span> }
-                @if (n.pinned) { <span role="img" [attr.aria-label]="'notify.pinned' | t">📌</span> }
+                @if (n.pinned) {
+                  <svg class="pin-mark" viewBox="0 0 24 24" width="13" height="13" role="img"
+                    [attr.aria-label]="'notify.pinned' | t" fill="currentColor"><path d="M9 3h6l-1 6 3 3H7l3-3z" />
+                    <path d="M12 15v6" stroke="currentColor" stroke-width="2" /></svg>
+                }
                 {{ notify.text(n) }}</span>
               @if (n.detail) { <span class="detail">{{ n.detail }}</span> }
               <span class="meta">{{ n.projectName ? n.projectName + ' · ' : '' }}{{ when(n) }}</span>
             </button>
+            <!-- PC：行に乗せたときだけ、右下に（ベルの小窓と同じ）。スマホは、チェックと下の帯で操作する -->
+            <app-notice-actions class="acts" [notice]="n" (act)="act(n, $event)" />
           </li>
         } @empty {
           <li class="empty">{{ (unreadOnly() ? 'notify.emptyUnread' : 'notify.empty') | t }}</li>
@@ -68,15 +75,21 @@ import { I18nService, TPipe } from '../../i18n/i18n';
     main { max-width: 720px; margin: 0 auto; padding: 16px 16px 48px; }
     .head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
     h1 { font-size: 20px; margin: 0; }
-    .chips { display: flex; gap: 6px; }
-    .chips button { min-height: 36px; padding: 0 14px; border: 1px solid var(--border-strong); background: var(--surface);
-      border-radius: 18px; font-size: 13px; cursor: pointer; }
-    .chips button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
     .help { font-size: 12px; color: var(--text-muted); margin: 8px 0; }
     .pick-all { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; min-height: 40px; cursor: pointer; }
     .pick, .pick-all input { width: 18px; height: 18px; cursor: pointer; }
     .list { list-style: none; margin: 0; padding: 0; }
-    .list li { display: flex; align-items: flex-start; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--border); }
+    .list li { position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 8px 4px;
+      border-bottom: 1px solid var(--border); }
+    .pin-mark { vertical-align: -1px; margin-right: 4px; color: var(--primary); }
+    /* 1件の操作のアイコン：ふだんは隠し、マウスを乗せられる端末で、乗せた行（キーボードで移った行も）だけ出す */
+    .acts { display: none; }
+    @media (hover: hover) and (pointer: fine) {
+      .list li:hover .item { background: var(--surface-alt); }
+      .list li:hover .acts, .list li:focus-within .acts {
+        display: flex; position: absolute; right: 8px; bottom: 6px; padding: 2px; border-radius: 8px;
+        background: var(--surface-alt); }
+    }
     .list li.picked { background: var(--primary-bg); }
     .pick { margin-top: 4px; }
     .item { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 2px 4px; border: none;
@@ -125,6 +138,14 @@ export class Notifications {
     if (!n.read) this.notify.markRead(n.id).catch((e) => console.error(e));
     const t = this.notify.target(n);
     this.router.navigate(t.commands, t.extras);
+  }
+
+  /** 1件の操作（乗せたときのアイコンから） */
+  async act(n: AppNotification, op: NoticeOp) {
+    await this.notify.apply(n.id, op).catch((e) => {
+      console.error(e);
+      this.error.set('common.saveError');
+    });
   }
 
   /** 選んだお知らせに、まとめて同じ操作をする（削除も確認なし・赤K：中身は課題の経緯に残っているため） */

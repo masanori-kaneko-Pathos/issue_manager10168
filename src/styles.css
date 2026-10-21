@@ -117,3 +117,6 @@ legend { padding: 0; font-size: 14px; font-weight: bold; }
   background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
 .conflict p { margin: 0 0 4px; }
 .conflict p:last-child { margin-bottom: 0; }
+
+    /* 区切りのない長い文字（URL・英数字の続き）が箱からはみ出すときだけ、途中で折り返す */
+    body { overflow-wrap: break-word; }

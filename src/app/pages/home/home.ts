@@ -84,7 +84,7 @@ import { SampleService } from '../../core/project/sample.service';
             <li class="invitation">
               <span class="name">{{ 'invitations.from' | t: {
                 name: inv.invitedByName, project: inv.projectName, role: i18n.t('roles.' + inv.role) } }}</span>
-              <button type="button" (click)="accept(inv)" [disabled]="busy()">{{ 'invitations.accept' | t }}</button>
+              <button type="button" class="primary" (click)="accept(inv)" [disabled]="busy()">{{ 'invitations.accept' | t }}</button>
               <button type="button" class="link" (click)="decline(inv)" [disabled]="busy()">{{ 'invitations.decline' | t }}</button>
             </li>
           }
@@ -242,13 +242,9 @@ import { SampleService } from '../../core/project/sample.service';
     .bar h1 { font-size: 18px; margin: 0; flex: 1; }
     main { max-width: 640px; margin: 0 auto; padding: 16px; }
     .first { flex-direction: column; align-items: flex-start !important; gap: 8px; padding: 12px !important; }
-    .primary { padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none; border-radius: 8px; }
-    input, button { min-height: 48px; font-size: 16px; }
-    input { padding: 0 12px; }
-    .link { background: none; border: none; color: var(--primary); }
     .list { list-style: none; padding: 0; }
     .list li { display: flex; gap: 8px; align-items: center; min-height: 56px; padding: 0 12px; border-bottom: 1px solid var(--border); }
-    .list .name { flex: 1; }
+    .list .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
     .list .role { font-size: 12px; padding: 2px 8px; border-radius: 12px; background: var(--chip-bg); }
     .archived { color: var(--text-subtle); }
     .empty { color: var(--text-muted); }
@@ -260,11 +256,9 @@ import { SampleService } from '../../core/project/sample.service';
     .invitation .name { flex-basis: 100%; }
     .mine { margin-bottom: 24px; }
     .inbox { margin-bottom: 24px; }
-    .inbox a.link { text-decoration: none; display: inline-flex; align-items: center; min-height: 40px; }
     .memo { min-height: 44px !important; }
     .old { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: var(--warning-bg); color: var(--warning-text); }
     .see-all { font-size: 13px; }
-    .write { min-height: 40px; font-size: 14px; cursor: pointer; }
     .mine-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
     .check { display: flex; align-items: center; gap: 6px; font-size: 13px; min-height: 40px; }
     .mine-item { flex-wrap: wrap; }
@@ -309,8 +303,6 @@ import { SampleService } from '../../core/project/sample.service';
     .intro .lead { margin: 0 0 8px; }
     .steps { margin: 0 0 12px; padding-left: 1.4em; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
     .intro-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-    .ghost { padding: 0 16px; border: 1px solid var(--primary); border-radius: 8px; background: var(--surface);
-      color: var(--primary); }
     `,
 })
 export class Projects implements OnInit {

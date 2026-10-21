@@ -256,10 +256,6 @@ const EMPTY_PAYLOAD = {
   `,
   styles: `
     .quick { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 12px; }
-    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-    .chips button { min-height: 36px; padding: 0 14px; border: 1px solid var(--border-strong); background: var(--surface);
-      border-radius: 18px; font-size: 13px; cursor: pointer; }
-    .chips button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
     .notice { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; font-size: 13px;
       background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
 

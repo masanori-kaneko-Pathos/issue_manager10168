@@ -238,21 +238,12 @@ interface IssueDraft {
     fieldset { border: none; padding: 0; margin: 0; }
     legend, .field { font-weight: bold; font-size: 14px; }
     .field { display: flex; flex-direction: column; gap: 4px; }
-    .help { font-weight: normal; font-size: 12px; color: var(--text-muted); margin: 4px 0; }
-    input, textarea, button { font-size: 16px; }
-    input, button { min-height: 48px; }
-    input, textarea { padding: 8px 12px; font-weight: normal; }
-    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; }
-    .chips button { padding: 0 16px; border: 1px solid var(--border-strong); background: var(--surface); border-radius: 24px; }
-    .chips button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
-    .link { background: none; border: none; color: var(--primary); align-self: flex-start; }
-    .primary { background: var(--primary); color: var(--on-primary); border: none; border-radius: 8px; }
-    .primary:disabled { background: var(--disabled); }
-    .error { color: var(--danger-text); }
-        select { min-height: 48px; font-size: 16px; padding: 0 12px; }
+    /* 欄の見出し（太字）の中に置くので、太さだけ戻す */
+    .help, .warn { font-weight: normal; }
+    input, textarea { font-weight: normal; }
+    .chips { margin: 4px 0 8px; }
+    .link { align-self: flex-start; }
     .notice { background: var(--warning-bg); padding: 12px; border-radius: 8px; margin: 0; font-weight: normal; }
-    .warn { margin: 4px 0; padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: normal;
-      background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
     .similar { margin-top: 4px; padding: 10px 12px; border-radius: 8px; font-weight: normal;
       background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
     .similar p { margin: 0 0 6px; font-size: 13px; }

@@ -25,7 +25,7 @@ import { LabelChip } from './label-chip';
   `,
   styles: `
     .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-    .pick { display: inline-flex; align-items: center; gap: 4px; min-height: 40px; padding: 4px 8px;
+    .pick { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; min-height: 40px; padding: 4px 8px;
       border: 2px solid var(--border); background: var(--surface); border-radius: 20px; cursor: pointer; }
     .pick.on { border-color: var(--primary); }
     .pick:disabled { opacity: 0.4; cursor: default; }

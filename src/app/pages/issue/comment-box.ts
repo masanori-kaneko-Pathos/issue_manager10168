@@ -24,13 +24,43 @@ interface Cand { key: string; label: string; sub: string; insert: string; uid?: 
   selector: 'app-comment-box',
   imports: [FormsModule, TPipe],
   template: `
-    <div class="box">
+    <!-- 枠は外側の箱に付ける。中の書く欄は枠なし。押すと箱ごと青い縁になる。ファイルは箱のどこに落としてもよい -->
+    <div class="box" [class.over]="over()" (dragover)="onDragOver($event)" (dragleave)="over.set(false)"
+      (drop)="onDrop($event)">
       <textarea #ta [(ngModel)]="body" rows="3" [placeholder]="'detail.commentPlaceholder' | t"
         [attr.aria-label]="'detail.commentPlaceholder' | t" role="combobox" aria-controls="cb-list"
         [attr.aria-expanded]="cands().length > 0" [attr.aria-activedescendant]="cands().length ? 'cb-' + active() : null"
         (input)="detect(); stash()" (click)="detect()" (keydown)="onKey($event)" (focus)="search.load()"
-        (blur)="trigger.set(null)" (paste)="onPaste($event)" (dragover)="onDragOver($event)"
-        (dragleave)="over.set(false)" (drop)="onDrop($event)" [class.over]="over()"></textarea>
+        (blur)="trigger.set(null)" (paste)="onPaste($event)"></textarea>
+
+      @if (pending().length) {
+        <ul class="pending">
+          @for (f of pending(); track $index) {
+            <li>
+              <span class="pname">{{ f.file.name }}</span>
+              @if (f.p !== null) {
+                <span class="bar"><span class="fill" [style.width.%]="f.p * 100"></span></span>
+              } @else {
+                <button type="button" class="x" [attr.aria-label]="'attach.unpick' | t: { name: f.file.name }"
+                  (click)="unpick($index)">✕</button>
+              }
+            </li>
+          }
+        </ul>
+      }
+
+      <div class="tools">
+        <label class="clip" [title]="'attach.addToComment' | t" [attr.aria-label]="'attach.addToComment' | t">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7" /></svg>
+          <input type="file" multiple hidden (change)="onPick($event)" />
+        </label>
+        <span class="spacer"></span>
+        <button type="button" class="primary" [disabled]="busy() || (!body.trim() && !pending().length)" (click)="send()">
+          {{ 'detail.send' | t }}</button>
+      </div>
+
       @if (cands().length) {
         <ul class="cands" id="cb-list" role="listbox">
           @for (c of cands(); track c.key; let i = $index) {
@@ -44,39 +74,31 @@ interface Cand { key: string; label: string; sub: string; insert: string; uid?: 
         <p class="cands hint">{{ 'comment.hashHint' | t }}</p>
       }
     </div>
-    @if (pending().length) {
-      <ul class="pending">
-        @for (f of pending(); track $index) {
-          <li>
-            <span class="pname">{{ f.file.name }}</span>
-            @if (f.p !== null) {
-              <span class="bar"><span class="fill" [style.width.%]="f.p * 100"></span></span>
-            } @else {
-              <button type="button" class="x" [attr.aria-label]="'attach.unpick' | t: { name: f.file.name }"
-                (click)="unpick($index)">✕</button>
-            }
-          </li>
-        }
-      </ul>
-    }
+    <p class="help">{{ 'comment.help' | t }}</p>
     @for (e of fileErrors(); track $index) { <p class="error" role="alert">{{ e.key | t: { name: e.name, n: '' + max } }}</p> }
-    <div class="foot">
-      <label class="clip" [title]="'attach.addToComment' | t" [attr.aria-label]="'attach.addToComment' | t">
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor"
-          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7" /></svg>
-        <input type="file" multiple hidden (change)="onPick($event)" />
-      </label>
-      <p class="help">{{ 'comment.help' | t }}</p>
-      <button type="button" class="primary" [disabled]="busy() || (!body.trim() && !pending().length)" (click)="send()">
-        {{ 'detail.send' | t }}</button>
-    </div>
     @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
   `,
   styles: `
     :host { display: block; margin-top: 12px; }
-    .box { position: relative; }
-    textarea { width: 100%; box-sizing: border-box; font-size: 16px; padding: 8px 12px; }
+    /* 枠1つの中に、書く欄と道具をまとめる */
+    .box { position: relative; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); }
+    .box:focus-within { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+    .box.over { outline: 2px dashed var(--primary); outline-offset: 2px; }
+    /* 中の欄は、入力欄の基準（枠・角・フォーカスの線）を打ち消して、箱に溶け込ませる */
+    textarea { display: block; width: 100%; box-sizing: border-box; padding: 10px 12px 4px; border: none;
+      border-radius: 8px 8px 0 0; outline: none; background: none; resize: vertical; }
+    .tools { display: flex; align-items: center; gap: 4px; padding: 4px 6px 6px; }
+    .spacer { flex: 1; }
+    .clip { flex: none; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 8px; color: var(--text-muted); cursor: pointer; }
+    .clip:hover { background: var(--surface-alt); color: var(--text); }
+    .pending { list-style: none; margin: 0 8px 4px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+    .pending li { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 6px;
+      background: var(--surface-alt); font-size: 13px; }
+    .pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar { flex: 0 0 80px; height: 4px; border-radius: 2px; background: var(--surface-muted); overflow: hidden; }
+    .fill { display: block; height: 100%; background: var(--primary); }
+    .x { width: 28px; height: 28px; border: none; background: none; color: var(--text-muted); cursor: pointer; }
     .cands { position: absolute; left: 0; top: calc(100% + 2px); z-index: 40; width: min(360px, 100%); margin: 0;
       padding: 4px 0; list-style: none; background: var(--surface); border: 1px solid var(--border);
       border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15); max-height: 260px; overflow: auto; }
@@ -85,23 +107,8 @@ interface Cand { key: string; label: string; sub: string; insert: string; uid?: 
     .label { font-weight: bold; white-space: nowrap; }
     .sub { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .hint { padding: 8px 12px; font-size: 12px; color: var(--text-muted); }
-    .foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
-    .help { margin: 0; font-size: 12px; color: var(--text-muted); }
-    .primary { min-height: 44px; padding: 0 20px; background: var(--primary); color: var(--on-primary); border: none;
-      border-radius: 8px; font-size: 14px; cursor: pointer; flex: none; }
-    .primary:disabled { background: var(--disabled); }
-    .error { color: var(--danger-text); font-size: 13px; }
-    textarea.over { outline: 2px dashed var(--primary); outline-offset: 2px; }
-    .pending { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-    .pending li { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 6px;
-      background: var(--surface-alt); font-size: 13px; }
-    .pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .bar { flex: 0 0 80px; height: 4px; border-radius: 2px; background: var(--surface-muted); overflow: hidden; }
-    .fill { display: block; height: 100%; background: var(--primary); }
-    .x { width: 28px; height: 28px; border: none; background: none; color: var(--text-muted); cursor: pointer; }
-    .clip { flex: none; width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center;
-      border-radius: 8px; color: var(--text-muted); cursor: pointer; }
-    .clip:hover { background: var(--surface-alt); color: var(--text); }
+    .help { margin-top: 6px; }
+    .error { margin-top: 4px; font-size: 13px; }
   `,
 })
 export class CommentBox implements OnInit {
