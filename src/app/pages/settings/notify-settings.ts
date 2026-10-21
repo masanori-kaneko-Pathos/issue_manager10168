@@ -1,5 +1,4 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { PushService } from '../../core/notification/push.service';
 import { DAILY_GROUPS, DAILY_TIME_STEP, DEFAULT_DAILY_TIME, DailyGroup, EMAIL_GROUPS, EmailGroup } from '../../core/models';
@@ -16,9 +15,8 @@ type Changes = Parameters<AuthService['updateProfile']>[0];
  */
 @Component({
   selector: 'app-notify-settings',
-  imports: [RouterLink, TPipe, HelpTip],
+  imports: [TPipe, HelpTip],
   template: `
-    <header class="bar"><a routerLink="/settings" class="link">{{ 'notifySettings.back' | t }}</a></header>
     <main>
       <h1>{{ 'notifySettings.title' | t }}</h1>
       @if (msg(); as m) { <p class="msg" [class.ng]="!m.ok" role="status">{{ m.key | t }}</p> }
@@ -98,8 +96,8 @@ type Changes = Parameters<AuthService['updateProfile']>[0];
   `,
   styles: `
     .bar { padding: 8px 16px; border-bottom: 1px solid var(--border); }
-    main { max-width: 560px; margin: 0 auto; padding: 16px 16px 48px; }
-    h1 { font-size: 20px; }
+    main { max-width: 640px; padding: 0 0 48px; }
+    h1 { font-size: 18px; margin: 0 0 12px; }
     section { border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px;
       display: flex; flex-direction: column; gap: 10px; }
     h2 { font-size: 16px; margin: 0; }

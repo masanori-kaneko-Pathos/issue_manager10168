@@ -57,11 +57,26 @@ export const routes: Routes = [
           loadComponent: () => import('./pages/notification/notifications').then((m) => m.Notifications) },
           { path: 'drafts', canActivate: [authGuard],
             loadComponent: () => import('./pages/draft/drafts').then((m) => m.Drafts) },  
-          { path: 'settings/delete-account', canActivate: [authGuard],
-            loadComponent: () => import('./pages/settings/delete-account').then((m) => m.DeleteAccount) },  
-          { path: 'settings/notifications', canActivate: [authGuard],
-            loadComponent: () => import('./pages/settings/notify-settings').then((m) => m.NotifySettings) },
-          { path: 'settings', canActivate: [authGuard], canDeactivate: [unsavedGuard],
-            loadComponent: () => import('./pages/settings/settings').then((m) => m.Settings) },
+          // 設定：左に索引の入れ物。プロフィール・表示と言語・パスワード・イントロダクションは、
+          // 同じ部品（settings.ts）を、出す欄（section）だけ変えて使う
+          { path: 'settings', canActivate: [authGuard],
+            loadComponent: () => import('./pages/settings/settings-shell').then((m) => m.SettingsShell),
+            children: [
+              { path: '', pathMatch: 'full', redirectTo: 'profile' },
+              { path: 'profile', canDeactivate: [unsavedGuard], data: { section: 'profile' },
+                loadComponent: () => import('./pages/settings/settings').then((m) => m.Settings) },
+              { path: 'preferences', canDeactivate: [unsavedGuard], data: { section: 'preferences' },
+                loadComponent: () => import('./pages/settings/settings').then((m) => m.Settings) },
+              { path: 'notifications',
+                loadComponent: () => import('./pages/settings/notify-settings').then((m) => m.NotifySettings) },
+                { path: 'account', data: { section: 'account' },
+                loadComponent: () => import('./pages/settings/settings').then((m) => m.Settings) },
+              // アカウントの削除は、アカウント設定の下に置く（索引の「アカウント設定」が光ったままになる）
+              { path: 'account/delete',
+                loadComponent: () => import('./pages/settings/delete-account').then((m) => m.DeleteAccount) },
+              { path: 'delete-account', redirectTo: 'account/delete' },
+              { path: 'intro', data: { section: 'intro' },
+                loadComponent: () => import('./pages/settings/settings').then((m) => m.Settings) },
+            ] },
           { path: '**', redirectTo: '' },
 ];

@@ -117,23 +117,19 @@ const EMPTY_PAYLOAD = {
         <div class="board" #boardEl cdkDropListGroup cdkScrollable [class.dragging]="!!dragging()"
           (scroll)="onBoardScroll()">
           @for (c of visibleCols(); track c) {
-            @let collapsed = c === 'on_hold' && !holdOpen() && !isMobile();
-            <section class="col" [attr.data-col]="c" [class.collapsed]="collapsed" [cdkDropListAutoScrollDisabled]="true"
+            <section class="col" [attr.data-col]="c" [cdkDropListAutoScrollDisabled]="true"
               [class.allowed]="!!dragging() && canDropInto(c)" [class.blocked]="!!dragging() && !canDropInto(c)"
               cdkDropList [cdkDropListData]="c" [cdkDropListEnterPredicate]="predicates[c]"
               (cdkDropListDropped)="onDrop($event)">
-              <header class="col-head" [class.clickable]="c === 'on_hold' && !isMobile()"
-                (click)="c === 'on_hold' && !isMobile() && holdOpen.set(!holdOpen())">
+              <header class="col-head">
                 <span class="col-name">{{ 'board.cols.' + c | t }}</span>
                 <span class="count">{{ byCol()[c].length }}</span>
                 @if (c === 'open' && ctx.canCreate()) {
                   <a class="head-add" [routerLink]="['/p', ctx.pid(), 'new']"
                     [attr.aria-label]="'project.newIssue' | t" [title]="'project.newIssue' | t">＋</a>
                 }
-                @if (c === 'on_hold' && !isMobile()) { <span class="fold" aria-hidden="true">{{ collapsed ? '▸' : '▾' }}</span> }
-                @if (c === 'done' && !collapsed) { <span class="note">{{ 'board.doneNote' | t }}</span> }
+                @if (c === 'done') { <span class="note">{{ 'board.doneNote' | t }}</span> }
               </header>
-              @if (!collapsed) {
                 <div class="cards">
                   @for (i of byCol()[c]; track i.id) {
                     <article class="card" cdkDrag [cdkDragData]="i" [cdkDragDisabled]="!canDrag(i)" (cdkDragMoved)="onDragMoved($event)"
@@ -146,7 +142,6 @@ const EMPTY_PAYLOAD = {
                     <p class="empty">{{ 'board.empty' | t }}</p>
                   }
                 </div>
-              }
             </section>
           }
           @if (canTrash()) { <app-trash-drop [show]="!!dragging()" (dropped)="deleting.set($event)" /> }
@@ -275,13 +270,9 @@ const EMPTY_PAYLOAD = {
     .col[data-col='resolved'] { border-top-color: var(--success); }
     .col[data-col='done'] { border-top-color: var(--text-muted); }
     .col[data-col='on_hold'] { border-top-color: var(--warning); }
-    .col.collapsed { flex: 0 0 96px; min-width: 96px; }
     .col.allowed { outline: 2px dashed var(--primary); outline-offset: -2px; }
     .col.blocked { opacity: 0.45; }
-
     .col-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; font-weight: bold; font-size: 14px; }
-    .col-head.clickable { cursor: pointer; }
-    .collapsed .col-head { justify-content: center; gap: 4px; padding: 8px 6px; white-space: nowrap; }
     .count { font-size: 12px; font-weight: normal; padding: 0 8px; border-radius: 10px; background: var(--surface); }
     .note { font-size: 11px; font-weight: normal; color: var(--text-subtle); flex-basis: 100%; }
 
@@ -341,7 +332,6 @@ const EMPTY_PAYLOAD = {
     .wa { font-size: 11px; padding: 1px 6px; border-radius: 8px; background: var(--hold-bg); }
     .subs { align-self: flex-start; font-size: 12px; color: var(--text-muted); }
     .subs.all { color: var(--success-text); font-weight: bold; }    
-    .fold { font-size: 12px; color: var(--text-muted); }
     .recur { display: inline-flex; color: var(--text-muted); }
     `,
 })
@@ -376,7 +366,6 @@ export class ProjectBoard implements OnInit {
     return [...this.ctx.openIssues(), ...closed];
   });
   loading = computed(() => this.ctx.issuesLoading() || this.closedLoading());
-  holdOpen = signal(false);
   /** スマホで今見ている列（ステータス・期限・担当者の、どの列の名前でも入る） */
   mobileCol = signal<string>('open');
   readonly views: ViewBy[] = ['status', 'due', 'assignee'];

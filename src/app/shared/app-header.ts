@@ -16,6 +16,7 @@ import { ProjectNewDialog } from './project-new-dialog';
 import { InboxPop } from './inbox-pop';
 import { DraftService } from '../core/draft/draft.service';
 import { Avatar } from './avatar';
+import { SETTINGS_NAV } from './settings-nav';
 
 @Component({
   selector: 'app-header',
@@ -153,9 +154,14 @@ import { Avatar } from './avatar';
               <strong>{{ name() }}</strong>
               <span>{{ email() }}</span>
             </div>
-            <a routerLink="/settings" role="menuitem" (click)="open.set(false)">{{ 'menu.settings' | t }}</a>
-            <a routerLink="/settings/notifications" role="menuitem" (click)="open.set(false)">
-              {{ 'notifySettings.title' | t }}</a>
+            <!-- 設定の索引と同じ並び。押すと、そのページへ直接 -->
+            @for (s of settingsNav; track s.path) {
+              <a [routerLink]="['/settings', s.path]" role="menuitem" class="nav-item" (click)="open.set(false)">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path [attr.d]="s.icon" /></svg>
+                {{ s.key | t }}</a>
+            }
+            <div class="sep" role="separator"></div>
             <button type="button" role="menuitem" (click)="logout()">{{ 'common.logout' | t }}</button>
           </div>
         }
@@ -207,6 +213,9 @@ import { Avatar } from './avatar';
     .menu a, .menu button { display: block; text-align: left; padding: 0 16px; min-height: 44px; line-height: 44px;
       background: none; border: none; color: var(--text); text-decoration: none; font-size: 14px; cursor: pointer; }
     .menu a:hover, .menu button:hover { background: var(--surface-alt); }
+    .menu .nav-item { display: flex; align-items: center; gap: 10px; }
+    .menu .nav-item svg { flex: none; color: var(--text-muted); }
+    .menu .sep { height: 1px; margin: 6px 0; background: var(--border); }
     .bell-wrap { position: relative; }
     .bell { position: relative; width: 36px; height: 36px; padding: 0; border: none; border-radius: 50%;
       display: flex; align-items: center; justify-content: center; color: var(--on-primary);
@@ -332,6 +341,8 @@ export class AppHeader {
   /** 自分のアイコン（設定で入れた写真 → なければ Google の写真 → なければ頭文字） */
   photo = computed(() => this.authService.myPhoto());
   readonly myUid = auth.currentUser?.uid ?? '';
+  /** アカウントのメニューに並べる、設定の索引 */
+  readonly settingsNav = SETTINGS_NAV;
 
   async logout() {
     this.open.set(false);

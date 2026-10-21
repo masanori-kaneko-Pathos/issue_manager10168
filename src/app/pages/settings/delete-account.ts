@@ -26,7 +26,6 @@ interface Row {
   selector: 'app-delete-account',
   imports: [FormsModule, RouterLink, TPipe, MemberSelect, HelpTip, PwField],
   template: `
-    <header class="bar"><a routerLink="/settings" class="link">{{ 'notifySettings.back' | t }}</a></header>
     <main>
       <h1>{{ 'deleteAccount.title' | t }}</h1>
       @if (done()) {

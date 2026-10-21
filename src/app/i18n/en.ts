@@ -475,6 +475,22 @@ export const en: Dict = {
       reminder: 'Reminders you set',
     },
   },
+  settingsNav: {
+    preferences: 'Display & language',
+    account: 'Account',
+  },
+  account: {
+    email: 'Email address',
+    newEmail: 'New email address',
+    sendLink: 'Send confirmation email',
+    emailHelp: 'We send a confirmation link to the new address. Your address stays the same until you open the link. After it changes, sign in again with the new address.',
+    emailSent: 'We sent a confirmation email to {{email}}. Open the link to change your address (check your spam folder too). After it changes, sign in again with the new address.',
+    googleEmail: 'You sign in with Google, so your email address belongs to your Google account. Change it on the Google side.',
+    same: 'This is your current address',
+    invalidEmail: 'This email address is not valid',
+    inUse: 'This address is already used by another account',
+    tooMany: 'Too many attempts. Please try again later',
+  },
   savedFilter: {
     open: 'Saved filters',
     none: 'No saved filters',

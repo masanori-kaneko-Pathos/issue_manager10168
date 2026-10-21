@@ -11,7 +11,10 @@ service cloud.firestore {
       allow update: if request.auth != null && request.auth.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['displayName', 'timeZone', 'language', 'defaultView', 'dueReminders', 'dailyGroup',
-                       'dailyTime', 'introHidden', 'photoURL', 'emailNotify'])
+                       'dailyTime', 'introHidden', 'photoURL', 'emailNotify', 'email'])
+        // メールアドレスの写しは、ログインのアドレスと同じ値にそろえるときだけ
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['email'])
+            || request.resource.data.email == request.auth.token.email)
         // メールで受け取る通知のまとまり（決まった名前だけ）
         && (!('emailNotify' in request.resource.data)
             || (request.resource.data.emailNotify is list

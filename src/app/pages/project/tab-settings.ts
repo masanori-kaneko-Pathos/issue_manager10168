@@ -29,14 +29,21 @@ const RANGES: Record<NumKey, [number, number]> = {
       <p>{{ 'projectSettings.adminOnly' | t }}</p>
     } @else if (ctx.archived()) {
       <p>{{ 'archive.settingsLocked' | t }}</p>
-    } @else {      
-      <section>
+    } @else {
+      <div class="layout">
+      <nav class="index" [attr.aria-label]="'tabs.settings' | t">
+        @for (s of sections; track s.id) {
+          <button type="button" (click)="jump(s.id)">{{ s.key | t }}</button>
+        }
+      </nav>
+      <div class="body">
+      <section id="ps-name">
         <h2>{{ 'projectSettings.name' | t }}</h2>
         <input class="pname" [ngModel]="name()" (ngModelChange)="name.set($event); info.set('')" maxlength="100"
           [attr.aria-label]="'projectSettings.name' | t" />
         <p class="help">{{ 'projectSettings.nameHelp' | t }}</p>
       </section>
-      <section>
+      <section id="ps-labels">
         <h2>{{ 'projectSettings.labels' | t }} <app-help-tip [keys]="['projectSettings.labelsHelp']" /></h2>
         <ul class="labels">
           @for (l of labels(); track l.id; let i = $index) {
@@ -67,7 +74,7 @@ const RANGES: Record<NumKey, [number, number]> = {
         @if (info()) { <p class="ok">{{ info() | t }}</p> }
       </section>
 
-      <section>
+      <section id="ps-rules">
         <h2>{{ 'projectSettings.rules' | t }}</h2>
         <div class="nums">
           @for (k of dayKeys; track k) {
@@ -84,7 +91,7 @@ const RANGES: Record<NumKey, [number, number]> = {
         </div>
       </section>
 
-      <section>
+      <section id="ps-features">
         <h2>{{ 'projectSettings.features' | t }}</h2>
         <label class="feature">
           <input type="checkbox" [checked]="settings().features.gantt"
@@ -119,9 +126,25 @@ const RANGES: Record<NumKey, [number, number]> = {
           <button type="button" class="primary" [disabled]="busy()" (click)="save()">{{ 'settings.saveChanges' | t }}</button>
         </div>
       }
+      </div>
+      </div>
     }
   `,
   styles: `
+    .layout { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 24px; align-items: start; }
+    .index { position: sticky; top: 68px; display: flex; flex-direction: column; gap: 2px; }
+    .index button { text-align: left; min-height: 36px; padding: 0 10px; border: none; border-radius: 6px;
+      background: none; color: var(--text); font-size: 14px; cursor: pointer; }
+    .index button:hover { background: var(--surface-alt); }
+    .body { min-width: 0; max-width: 720px; }
+    /* 飛んだとき、アプリのヘッダーの下に隠れないように */
+    .body section { scroll-margin-top: 68px; }
+    @media (max-width: 720px) {
+      .layout { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+      .index { position: static; flex-direction: row; overflow-x: auto; scrollbar-width: none; }
+      .index::-webkit-scrollbar { display: none; }
+      .index button { flex: none; white-space: nowrap; }
+    }
     h2 { font-size: 16px; }
     .pname { box-sizing: border-box; width: 100%; max-width: 480px; min-height: 44px; font-size: 16px; padding: 0 12px; }
     .labels { list-style: none; padding: 0; margin: 0 0 12px; }
@@ -192,6 +215,18 @@ export class ProjectSettings implements OnInit {
   busy = signal(false);
   error = signal('');
   info = signal('');
+
+  /** 左の索引（押すと、その欄まで動く） */
+  readonly sections = [
+    { id: 'ps-name', key: 'projectSettings.name' },
+    { id: 'ps-labels', key: 'projectSettings.labels' },
+    { id: 'ps-rules', key: 'projectSettings.rules' },
+    { id: 'ps-features', key: 'projectSettings.features' },
+  ];
+
+  jump(id: string) {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 
   private labelsDirty = computed(() => JSON.stringify(this.labels()) !== JSON.stringify(this.saved()));
   private settingsDirty = computed(() => JSON.stringify(this.settings()) !== JSON.stringify(this.savedSettings()));

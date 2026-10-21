@@ -4,7 +4,7 @@ import {
   createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut,
   sendEmailVerification, EmailAuthProvider, reauthenticateWithCredential, updatePassword,
   sendPasswordResetEmail, updateProfile as updateAuthProfile, // updateProfile（設定画面の保存）がすでにある
-  reauthenticateWithPopup,
+  reauthenticateWithPopup, verifyBeforeUpdateEmail,
 } from 'firebase/auth';
 import {
   collectionGroup, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch,
@@ -45,6 +45,11 @@ export class AuthService {
       if (u) {
         await this.ensureProfile(u);
         const p = (await getDoc(doc(db, 'users', u.uid))).data() as UserProfile;
+        // メールアドレスを変えたあと、最初に開いたときに写しをそろえる（失敗しても、使うのに困らない）
+        if (u.email && p.email !== u.email) {
+          updateDoc(doc(db, 'users', u.uid), { email: u.email }).catch((e) => console.warn(e));
+          p.email = u.email;
+        }
         this.profile.set(p);
         this.i18n.lang.set(p.language);
       } else {
@@ -179,6 +184,17 @@ export class AuthService {
     const u = auth.currentUser!;
     await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email!, current));
     await updatePassword(u, next);
+  }
+
+  /**
+   * メールアドレスを変える。大事な操作なので、今のパスワードで本人確認してから。
+   * 新しいアドレスに確認のリンクを送り、押されたときに初めて変わる（打ち間違えたアドレスに変わらないように）
+   */
+  async changeEmail(password: string, newEmail: string) {
+    const u = auth.currentUser!;
+    await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email!, password));
+    this.useAppLanguage();
+    await verifyBeforeUpdateEmail(u, newEmail, this.mailSettings());
   }
 
   /** 本人確認をし直す（アカウントの削除の前）。パスワードの人はパスワード、Google の人は Google の窓 */

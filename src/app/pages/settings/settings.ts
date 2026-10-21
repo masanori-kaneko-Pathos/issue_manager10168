@@ -1,6 +1,6 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { COMMON_TIMEZONES, formatDateTime, tzOffset } from '../../core/time/time';
 import { I18nService, Lang, TPipe } from '../../i18n/i18n';
@@ -14,116 +14,146 @@ import { Avatar } from '../../shared/avatar';
 import { AvatarCropDialog } from '../../shared/avatar-crop-dialog';
 import { PwField } from '../../shared/pw-field';
 
-type Section = 'general' | 'password';
+
+type Section = 'general' | 'password' | 'email';
 
 @Component({
   selector: 'app-settings',
   imports: [FormsModule, RouterLink, TPipe, HelpTip, Avatar, AvatarCropDialog, PwField],
   host: { '(window:beforeunload)': 'onBeforeUnload($event)' },
   template: `
-    <header class="bar"><a routerLink="/" class="link">{{ 'common.back' | t }}</a></header>
     <main>
-      <h1>{{ 'settings.title' | t }}</h1>
-      <a routerLink="/settings/notifications" class="to-notify">
-        <span class="to-body">
-          <strong>{{ 'notifySettings.title' | t }}</strong>
-          <span class="help">{{ 'notifySettings.openHelp' | t }}</span>
-        </span>
-        <span aria-hidden="true">›</span>
-      </a>
-
-      <section>
-        <h2>{{ 'intro.settingsTitle' | t }}</h2>
-        <p class="help">{{ 'intro.settingsHelp' | t }}</p>
-        <div class="row-start">
-          @if (activeSample(); as pid) {
-            <button type="button" class="primary" (click)="openSample(pid)">{{ 'intro.openSample' | t }}</button>
-          } @else {
-            <button type="button" class="primary" [disabled]="sampleBusy()" (click)="makeSample()">
-              {{ (sampleBusy() ? 'intro.making' : 'intro.makeSample') | t }}</button>
-          }
-          <button type="button" class="link" [disabled]="!introHidden()" (click)="showIntroAgain()">
-            {{ (introHidden() ? 'intro.showAgain' : 'intro.shown') | t }}</button>
-        </div>
-        @if (introMsg()) { <p class="msg" [class.ng]="introMsg() === 'common.saveError'">{{ introMsg() | t }}</p> }
-      </section>
-
-      <section>
-        <h2>{{ 'settings.profile' | t }}</h2>
-        <div class="avatar-row">
-          <app-avatar [name]="displayName()" [uid]="uid" [photo]="photo()" [size]="64" />
-          <div class="avatar-ops">
-            <div class="row-start">
-              <label class="ghost-btn" [class.disabled]="photoBusy()">{{ 'settings.photoChange' | t }}
-                <input type="file" accept="image/png,image/jpeg,image/webp,image/heic" hidden [disabled]="photoBusy()"
-                  (change)="onPhoto($event)" />
-              </label>
-              @if (photo()) {
-                <button type="button" class="link" [disabled]="photoBusy()" (click)="removePhoto()">
-                  {{ 'settings.photoRemove' | t }}</button>
-              }
+      <h1 class="page-title">{{ titles[section] | t }}</h1>
+      @if (section === 'profile') {
+        <section>
+          <div class="avatar-row">
+            <app-avatar [name]="displayName()" [uid]="uid" [photo]="photo()" [size]="64" />
+            <div class="avatar-ops">
+              <div class="row-start">
+                <label class="ghost-btn" [class.disabled]="photoBusy()">{{ 'settings.photoChange' | t }}
+                  <input type="file" accept="image/png,image/jpeg,image/webp,image/heic" hidden [disabled]="photoBusy()"
+                    (change)="onPhoto($event)" />
+                </label>
+                @if (photo()) {
+                  <button type="button" class="link" [disabled]="photoBusy()" (click)="removePhoto()">
+                    {{ 'settings.photoRemove' | t }}</button>
+                }
+              </div>
+              <p class="help">{{ 'settings.photoHelp' | t }}</p>
+              @if (photoMsg()) { <p class="msg" [class.ng]="photoMsg() !== 'settings.photoSaved'">{{ photoMsg() | t }}</p> }
             </div>
-            <p class="help">{{ 'settings.photoHelp' | t }}</p>
-            @if (photoMsg()) { <p class="msg" [class.ng]="photoMsg() !== 'settings.photoSaved'">{{ photoMsg() | t }}</p> }
           </div>
-        </div>
-        <label class="field">{{ 'settings.displayName' | t }}
-          <input [ngModel]="displayName()" (ngModelChange)="displayName.set($event)" maxlength="50" />
-        </label>
-      </section>
-
-      <section>
-        <h2>{{ 'settings.language' | t }}</h2>
-        <div class="chips">
-          <button type="button" [class.on]="language() === 'ja'" (click)="language.set('ja')">日本語</button>
-          <button type="button" [class.on]="language() === 'en'" (click)="language.set('en')">English</button>
-        </div>
-      </section>
-      <section>
-        <h2>{{ 'settings.defaultView' | t }}</h2>
-        <div class="chips">
-          <button type="button" [class.on]="defaultView() === 'list'" (click)="defaultView.set('list')">{{ 'tabs.list' | t }}</button>
-          <button type="button" [class.on]="defaultView() === 'board'" (click)="defaultView.set('board')">{{ 'tabs.board' | t }}</button>
-        </div>
-      </section>
-
-      <section>
-        <h2>{{ 'settings.timeZone' | t }} <app-help-tip [keys]="['settings.tzHelp']" /></h2>
-        <select [ngModel]="timeZone()" (ngModelChange)="timeZone.set($event)">
-          <optgroup [label]="'settings.tzCommon' | t">
-            @for (z of commonZones; track z.value) { <option [value]="z.value">{{ z.label }}</option> }
-          </optgroup>
-          <optgroup [label]="'settings.tzAll' | t">
-            @for (z of allZones; track z.value) { <option [value]="z.value">{{ z.label }}</option> }
-          </optgroup>
-        </select>
-        <p class="help">{{ 'settings.tzNow' | t: { t: nowInZone() } }}</p>
-      </section>
-
-      <section>
-        <h2>{{ 'settings.password' | t }}</h2>
-        @if (isPasswordUser) {
-          <label class="field">{{ 'settings.currentPw' | t }}
-            <app-pw-field><input type="password" [(ngModel)]="currentPw" autocomplete="current-password" /></app-pw-field>
+          <label class="field">{{ 'settings.displayName' | t }}
+            <input [ngModel]="displayName()" (ngModelChange)="displayName.set($event)" maxlength="50" />
           </label>
-          <label class="field">{{ 'settings.newPw' | t }}
-            <app-pw-field><input type="password" [(ngModel)]="newPw" autocomplete="new-password" minlength="8" /></app-pw-field>
-          </label>
-          <div class="row">
-            @if (msg()?.section === 'password') { <span class="msg" [class.ng]="!msg()!.ok">{{ msg()!.key | t }}</span> }
-            <button type="button" class="primary" [disabled]="busy() || !currentPw || !newPw" (click)="changePassword()">
-              {{ 'settings.changePw' | t }}</button>
+        </section>
+      }
+
+      @if (section === 'preferences') {
+        <section>
+          <h2>{{ 'settings.language' | t }}</h2>
+          <div class="chips">
+            <button type="button" [class.on]="language() === 'ja'" (click)="language.set('ja')">日本語</button>
+            <button type="button" [class.on]="language() === 'en'" (click)="language.set('en')">English</button>
           </div>
-        } @else {
-          <p class="help">{{ 'settings.googleManaged' | t }}</p>
-        }
-      </section>
-      <section>
-        <h2>{{ 'deleteAccount.title' | t }}</h2>
-        <p class="help">{{ 'deleteAccount.entryHelp' | t }}</p>
-        <a routerLink="/settings/delete-account" class="danger-link">{{ 'deleteAccount.open' | t }}</a>
-      </section>
-            @if (msg()?.section === 'general') {
+        </section>
+        <section>
+          <h2>{{ 'settings.defaultView' | t }}</h2>
+          <div class="chips">
+            <button type="button" [class.on]="defaultView() === 'list'" (click)="defaultView.set('list')">{{ 'tabs.list' | t }}</button>
+            <button type="button" [class.on]="defaultView() === 'board'" (click)="defaultView.set('board')">{{ 'tabs.board' | t }}</button>
+          </div>
+        </section>
+        <section>
+          <h2>{{ 'settings.timeZone' | t }} <app-help-tip [keys]="['settings.tzHelp']" /></h2>
+          <select [ngModel]="timeZone()" (ngModelChange)="timeZone.set($event)">
+            <optgroup [label]="'settings.tzCommon' | t">
+              @for (z of commonZones; track z.value) { <option [value]="z.value">{{ z.label }}</option> }
+            </optgroup>
+            <optgroup [label]="'settings.tzAll' | t">
+              @for (z of allZones; track z.value) { <option [value]="z.value">{{ z.label }}</option> }
+            </optgroup>
+          </select>
+          <p class="help">{{ 'settings.tzNow' | t: { t: nowInZone() } }}</p>
+        </section>
+      }
+
+      @if (section === 'account') {
+        <section>
+          <h2>{{ 'account.email' | t }}</h2>
+          <p class="current">{{ email }}</p>
+          @if (isPasswordUser) {
+            @if (emailSent(); as to) {
+              <p class="msg" role="status">{{ 'account.emailSent' | t: { email: to } }}</p>
+            } @else {
+              <label class="field">{{ 'account.newEmail' | t }}
+                <input type="email" [(ngModel)]="newEmail" autocomplete="email" />
+              </label>
+              <label class="field">{{ 'settings.currentPw' | t }}
+                <app-pw-field><input type="password" [(ngModel)]="emailPw" autocomplete="current-password" /></app-pw-field>
+              </label>
+              <div class="row">
+                @if (msg()?.section === 'email') { <span class="msg" [class.ng]="!msg()!.ok">{{ msg()!.key | t }}</span> }
+                <button type="button" class="primary" [disabled]="busy() || !newEmail.trim() || !emailPw"
+                  (click)="changeEmail()">{{ 'account.sendLink' | t }}</button>
+              </div>
+              <p class="help">{{ 'account.emailHelp' | t }}</p>
+            }
+          } @else {
+            <p class="help">{{ 'account.googleEmail' | t }}</p>
+          }
+        </section>
+
+        <section>
+          <h2>{{ 'settings.password' | t }}</h2>
+          @if (isPasswordUser) {
+            <label class="field">{{ 'settings.currentPw' | t }}
+              <app-pw-field><input type="password" [(ngModel)]="currentPw" autocomplete="current-password" /></app-pw-field>
+            </label>
+            <label class="field">{{ 'settings.newPw' | t }}
+              <app-pw-field><input type="password" [(ngModel)]="newPw" autocomplete="new-password" minlength="8" /></app-pw-field>
+            </label>
+            <div class="row">
+              @if (msg()?.section === 'password') { <span class="msg" [class.ng]="!msg()!.ok">{{ msg()!.key | t }}</span> }
+              <button type="button" class="primary" [disabled]="busy() || !currentPw || !newPw" (click)="changePassword()">
+                {{ 'settings.changePw' | t }}</button>
+            </div>
+          } @else {
+            <p class="help">{{ 'settings.googleManaged' | t }}</p>
+          }
+        </section>
+
+        <section>
+          <h2>{{ 'common.logout' | t }}</h2>
+          <button type="button" class="ghost-btn" (click)="logout()">{{ 'common.logout' | t }}</button>
+        </section>
+
+        <!-- 危ない操作は一番下に、赤い枠で -->
+        <section class="danger-zone">
+          <h2>{{ 'deleteAccount.title' | t }}</h2>
+          <p class="help">{{ 'deleteAccount.entryHelp' | t }}</p>
+          <a routerLink="/settings/account/delete" class="danger-link">{{ 'deleteAccount.open' | t }}</a>
+        </section>
+      }
+
+      @if (section === 'intro') {
+        <section>
+          <p class="help">{{ 'intro.settingsHelp' | t }}</p>
+          <div class="row-start">
+            @if (activeSample(); as pid) {
+              <button type="button" class="primary" (click)="openSample(pid)">{{ 'intro.openSample' | t }}</button>
+            } @else {
+              <button type="button" class="primary" [disabled]="sampleBusy()" (click)="makeSample()">
+                {{ (sampleBusy() ? 'intro.making' : 'intro.makeSample') | t }}</button>
+            }
+            <button type="button" class="link" [disabled]="!introHidden()" (click)="showIntroAgain()">
+              {{ (introHidden() ? 'intro.showAgain' : 'intro.shown') | t }}</button>
+          </div>
+          @if (introMsg()) { <p class="msg" [class.ng]="introMsg() === 'common.saveError'">{{ introMsg() | t }}</p> }
+        </section>
+      }
+
+      @if (msg()?.section === 'general') {
         <p class="msg" [class.ng]="!msg()!.ok">{{ msg()!.key | t }}</p>
       }
       @if (dirty()) {
@@ -141,7 +171,7 @@ type Section = 'general' | 'password';
   `,
   styles: `
     .bar { padding: 8px 16px; border-bottom: 1px solid var(--border); }
-    main { max-width: 560px; margin: 0 auto; padding: 16px 16px 48px; }
+    main { max-width: 640px; padding: 0 0 48px; }
     h1 { font-size: 20px; }
     section { border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px;
       display: flex; flex-direction: column; gap: 10px; }
@@ -161,7 +191,7 @@ type Section = 'general' | 'password';
     .msg.ng { color: var(--danger-text); }
     .link { background: none; border: none; color: var(--primary); }
     .savebar { position: sticky; bottom: 0; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-      padding: 12px 16px; margin: 0 -16px; background: var(--warning-bg); border-top: 1px solid var(--warning-border);
+      padding: 12px 16px; margin: 0; border-radius: 8px; background: var(--warning-bg); border-top: 1px solid var(--warning-border);
       padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
     .savebar span { flex: 1; font-size: 13px; }
     .check { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 14px; }
@@ -180,9 +210,58 @@ type Section = 'general' | 'password';
       border-radius: 8px; color: var(--primary); font-size: 14px; cursor: pointer; }
     .ghost-btn:hover { background: var(--primary-bg); }
     .ghost-btn.disabled { opacity: 0.5; pointer-events: none; }
+    .page-title { font-size: 18px; margin: 0 0 12px; }
+    .current { margin: 0; font-size: 15px; overflow-wrap: anywhere; }
+    .danger-zone { border-color: var(--danger); }
+    .ghost-btn { align-self: flex-start; background: var(--surface); }
   `,
 })
 export class Settings implements OnInit {
+  /** このページで出す欄（道の data で決まる。入れ物の索引の1項目にあたる） */
+  readonly section = inject(ActivatedRoute).snapshot.data['section'] as 'profile' | 'preferences' | 'account' | 'intro';
+  /** ページの見出し（左の索引と同じ名前） */
+  readonly titles: Record<string, string> = {
+    profile: 'settings.profile', preferences: 'settingsNav.preferences',
+    account: 'settingsNav.account', intro: 'intro.settingsTitle',
+  };
+
+  // ---- メールアドレスの変更 ----
+  readonly email = auth.currentUser?.email ?? '';
+  newEmail = '';
+  emailPw = '';
+  /** 確認メールを送った先（送ったら、欄の代わりに知らせを出す） */
+  emailSent = signal<string | null>(null);
+
+  async changeEmail() {
+    const to = this.newEmail.trim();
+    if (to.toLowerCase() === this.email.toLowerCase()) {
+      this.msg.set({ section: 'email', key: 'account.same', ok: false });
+      return;
+    }
+    this.busy.set(true);
+    this.msg.set(null);
+    try {
+      await this.authService.changeEmail(this.emailPw, to);
+      this.emailPw = '';
+      this.emailSent.set(to);
+    } catch (e) {
+      console.error(e);
+      const code = (e as { code?: string }).code ?? '';
+      const key = code.includes('invalid-credential') || code.includes('wrong-password') ? 'settings.pwWrong'
+        : code.includes('invalid-email') ? 'account.invalidEmail'
+        : code.includes('email-already-in-use') ? 'account.inUse'
+        : code.includes('too-many-requests') ? 'account.tooMany'
+        : 'common.saveError';
+      this.msg.set({ section: 'email', key, ok: false });
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  async logout() {
+    await this.authService.logout();
+    await this.router.navigateByUrl('/login');
+  }
   private authService = inject(AuthService);
   private ps = inject(ProjectService);
   private sample = inject(SampleService);
@@ -387,3 +466,4 @@ export class Settings implements OnInit {
     }
   }
 }
+
