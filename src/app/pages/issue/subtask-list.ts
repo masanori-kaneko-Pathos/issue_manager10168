@@ -23,7 +23,11 @@ import { IssueFormService } from '../../core/issue/issue-form.service';
 @Component({
   selector: 'app-subtask-list',
   imports: [FormsModule, RouterLink, CdkDropList, CdkDrag, CdkDragHandle, MemberSelect, TPipe, ReminderDialog],
-  host: { '(document:keydown.escape)': 'menuFor.set(null); editing.set(null)' },
+  host: {
+    // Esc：行の編集は捨てる、追加の欄は書きかけを残して閉じる
+    '(document:keydown.escape)': 'menuFor.set(null); editing.set(null); hideAdd()',
+    '(document:click)': 'onDocClick($event)',
+  },
   template: `
     @if (counted().length) {
       <div class="head">
@@ -38,7 +42,7 @@ import { IssueFormService } from '../../core/issue/issue-form.service';
       @for (s of list(); track s.id) {
         <li class="row" cdkDrag [cdkDragData]="s" [class.split]="!!s.splitTo" [class.done]="s.status === 'done'">
           @if (editing() === s.id) {
-            <div class="edit">
+            <div class="edit row-edit">
               <input id="st-edit-title" [(ngModel)]="dTitle" maxlength="200" [attr.aria-label]="'subtask.name' | t"
                 (keydown)="onEditKey($event, s)" />
               <div class="edit-row">
@@ -64,11 +68,19 @@ import { IssueFormService } from '../../core/issue/issue-form.service';
             <input type="checkbox" class="check" [checked]="s.status === 'done'" [disabled]="!canToggle(s) || busy()"
               [attr.aria-label]="'subtask.markDone' | t: { title: s.title }" (change)="toggleDone(s)" />
             <div class="main">
-              <span class="title">{{ s.title }}</span>
-              @if (s.splitTo; as sp) {
-                <a class="to" [routerLink]="['/p', pid(), 'i', sp.iid]">{{ 'subtask.splitTo' | t: { n: '' + sp.number } }}</a>
+              @if (canEdit() && !s.splitTo) {
+                <!-- 押すとその場で編集。ボタンにするのは題名とメモだけ（リンクや札はボタンの中に入れられないため） -->
+                <button type="button" class="sub-open" [title]="'subtask.edit' | t" (click)="startEdit(s)">
+                  <span class="title">{{ s.title }}</span>
+                  @if (s.memo) { <span class="memo">{{ s.memo }}</span> }
+                </button>
+              } @else {
+                <span class="title">{{ s.title }}</span>
+                @if (s.splitTo; as sp) {
+                  <a class="to" [routerLink]="['/p', pid(), 'i', sp.iid]">{{ 'subtask.splitTo' | t: { n: '' + sp.number } }}</a>
+                }
+                @if (s.memo) { <span class="memo">{{ s.memo }}</span> }
               }
-              @if (s.memo) { <span class="memo">{{ s.memo }}</span> }
               <span class="meta">
                 @if (s.status === 'doing') { <span class="doing">{{ 'subtask.doing' | t }}</span> }
                 <span>{{ nameOf()(s.assigneeId) }}</span>
@@ -101,7 +113,6 @@ import { IssueFormService } from '../../core/issue/issue-form.service';
                         {{ (s.status === 'doing' ? 'subtask.toTodo' : 'subtask.toDoing') | t }}</button>
                     }
                     @if (canEdit()) {
-                      <button type="button" role="menuitem" (click)="startEdit(s)">{{ 'subtask.edit' | t }}</button>
                       <button type="button" role="menuitem"
                         (click)="menuFor.set(null); issueForm.open(pid(), { splitOf: issue().id, sub: s.id })">
                         {{ 'subtask.split' | t }}</button>
@@ -205,6 +216,11 @@ import { IssueFormService } from '../../core/issue/issue-form.service';
     .cdk-drag-placeholder { opacity: 0.3; }
     .open-add { margin-top: 0; min-height: 36px; padding: 0 4px; border: none; background: none;
       color: var(--primary); font-size: 14px; cursor: pointer; }
+    /* 題名とメモを押すと編集（文字の見た目のまま、乗せると薄い背景） */
+    .sub-open { display: flex; flex-direction: column; gap: 2px; width: 100%; margin: -2px -4px; padding: 2px 4px;
+      border: none; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left;
+      cursor: pointer; }
+    .sub-open:hover { background: var(--surface-alt); }
   `,
 })
 export class SubtaskList implements OnInit {
@@ -318,28 +334,72 @@ export class SubtaskList implements OnInit {
     return this.members().some((m) => m.uid === i.assigneeId) ? i.assigneeId : this.myUid;
   }
 
-  /** 追加の欄を開く（中身は空から。担当者は親の担当者） */
+  /** 追加の欄を開く。開いている行の編集は先に片づける（開く欄は1つだけ）。書きかけがあれば続きから */
   openAdd() {
-    this.newTitle = '';
-    this.nDate = '';
-    this.nMemo = '';
-    this.nAssignee.set(this.defaultAssignee());
+    this.leaveEdit();
+    if (!this.hasAddDraft()) {
+      this.newTitle = '';
+      this.nDate = '';
+      this.nMemo = '';
+      this.nAssignee.set(this.defaultAssignee());
+    }
     this.adding.set(true);
     setTimeout(() => document.getElementById('st-add')?.focus());
   }
 
+  /** やめる：書きかけを捨てて閉じる */
   closeAdd() {
     this.newTitle = '';
+    this.nDate = '';
+    this.nMemo = '';
     this.adding.set(false);
   }
 
-  /** 名前の欄で Enter：すぐ足す（続けて足せるよう、欄は開いたまま）。Esc：閉じる */
+  /** 書きかけを残して閉じる（Esc・外を押したとき） */
+  hideAdd() {
+    this.adding.set(false);
+  }
+
+  /** 追加の欄に、何か書いてあるか */
+  private hasAddDraft() {
+    return !!(this.newTitle.trim() || this.nDate || this.nMemo.trim());
+  }
+
+  /** 名前の欄で Enter：すぐ足す（続けて足せるよう、欄は開いたまま）。Esc は host でまとめて受ける */
   onAddKey(e: KeyboardEvent) {
-    if (e.key === 'Escape') {
-      this.closeAdd();
+    enterKey(e, () => this.add());
+  }
+
+  /** 追加の欄から離れる：名前があれば足して閉じる、なければ書きかけを残して閉じる */
+  private leaveAdd() {
+    if (!this.adding()) return;
+    if (this.newTitle.trim()) this.add();
+    this.hideAdd();
+  }
+
+  /** 行の編集から離れる：題名があれば保存、空なら捨てる（保存できたら saveEdit が閉じる） */
+  private leaveEdit() {
+    const id = this.editing();
+    if (!id) return;
+    const s = this.list().find((x) => x.id === id);
+    if (!s || !this.dTitle.trim()) {
+      this.editing.set(null);
       return;
     }
-    enterKey(e, () => this.add());
+    this.saveEdit(s);
+  }
+
+  /**
+   * 外を押したとき：開いている欄を片づける。
+   * 開くボタン（題名・「＋ サブタスクを追加」）を押したときは何もしない
+   * （開いたクリックがそのまま document まで届き、開いた瞬間に閉じてしまうため。片づけは開く側がする）。
+   * メニュー・選び窓・確かめの窓の中も何もしない
+   */
+  onDocClick(e: MouseEvent) {
+    const t = e.target as Element | null;
+    if (!t || t.closest('.sub-open, .open-add, .menu, .backdrop, [role="dialog"]')) return;
+    if (this.editing() && !t.closest('.row-edit')) this.leaveEdit();
+    if (this.adding() && !t.closest('.add-form')) this.leaveAdd();
   }
 
   /** 足す。並びは一番下。期限は親の期限を超えない（直すときと同じ計算） */
@@ -360,6 +420,9 @@ export class SubtaskList implements OnInit {
   }
 
   startEdit(s: Subtask) {
+    // 開いている欄（ほかの行・追加の欄）を先に片づける。押したほうを開く
+    this.leaveEdit();
+    this.leaveAdd();
     this.menuFor.set(null);
     this.dTitle = s.title;
     this.dAssignee.set(s.assigneeId);
@@ -389,7 +452,8 @@ export class SubtaskList implements OnInit {
     }
     return this.run(async () => {
       await this.issueService.updateSubtask(this.pid(), this.issue(), s, edits, this.myUid);
-      this.editing.set(null);
+      // 保存のあいだに、ほかの行や追加の欄を開いていたら、そちらは閉じない
+      if (this.editing() === s.id) this.editing.set(null);
     });
   }
 
