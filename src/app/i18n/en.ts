@@ -46,7 +46,13 @@ export const en: Dict = {
   },
 
   crumbs: { nav: 'Breadcrumb', home: 'Home', inbox: 'Inbox', drafts: 'Drafts' },
-  nav: { title: 'Menu', open: 'Open menu' },
+  nav: { 
+    title: 'Menu', 
+    open: 'Open menu' ,
+    seeAll: 'See all',
+    hasRequests: 'Requests waiting for you',
+    more: 'See {{n}} more',
+  },
   projects: {
     title: 'Projects',
     namePlaceholder: 'New project name',
@@ -62,6 +68,10 @@ export const en: Dict = {
     pin: 'Pin', 
     unpin: 'Unpin', 
     pinMax: 'You can pin up to 20 projects.',
+  },
+  projectsPage: {
+    help: 'Drag ⋮⋮ to reorder. Pinned projects always stay on top.',
+    drag: 'Drag to reorder',
   },
   projectNew: {
     title: 'Create project',

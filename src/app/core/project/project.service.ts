@@ -56,10 +56,14 @@ export class ProjectService {
     async listMyProjects(uid: string): Promise<ProjectWithRole[]> {
         const snap = await getDocs(query(collectionGroup(db, 'members'), where('uid', '==', uid)));
         const list = await Promise.all(
-            snap.docs.map(async (m) => {
+            snap.docs.map(async (m): Promise<ProjectWithRole | null> => {
                 const p = await getDoc(m.ref.parent.parent!);
                 if (!p.exists()) return null;
-                return { ...(p.data() as Omit<Project, 'id'>), id: p.id, role: m.data()['role'] as Role };
+                // 参加した日時も一緒に返す（メンバー文書はもう読んでいるので、読む回数は増えない）
+                return {
+                    ...(p.data() as Omit<Project, 'id'>), id: p.id, role: m.data()['role'] as Role,
+                    joinedAt: m.data()['joinedAt'] as ProjectWithRole['joinedAt'],
+                };
             }),
         );
         return list

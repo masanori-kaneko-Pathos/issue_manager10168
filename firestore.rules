@@ -11,7 +11,10 @@ service cloud.firestore {
       allow update: if request.auth != null && request.auth.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['displayName', 'timeZone', 'language', 'defaultView', 'dueReminders', 'dailyGroup',
-                       'dailyTime', 'introHidden', 'photoURL', 'emailNotify', 'email', 'pinnedProjects'])
+                       'dailyTime', 'introHidden', 'photoURL', 'emailNotify', 'email', 'pinnedProjects', 'projectOrder'])
+        // プロジェクトの並び（自分でドラッグして並べた順。id の並び）
+        && (!('projectOrder' in request.resource.data)
+            || (request.resource.data.projectOrder is list && request.resource.data.projectOrder.size() <= 200))
         // ホームで上に留めたプロジェクト（id の並び。20件まで）
         && (!('pinnedProjects' in request.resource.data)
             || (request.resource.data.pinnedProjects is list && request.resource.data.pinnedProjects.size() <= 20))

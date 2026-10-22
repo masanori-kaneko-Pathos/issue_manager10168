@@ -44,7 +44,13 @@ export const ja = {
   },
 
   crumbs: { nav: 'いまの場所', home: 'ホーム', inbox: '受信箱', drafts: '下書き' },
-  nav: { title: 'メニュー', open: 'メニューを開く' },
+  nav: { 
+    title: 'メニュー', 
+    open: 'メニューを開く',
+    seeAll: 'すべて見る',
+    hasRequests: '対応待ちの依頼があります',
+    more: 'さらに {{n}} 件',
+  },
   projects: {
     title: 'プロジェクト',
     namePlaceholder: '新しいプロジェクト名',
@@ -60,6 +66,10 @@ export const ja = {
     pin: 'ピン止め', 
     unpin: 'ピンを外す', 
     pinMax: 'ピン止めできるのは20件までです。',
+  },
+  projectsPage: {
+    help: '⋮⋮ をつかんで並べ替えられます。ピン止めしたプロジェクトは、いつも上に並びます。',
+    drag: 'ドラッグして並べ替える',
   },
   projectNew: {
     title: 'プロジェクトを作成',

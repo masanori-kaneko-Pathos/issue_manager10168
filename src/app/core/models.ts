@@ -49,7 +49,8 @@ export interface Project {
   description?: string;         // 概要の説明（何のためのプロジェクトか・いつまで・決まりごと）。書くのは管理者
 }
 
-export interface ProjectWithRole extends Project { role: Role; }
+/** joinedAt：自分が参加した日時（並べていないプロジェクトを、新しい順に並べるため） */
+export interface ProjectWithRole extends Project { role: Role; joinedAt?: Timestamp; }
 
 export interface Member {
   uid: string;

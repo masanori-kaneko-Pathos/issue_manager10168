@@ -20,6 +20,7 @@ import { SETTINGS_NAV } from './settings-nav';
 import { NoticeActions } from './notice-actions';
 import { IssueFormService } from '../core/issue/issue-form.service';
 import { NavDrawer } from './nav-drawer';
+import { RequestBadge } from '../core/request/request-badge.service';
 
 @Component({
   selector: 'app-header',
@@ -35,7 +36,9 @@ import { NavDrawer } from './nav-drawer';
       <button type="button" class="nav-btn" [attr.aria-label]="'nav.open' | t" [title]="'nav.open' | t"
         [attr.aria-expanded]="navOpen()" (click)="navOpen.set(true)">
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor"
-          stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16" /></svg></button>
+          stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+        <!-- 自分が管理者のプロジェクトに、対応待ちの依頼があるとき -->
+        @if (badge.total()) { <span class="nav-dot" role="img" [attr.aria-label]="'nav.hasRequests' | t"></span> }</button>
       <a routerLink="/" class="brand">{{ 'app.title' | t }}</a>
       <app-search-box />
       <div class="pen-wrap">
@@ -154,12 +157,17 @@ import { NavDrawer } from './nav-drawer';
     @if (inbox.flash(); as key) { <div class="toast" role="status">{{ key | t }}</div> }
     @if (projectNewOpen()) {
       @defer (on immediate) {
-        <app-project-new-dialog (close)="projectNewOpen.set(false)" />
+        @if (projectDraftId(); as id) {
+          <!-- 引き出しから開いた、プロジェクトの下書き -->
+          <app-project-new-dialog [draftId]="id" (close)="closeProjectNew()" />
+        } @else {
+          <app-project-new-dialog (close)="closeProjectNew()" />
+        }
       }
     }
     @if (navOpen()) {
       @defer (on immediate) {
-        <app-nav-drawer (close)="navOpen.set(false)" />
+        <app-nav-drawer (close)="navOpen.set(false)" (openProjectDraft)="openProjectDraft($event)" />
       }
     }
   `,
@@ -168,9 +176,12 @@ import { NavDrawer } from './nav-drawer';
       height: 52px; padding: 0 12px; background: var(--primary); color: var(--on-primary); }
     .brand { color: var(--on-primary); text-decoration: none; font-weight: bold; font-size: 16px; }
     /* ☰：どの画面でも。押すと、左から引き出し（ホーム・受信箱・下書き・プロジェクト） */
-    .nav-btn { display: inline-flex; width: 36px; height: 36px; padding: 0; border: none; border-radius: 50%;
+    .nav-btn { position: relative; display: inline-flex; width: 36px; height: 36px; padding: 0; border: none; border-radius: 50%;
       align-items: center; justify-content: center; background: none; color: var(--on-primary); cursor: pointer; }
     .nav-btn:hover { background: rgba(255, 255, 255, 0.15); }
+    /* 依頼の印：赤い丸に白いふち（青い帯の上でも見える） */
+    .nav-dot { position: absolute; top: 4px; right: 4px; width: 10px; height: 10px; border-radius: 50%;
+      background: var(--danger); box-shadow: 0 0 0 2px var(--on-primary); }
     .spacer { flex: 1; }
     .add-btn { width: 36px; height: 36px; border-radius: 50%; border: none; background: var(--on-primary);
       color: var(--primary); font-size: 22px; font-weight: bold; line-height: 1; cursor: pointer; }
@@ -284,6 +295,8 @@ export class AppHeader {
   /** 下書き（件数を＋のメニューに出す） */
   protected drafts = inject(DraftService);
   private issueForm = inject(IssueFormService);
+  /** 対応待ちの依頼（☰ の右上の印） */
+  protected badge = inject(RequestBadge);
   private clock = inject(Clock);
   private i18n = inject(I18nService);
   bellOpen = signal(false);
@@ -319,6 +332,19 @@ export class AppHeader {
   }
   private searchBox = viewChild(SearchBox);
   projectNewOpen = signal(false);
+  /** 引き出しから開いた、プロジェクトの下書き（作成の窓に入れて開く） */
+  projectDraftId = signal<string | null>(null);
+
+  openProjectDraft(id: string) {
+    this.projectDraftId.set(id);
+    this.projectNewOpen.set(true);
+  }
+
+  /** 作成の窓を閉じる（下書きを入れて開いていたら、それも忘れる。次に＋から開くときは、まっさらで） */
+  closeProjectNew() {
+    this.projectNewOpen.set(false);
+    this.projectDraftId.set(null);
+  }
 
   addOpen = signal(false);
   /** メニューを開いたときにいたプロジェクトと、そこでの自分のロール */

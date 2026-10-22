@@ -16,21 +16,18 @@ import { PriorityMark } from '../../shared/priority-mark';
 import { compareIssues, isManualPriority, priorityOf } from '../../core/issue/priority';
 import { DueBucket, dueBucket, remainingOf, shortDue } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
-import { DeleteProjectDialog } from '../project/delete-project-dialog';
 import { RequestService } from '../../core/request/request.service';
 import { Router } from '@angular/router';
 import { SampleService } from '../../core/project/sample.service';
 import { MineBoard } from './mine-board';
 import { MineCalendar } from './mine-calendar';
 import { TabInk } from '../../shared/tab-ink';
-import { MemoRow } from '../../shared/memo-row';
 import { RecurMark } from '../../shared/recur-mark';
-import { PROJECT_FOLD, orderProjects } from '../../core/project/project-order';
+import { orderProjects } from '../../core/project/project-order';
 
 @Component({
   selector: 'app-home',
-  imports: [RouterLink, TPipe, PriorityMark, ProjectNewDialog, DeleteProjectDialog,
-    MineBoard, MineCalendar, TabInk, MemoRow, RecurMark],
+  imports: [RouterLink, TPipe, PriorityMark, ProjectNewDialog, MineBoard, MineCalendar, TabInk, RecurMark],
   template: `
     <main>
       <!-- 知らせ・ようこそ・招待は、2列の上に全幅で -->
@@ -98,7 +95,7 @@ import { PROJECT_FOLD, orderProjects } from '../../core/project/project-order';
           </ul>
         </section>
       }
-
+      @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
       <div class="layout">
         <!-- 右（スマホでは先頭）：今日のまとめと、自分の課題 -->
         <section class="mine" id="today">
@@ -123,7 +120,7 @@ import { PROJECT_FOLD, orderProjects } from '../../core/project/project-order';
             }
           </div>
           @if (view() === 'board') {
-            <app-mine-board [issues]="openMine()" [nameOf]="nameFn" />
+            <app-mine-board [issues]="openMine()" [nameOf]="nameFn" [projects]="projects()" />
           } @else if (view() === 'calendar') {
             <app-mine-calendar [issues]="openMine()" [nameOf]="nameFn" />
           } @else {
@@ -188,116 +185,9 @@ import { PROJECT_FOLD, orderProjects } from '../../core/project/project-order';
           }
           }
         </section>
-
-        <!-- 左（スマホでは後ろ）：プロジェクトと、受信箱 -->
-        <aside class="side">
-          <section class="box">
-            <div class="side-head">
-              <h2>{{ 'projects.title' | t }}</h2>
-              <button type="button" class="icon-btn" [attr.aria-label]="'projectNew.title' | t" [title]="'projectNew.title' | t"
-                (click)="newOpen.set(true)">＋</button>
-            </div>
-            @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
-            @if (loading()) {
-              <p class="small">{{ 'common.loading' | t }}</p>
-            } @else {
-              <ul class="plist">
-                @for (p of shownProjects(); track p.id) {
-                  @let on = pinned().has(p.id);
-                  <li [class.pinned]="on">
-                    <a class="pname" [routerLink]="['/p', p.id]" [title]="p.name">{{ p.name }}</a>
-                    @if (reqCount()[p.id]; as n) {
-                      <a class="req-chip" [routerLink]="['/p', p.id, 'requests']" [title]="'request.waiting' | t">
-                        {{ 'request.homeChip' | t: { n: '' + n } }}</a>
-                    }
-                    <span class="role">{{ 'roles.' + p.role | t }}</span>
-                    <button type="button" class="pin" [class.on]="on" [attr.aria-pressed]="on"
-                      [attr.aria-label]="(on ? 'projects.unpin' : 'projects.pin') | t" [title]="(on ? 'projects.unpin' : 'projects.pin') | t"
-                      (click)="togglePin(p)">
-                      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" [attr.fill]="on ? 'currentColor' : 'none'"
-                        stroke="currentColor" stroke-width="2" stroke-linejoin="round">
-                        <path d="M9 3h6l-1 6 3 3H7l3-3z" /><path d="M12 15v6" /></svg></button>
-                  </li>
-                } @empty {
-                  <li class="first">
-                    <span class="small">{{ 'projects.empty' | t }}</span>
-                    <button type="button" class="primary" (click)="newOpen.set(true)">{{ 'projectNew.title' | t }}</button>
-                  </li>
-                }
-              </ul>
-              @if (activeProjects().length > projectFold) {
-                <button type="button" class="link fold-btn" [attr.aria-expanded]="showAllProjects()"
-                  (click)="showAllProjects.set(!showAllProjects())">
-                  {{ (showAllProjects() ? 'projects.showLess' : 'projects.showMore')
-                    | t: { n: '' + (activeProjects().length - projectFold) } }}
-                  <span class="tri" [class.up]="showAllProjects()" aria-hidden="true">▾</span></button>
-              }            
-              @if (archivedProjects().length) {
-                <button type="button" class="link fold-btn" [attr.aria-expanded]="showArchived()"
-                  (click)="showArchived.set(!showArchived())">
-                  {{ 'archive.section' | t: { n: '' + archivedProjects().length } }}
-                  <span class="tri" [class.up]="showArchived()" aria-hidden="true">▾</span></button>
-                @if (showArchived()) {
-                  <ul class="plist reveal">
-                    @for (p of archivedProjects(); track p.id) {
-                      <li class="archived">
-                        <a class="pname" [routerLink]="['/p', p.id]" [title]="p.name">{{ p.name }}</a>
-                        <span class="role">{{ 'archive.kinds.' + (p.archiveKind ?? 'completed') | t }}</span>
-                        @if (p.role === 'admin') {
-                          <div class="row-more">
-                            <button type="button" class="row-more-btn" [attr.aria-expanded]="rowMenu() === p.id"
-                              [attr.aria-label]="'project.menu' | t" [title]="'project.menu' | t"
-                              (click)="toggleRowMenu(p.id, $event)">⋮</button>
-                            @if (rowMenu() === p.id) {
-                              <div class="backdrop" (click)="rowMenu.set(null)"></div>
-                              <div class="menu" role="menu" [class.up]="rowMenuUp()">
-                                <button type="button" role="menuitem" [disabled]="busy()" (click)="unarchive(p)">
-                                  {{ 'archive.unarchive' | t }}</button>
-                                <div class="sep" role="separator"></div>
-                                <button type="button" role="menuitem" class="danger"
-                                  (click)="rowMenu.set(null); deleteTarget.set(p)">{{ 'deleteProject.open' | t }}</button>
-                              </div>
-                            }
-                          </div>
-                        }
-                      </li>
-                    }
-                  </ul>
-                }
-              }
-            }
-          </section>
-
-          <section class="box">
-            <div class="side-head">
-              <h2><a routerLink="/inbox" class="h-link">{{ 'inbox.title' | t }}</a>
-                @if (inbox.count()) { <span class="n">{{ inbox.count() }}</span> }</h2>
-              <button type="button" class="icon-btn" [attr.aria-label]="'inbox.write' | t" [title]="'inbox.write' | t"
-                (click)="inbox.openPen()">
-                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor"
-                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg></button>
-            </div>
-            <ul class="mlist">
-              @for (m of inbox.active().slice(0, memoFold); track m.id) {
-                <!-- ペンの吹き出しと同じ1行（押すとその場で直す・課題にする・ゴミ箱へ） -->
-                <li><app-memo-row [memo]="m" [compact]="true" touchUi="menu" /></li>
-              } @empty {
-                <li class="small">{{ 'inbox.empty' | t }}</li>
-              }
-            </ul>
-              @if (inbox.count() > memoFold) {
-              <a routerLink="/inbox" class="more-link">{{ 'inbox.seeAll' | t: { n: '' + (inbox.count() - memoFold) } }}</a>
-            }
-          </section>
-        </aside>
       </div>
     </main>
     @if (newOpen()) { <app-project-new-dialog (close)="newOpen.set(false)" /> }
-    @if (deleteTarget(); as p) {
-      <app-delete-project-dialog [pid]="p.id" [name]="p.name" [prefill]="!!p.sample" (done)="onDeleted($event)"
-        (cancel)="deleteTarget.set(null)" />
-    }
   `,
   styles: `
     main { max-width: 1200px; margin: 0 auto; padding: 16px 16px 48px; box-sizing: border-box; }
@@ -321,20 +211,15 @@ import { PROJECT_FOLD, orderProjects } from '../../core/project/project-order';
     .invitation .name { flex-basis: 100%; }
 
     /* 2列：左にプロジェクトと受信箱（細い）、右に自分の課題（広い）。スマホは書いた順の1列 */
-    .layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); grid-template-areas: 'side mine';
-      gap: 32px; align-items: start; }
-    .mine { grid-area: mine; min-width: 0; scroll-margin-top: 64px; }
+    /* 左の列（プロジェクト・受信箱）はなくした（引き出しとプロジェクトのページへ）。自分の課題だけの1列 */
+    .layout { display: block; }
+    .mine { min-width: 0; scroll-margin-top: 64px; }
     /* 画面に止まる列。窓が低いときは、列の中だけスクロール（受信箱がページの下に沈まないように） */
     .side { grid-area: side; display: flex; flex-direction: column; gap: 16px; position: sticky; top: 68px;
       max-height: calc(100vh - 84px); overflow-y: auto; }
     .more-link { display: inline-flex; align-items: center; min-height: 32px; font-size: 13px;
       color: var(--primary); text-decoration: none; }
     .more-link:hover { text-decoration: underline; }
-    @media (max-width: 959px) {
-      .layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: none; gap: 24px; }
-      .mine, .side { grid-area: auto; }
-      .side { position: static; max-height: none; overflow: visible; }
-    }
 
     /* 左の箱（プロジェクト・受信箱） */
     .box { padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
@@ -516,11 +401,7 @@ export class Projects implements OnInit {
   activeProjects = computed(() => orderProjects(this.projects(), this.authService.profile()?.pinnedProjects));
   archivedProjects = computed(() => this.projects().filter((p) => p.archived));
   showArchived = signal(false);
-  /** 左の列に、最初から見せるプロジェクトの数（残りはたたむ。受信箱まで1画面に収まるように） */
-  readonly projectFold = PROJECT_FOLD;
   showAllProjects = signal(false);
-  shownProjects = computed(() =>
-    this.showAllProjects() ? this.activeProjects() : this.activeProjects().slice(0, this.projectFold));
   /** 受信箱の欄に見せるメモの数 */
   readonly memoFold = 3;
   /** アーカイブ済みの行の ⋮（開いているプロジェクトの id） */
@@ -737,7 +618,6 @@ export class Projects implements OnInit {
     try {
       this.projects.set(await this.projectService.listMyProjects(auth.currentUser!.uid));
       this.syncMine();
-      this.syncRequests();
     } catch (e) {
       console.error(e);
       this.error.set('common.loadError');

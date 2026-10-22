@@ -5,12 +5,17 @@ import { AuthService } from '../core/auth/auth.service';
 import { ProjectService } from '../core/project/project.service';
 import { PROJECT_FOLD, orderProjects } from '../core/project/project-order';
 import { InboxService } from '../core/inbox/inbox.service';
-import { DraftService } from '../core/draft/draft.service';
+import { Draft, DraftService } from '../core/draft/draft.service';
+import { IssueFormService } from '../core/issue/issue-form.service';
+import { RequestBadge } from '../core/request/request-badge.service';
 import { ProjectWithRole } from '../core/models';
 import { TPipe } from '../i18n/i18n';
 
+type Sec = 'inbox' | 'drafts' | 'projects';
+
 /**
- * 引き出し（ヘッダーの ☰ から、左からすっと出る）。ホーム・受信箱・下書き・プロジェクトへの近道。
+ * 引き出し（ヘッダーの ☰ から、左からすっと出る。どの画面でも）。ホーム・受信箱・下書き・プロジェクトへの近道。
+ * 受信箱・下書き・プロジェクトは見出しを押すとたたむ・開く（端末に覚える）。開くと「すべて見る」→ ピン止め → ほか、の順。
  * お知らせと設定は、ヘッダーに入口があるので入れない（入口は1か所）。行き先を押す・外・Esc で閉じる
  */
 @Component({
@@ -26,36 +31,108 @@ import { TPipe } from '../i18n/i18n';
           (click)="close.emit()">✕</button>
       </div>
 
-      <a routerLink="/" class="item" (click)="close.emit()">{{ 'crumbs.home' | t }}</a>
-      <a routerLink="/inbox" class="item" (click)="close.emit()">
-        <span class="grow">{{ 'inbox.title' | t }}</span>
-        @if (inbox.count()) { <span class="n">{{ inbox.count() }}</span> }</a>
-      @if (drafts.count()) {
-        <a routerLink="/drafts" class="item" (click)="close.emit()">
-          <span class="grow">{{ 'drafts.title' | t }}</span><span class="n">{{ drafts.count() }}</span></a>
+      <!-- 見出しと同じ形（▾ の場所に家の絵・太字）。文字の左端と太さをそろえる -->
+      <a routerLink="/" class="item top" (click)="close.emit()">
+        <svg class="slot" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor"
+          stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7" /><path d="M5 10v10h14V10" /></svg>
+        {{ 'crumbs.home' | t }}</a>
+      <div class="sep" role="separator"></div>
+
+      <!-- 受信箱 -->
+      <div class="sec-row">
+        <button type="button" class="sec" [attr.aria-expanded]="isOpen('inbox')" (click)="toggle('inbox')">
+          <span class="tri" [class.shut]="!isOpen('inbox')" aria-hidden="true">▾</span>
+          <span class="grow">{{ 'inbox.title' | t }}</span>
+        </button>
+        @if (isOpen('inbox')) { <a routerLink="/inbox" class="all" (click)="close.emit()">{{ 'nav.seeAll' | t }}</a> }
+        @if (inbox.count()) { <span class="n">{{ inbox.count() }}</span> }
+      </div>
+      @if (isOpen('inbox')) {
+        <div class="sub reveal">
+          @for (m of memos(); track m.id) {
+            <a class="item" routerLink="/inbox" [queryParams]="{ m: m.id }" [title]="m.title" (click)="close.emit()">
+              <span class="mark">
+                @if (m.pinned) {
+                  <svg class="pin" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" fill="currentColor"
+                    stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+                    <path d="M9 3h6l-1 6 3 3H7l3-3z" /><path d="M12 15v6" /></svg>
+                }
+              </span>
+              <span class="grow pname">{{ m.title }}</span></a>
+          } @empty {
+            <p class="small">{{ 'inbox.empty' | t }}</p>
+          }
+          @if (inbox.count() > memos().length) {
+            <a routerLink="/inbox" class="item more" (click)="close.emit()">
+              <span class="mark"></span>{{ 'nav.more' | t: { n: '' + (inbox.count() - memos().length) } }}</a>
+          }
+        </div>
       }
 
-      <div class="sep" role="separator"></div>
-      <p class="label">{{ 'projects.title' | t }}</p>
-      @if (loading()) {
-        <p class="small">{{ 'common.loading' | t }}</p>
-      } @else {
-        @for (p of shown(); track p.id) {
-          <a class="item" [routerLink]="['/p', p.id]" [title]="p.name" (click)="close.emit()">
-            @if (pins().has(p.id)) {
-              <svg class="pin" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" fill="currentColor"
-                stroke="currentColor" stroke-width="2" stroke-linejoin="round">
-                <path d="M9 3h6l-1 6 3 3H7l3-3z" /><path d="M12 15v6" /></svg>
+      <!-- 下書き（1件以上あるときだけ） -->
+      @if (drafts.count()) {
+        <div class="sec-row">
+          <button type="button" class="sec" [attr.aria-expanded]="isOpen('drafts')" (click)="toggle('drafts')">
+            <span class="tri" [class.shut]="!isOpen('drafts')" aria-hidden="true">▾</span>
+            <span class="grow">{{ 'drafts.title' | t }}</span>
+          </button>
+          @if (isOpen('drafts')) { <a routerLink="/drafts" class="all" (click)="close.emit()">{{ 'nav.seeAll' | t }}</a> }
+          <span class="n">{{ drafts.count() }}</span>
+        </div>
+        @if (isOpen('drafts')) {
+          <div class="sub reveal">
+            @for (d of draftList(); track d.id) {
+              <!-- 押すと続きを書く（課題は登録の窓、プロジェクトは作成の窓。下書きのページと同じ開き方） -->
+              <button type="button" class="item" [title]="d.title" (click)="openDraft(d)">
+                <span class="mark"></span>
+                <span class="grow pname" [class.untitled]="!d.title">{{ d.title || ('drafts.untitled' | t) }}</span>
+                <span class="role">{{ 'drafts.kinds.' + d.kind | t }}</span></button>
             }
-            <span class="grow pname">{{ p.name }}</span>
-            <span class="role">{{ 'roles.' + p.role | t }}</span></a>
-        } @empty {
-          <p class="small">{{ 'projects.empty' | t }}</p>
+            @if (drafts.count() > draftList().length) {
+              <a routerLink="/drafts" class="item more" (click)="close.emit()">
+                <span class="mark"></span>{{ 'nav.more' | t: { n: '' + (drafts.count() - draftList().length) } }}</a>
+            }
+          </div>
         }
-        @if (active().length > fold) {
-          <button type="button" class="more" (click)="showAll.set(!showAll())">
-            {{ (showAll() ? 'projects.showLess' : 'projects.showMore') | t: { n: '' + (active().length - fold) } }}</button>
-        }
+      }
+
+      <!-- プロジェクト（並びはプロジェクトのページで決めたもの。依頼があれば名前の左に赤い丸） -->
+      <div class="sec-row">
+        <button type="button" class="sec" [attr.aria-expanded]="isOpen('projects')" (click)="toggle('projects')">
+          <span class="tri" [class.shut]="!isOpen('projects')" aria-hidden="true">▾</span>
+          <span class="grow">{{ 'projects.title' | t }}</span>
+          @if (badge.total()) { <span class="req-dot" role="img" [attr.aria-label]="'nav.hasRequests' | t"></span> }
+        </button>
+        @if (isOpen('projects')) { <a routerLink="/projects" class="all" (click)="close.emit()">{{ 'nav.seeAll' | t }}</a> }
+        @if (activeCount()) { <span class="n">{{ activeCount() }}</span> }
+      </div>
+      @if (isOpen('projects')) {
+        <div class="sub reveal">
+          @if (loading()) {
+            <p class="small">{{ 'common.loading' | t }}</p>
+          } @else {
+            @for (p of shown(); track p.id) {
+              <a class="item" [routerLink]="['/p', p.id]" [title]="p.name" (click)="close.emit()">
+                <span class="mark">
+                  @if (badge.counts()[p.id]) {
+                    <span class="req-dot" role="img" [attr.aria-label]="'request.waiting' | t"></span>
+                  } @else if (pins().has(p.id)) {
+                    <svg class="pin" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" fill="currentColor"
+                      stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+                      <path d="M9 3h6l-1 6 3 3H7l3-3z" /><path d="M12 15v6" /></svg>
+                  }
+                </span>
+                <span class="grow pname">{{ p.name }}</span>
+                <span class="role">{{ 'roles.' + p.role | t }}</span></a>
+            } @empty {
+              <p class="small">{{ 'projects.empty' | t }}</p>
+            }
+          @if (activeCount() > shown().length) {
+              <a routerLink="/projects" class="item more" (click)="close.emit()">
+                <span class="mark"></span>{{ 'nav.more' | t: { n: '' + (activeCount() - shown().length) } }}</a>
+            }
+          }
+        </div>
       }
     </nav>
   `,
@@ -65,7 +142,7 @@ import { TPipe } from '../i18n/i18n';
     /* 左からすっと出る（閉じるときはすぐ消える） */
     @keyframes drawer-in { from { translate: -100% 0; } }
     .drawer { position: absolute; top: 0; bottom: 0; left: 0; width: min(300px, 85vw); box-sizing: border-box;
-      display: flex; flex-direction: column; gap: 2px; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 2px; overflow-y: auto; scrollbar-gutter: stable;
       padding: 8px 8px calc(16px + env(safe-area-inset-bottom)); background: var(--surface); color: var(--text);
       box-shadow: 4px 0 20px rgba(0, 0, 0, 0.2); animation: drawer-in 220ms var(--ease-out); }
     .d-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 8px 12px; }
@@ -76,40 +153,110 @@ import { TPipe } from '../i18n/i18n';
     .item { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border-radius: 8px;
       color: var(--text); text-decoration: none; font-size: 15px; }
     .item:hover { background: var(--surface-alt); }
+    /* ホーム：見出し（.sec）と同じ太さ。絵は ▾ と同じ幅の場所に置く */
+    .item.top { font-weight: bold; }
+    .slot { flex: none; width: 12px; }
+    /* 見出し（押すとたたむ・開く） */
+    /* 見出しの行：たたむボタン（左いっぱい）＋ すべて見る ＋ 件数 */
+    .sec-row { display: flex; align-items: center; gap: 6px; padding-right: 12px; border-radius: 8px; }
+    .sec-row:hover { background: var(--surface-alt); }
+    .sec { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 0 0 12px;
+      border: none; background: none; color: var(--text); font: inherit; font-size: 15px; font-weight: bold;
+      text-align: left; cursor: pointer; }
+    .all { flex: none; display: inline-flex; align-items: center; min-height: 32px; padding: 0 4px;
+      color: var(--primary); font-size: 13px; text-decoration: none; }
+    .all:hover { text-decoration: underline; }
+    /* 三角は1つの絵を回す（たたむと右向き） */
+    .tri { flex: none; display: inline-block; width: 12px; font-size: 11px; text-align: center;
+      transition: rotate 160ms var(--ease-out); }
+    .tri.shut { rotate: -90deg; }
+    /* 中身は、見出しの文字にそろえて少し右へ */
+    .sub { display: flex; flex-direction: column; gap: 2px; padding-left: 12px; }
+    /* 下書きの行はボタン（リンクと同じ見た目にそろえる） */
+    button.item { width: 100%; border: none; background: none; font: inherit; text-align: left; cursor: pointer; }
+    /* さらに n 件（押すとページへ） */
+    .sub .item.more { min-height: 36px; color: var(--primary); font-size: 13px; }
+    .untitled { color: var(--text-muted); }
+    .mark { flex: none; width: 13px; display: inline-flex; justify-content: center; }
     .grow { flex: 1; min-width: 0; }
     .pname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .pin { flex: none; color: var(--primary); }
-    .n { flex: none; font-size: 12px; padding: 0 8px; border-radius: 10px; background: var(--surface-alt); color: var(--text-muted); }
+    /* 対応待ちの依頼：赤い丸 */
+    .req-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+    .n { flex: none; font-size: 12px; font-weight: normal; padding: 0 8px; border-radius: 10px;
+      background: var(--surface-alt); color: var(--text-muted); }
     .role { flex: none; font-size: 11px; padding: 1px 6px; border-radius: 10px; background: var(--chip-bg); }
     .sep { height: 1px; margin: 8px 4px; background: var(--border); }
-    .label { margin: 4px 12px; font-size: 12px; color: var(--text-muted); }
     .small { margin: 4px 12px; font-size: 13px; color: var(--text-muted); }
-    .more { align-self: flex-start; min-height: 40px; padding: 0 12px; border: none; background: none;
-      color: var(--primary); font-size: 14px; cursor: pointer; }
   `,
 })
 export class NavDrawer implements OnInit {
   close = output<void>();
-
+  /** プロジェクトの下書きを開くとき。作成の窓はヘッダーが開く（引き出しは閉じて消えるので、ここには置けない） */
+  openProjectDraft = output<string>();
+  private issueForm = inject(IssueFormService);
   protected inbox = inject(InboxService);
   protected drafts = inject(DraftService);
+  protected badge = inject(RequestBadge);
   private authService = inject(AuthService);
   private ps = inject(ProjectService);
 
-  readonly fold = PROJECT_FOLD;
   private projects = signal<ProjectWithRole[]>([]);
   loading = signal(true);
-  showAll = signal(false);
+
+  /** 開いている見出し（端末ごとに覚える。最初はプロジェクトだけ開く） */
+  private readonly openKey = `issuemanager.navOpen.${auth.currentUser!.uid}`;
+  private opened = signal<Set<Sec>>((() => {
+    try {
+      const v = localStorage.getItem(this.openKey);
+      return new Set<Sec>(v ? (JSON.parse(v) as Sec[]) : ['projects']);
+    } catch {
+      return new Set<Sec>(['projects']);
+    }
+  })());
+
+  isOpen(s: Sec) {
+    return this.opened().has(s);
+  }
+
+  toggle(s: Sec) {
+    const next = new Set(this.opened());
+    if (next.has(s)) next.delete(s);
+    else next.add(s);
+    this.opened.set(next);
+    try {
+      localStorage.setItem(this.openKey, JSON.stringify([...next]));
+    } catch {
+      // 覚えておけなくても、今は開け閉めできる
+    }
+  }
 
   pins = computed(() => new Set(this.authService.profile()?.pinnedProjects ?? []));
-  /** ホームと同じ並び（ピン止めが上・名前順。アーカイブ済みは除く） */
-  active = computed(() => orderProjects(this.projects(), this.authService.profile()?.pinnedProjects));
-  shown = computed(() => (this.showAll() ? this.active() : this.active().slice(0, this.fold)));
+  /** 進行中のプロジェクトの数（見出しの件数。アーカイブ済みは数えない） */
+  activeCount = computed(() => this.projects().filter((p) => !p.archived).length);
+  /** プロジェクトのページと同じ並び（ピン止めが上・自分で並べた順）。8件まで（残りは「すべて見る」で） */
+  shown = computed(() => orderProjects(this.projects(), this.authService.profile()?.pinnedProjects,
+    this.authService.profile()?.projectOrder).slice(0, PROJECT_FOLD));
+  /** 受信箱のメモ：ピン止めが上。8件まで */
+  memos = computed(() => {
+    const all = this.inbox.active();
+    return [...all.filter((m) => m.pinned), ...all.filter((m) => !m.pinned)].slice(0, PROJECT_FOLD);
+  });
+  /** 下書き（新しい順。8件まで） */
+  draftList = computed(() => this.drafts.drafts().slice(0, PROJECT_FOLD));
 
-  /** 開くたびに一覧を読む（参加・作成・ピン止めが、すぐ反映されるように） */
+  /** 続きを書く：課題は登録の窓、プロジェクトはヘッダーに作成の窓を開いてもらう */
+  openDraft(d: Draft) {
+    this.close.emit();
+    if (d.kind === 'issue') this.issueForm.open(d.pid, { draft: d.id });
+    else this.openProjectDraft.emit(d.id);
+  }
+
+  /** 開くたびに一覧を読む（参加・作成・ピン止めが、すぐ反映されるように）。依頼の印の見張りも合わせる */
   async ngOnInit() {
     try {
       this.projects.set(await this.ps.listMyProjects(auth.currentUser!.uid));
+      this.badge.sync(this.projects());
     } catch (e) {
       console.error(e);
     } finally {

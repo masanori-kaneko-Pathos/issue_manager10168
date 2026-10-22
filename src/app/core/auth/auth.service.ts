@@ -28,7 +28,8 @@ export interface UserProfile {
   introHidden?: boolean;            // 「ようこそ」の箱を「後で見る」で閉じた
   photoURL?: string | null;         // アイコンの写真（無い＝入れたことがない、null＝本人が外した）
   emailNotify?: EmailGroup[];       // メールで受け取る通知のまとまり（無い＝どれも受け取らない）
-  pinnedProjects?: string[];        // ホームで上に留めたプロジェクト（並びは名前順。20件まで）
+  pinnedProjects?: string[];        // 上に留めたプロジェクト（20件まで）
+  projectOrder?: string[];          // プロジェクトの並び（ページでドラッグして並べた順。id の並び）
 }
 
 @Injectable({ providedIn: 'root' })
@@ -125,7 +126,7 @@ export class AuthService {
   async updateProfile(
     changes: Partial<Pick<UserProfile,
     'displayName' | 'timeZone' | 'language' | 'defaultView' | 'dueReminders' | 'dailyGroup' | 'dailyTime'
-    | 'introHidden' | 'photoURL' | 'emailNotify' | 'pinnedProjects'>>,
+    | 'introHidden' | 'photoURL' | 'emailNotify' | 'pinnedProjects' | 'projectOrder'>>,
   ) {
     const u = auth.currentUser!;
     await updateDoc(doc(db, 'users', u.uid), changes);
