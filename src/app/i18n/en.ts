@@ -863,12 +863,13 @@ export const en: Dict = {
     later: 'Later',
     laterHelp: 'Even if you choose "Later", you can create a sample anytime from "Introduction" in Settings.',
     settingsTitle: 'Introduction',
-    settingsHelp: 'Try everything from creating issues to the board and archiving in a sample project. The sample is yours only; no one else can see it.',
+    settingsHelp: 'Shows the welcome guide on Home. Try everything from creating issues to the board and archiving in a sample project (the sample is yours only; no one else can see it).',
     makeSample: 'Create a sample project',
     openSample: 'Open the sample project',
     showAgain: 'Show the welcome guide on Home again',
     shown: 'The welcome guide is shown on Home',
     shownDone: 'The welcome guide is now shown on Home.',
+    start: 'Start the introduction',
   },
   sample: {
     project: 'My first project (sample)',
@@ -1178,14 +1179,22 @@ export const en: Dict = {
     zoom: 'Zoom',
     confirm: 'Done',
   },
-  pw: { show: 'Show password', hide: 'Hide password' },
+  pw: { 
+    show: 'Show password', 
+    hide: 'Hide password',
+  },
+  logout: {
+    title: 'Sign out?',
+    help: 'This device will not receive push notifications until you sign in again.',
+  },
   copy: {
     title: '{{title}} (copy)',
     creating: 'Creating a copy of #{{n}}. Set a due date, then press "Create". Comments, history, subtasks, attachments, and related issues are not copied.',
   },
   watch: {
-    start: 'Watch ({{n}} watching)',
-    stop: 'Stop watching ({{n}} watching)',
+    start: 'Watch',
+    stop: 'Stop watching',
+    count: '{{n}} watching',
     started: 'You are now watching. Comments and status changes will be sent to you.',
     stopped: 'You stopped watching.',
     help: 'Watch to get comments and when this issue is resolved, sent back, closed, or rejected. The reporter and assignee watch automatically (they can stop).',
@@ -1244,7 +1253,11 @@ export const en: Dict = {
     recurDescription: '[Original issue] #{{n}} {{title}}\n[Previous cause] {{cause}}\n[Previous countermeasure] {{countermeasure}}\n\n[What is happening now]\n',
     createNew: '+ Create and link',
     newCreating: 'Creating an issue linked to #{{n}} "{{title}}". Choose how they are linked.',
-    newKinds: { relates: 'Related', waitsFor: '#{{n}} waits for this issue' },
+    newKinds: { 
+      relates: 'Related', 
+      waitsFor: '#{{n}} waits for this issue', 
+      recurrence: 'Recurrence (#{{n}} happened again)',
+    },
     kinds: { relates: 'Related', recurrence: 'Recurrence', duplicate: 'Duplicate', waitsFor: 'Waiting for' },
     kindHelp: {
       relates: 'An issue that is related.',
