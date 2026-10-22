@@ -51,18 +51,17 @@ const DUE_LEVELS: Record<DueLevel, ReminderBucket[]> = {
           <input type="checkbox" role="switch" class="switch" [attr.aria-label]="'notifySettings.daily' | t"
             [checked]="dailyOn()" (change)="setDailyOn($event)" />
         </div>
-        @if (dailyOn()) {
-          <div class="rows reveal">
+        <div class="fold-body daily" [class.open]="dailyOn()" [attr.inert]="dailyOn() ? null : ''">
+          <div>
+          <div class="rows">
             <div class="row-item">
               <span class="lbl">{{ 'notifySettings.time' | t }}</span>
+              <!-- チップのプルダウン（ブラウザの select は、開いた一覧の見た目をアプリにそろえられないため） -->
               <span class="time" role="group" [attr.aria-label]="'notifySettings.time' | t">
-                <select [attr.aria-label]="'notifySettings.hour' | t" (change)="setTime(+$any($event.target).value * 60 + minOf())">
-                  @for (h of hourList; track h) { <option [value]="h" [selected]="hourOf() === h">{{ h }}</option> }
-                </select>
-                <span aria-hidden="true">:</span>
-                <select [attr.aria-label]="'notifySettings.minute' | t" (change)="setTime(hourOf() * 60 + +$any($event.target).value)">
-                  @for (m of minuteList; track m) { <option [value]="m" [selected]="minOf() === m">{{ pad(m) }}</option> }
-                </select>
+                <app-chip-menu [label]="'notifySettings.hour' | t" [options]="hourMenu()" [value]="hourOf()"
+                  (picked)="setTime(+$event * 60 + minOf())" />
+                <app-chip-menu [label]="'notifySettings.minute' | t" [options]="minuteMenu()" [value]="minOf()"
+                  (picked)="setTime(hourOf() * 60 + +$event)" />
               </span>
             </div>
             <div class="row-item">
@@ -80,7 +79,8 @@ const DUE_LEVELS: Record<DueLevel, ReminderBucket[]> = {
               </div>
             }
           </div>
-        }
+          </div>
+        </div>
       </section>
 
       <!-- メール：たためる。たたんだままでも、何を受け取るか1行でわかる -->
@@ -92,8 +92,10 @@ const DUE_LEVELS: Record<DueLevel, ReminderBucket[]> = {
           </button>
         </h2>
         <p class="help">{{ emailSummary() }}</p>
-        @if (emailOpen()) {
-          <div class="rows reveal">
+        <!-- たたむ・開く：高さをなめらかに伸び縮み。中に何も付いていない箱を挟む（.rows の余白と線まで縮めるため） -->
+        <div class="fold-body mail" [class.open]="emailOpen()" [attr.inert]="emailOpen() ? null : ''">
+          <div>
+          <div class="rows">
             <p class="help">{{ 'emailNotify.help' | t }}</p>
             <p class="help">{{ 'emailNotify.to' | t: { email: email } }}</p>
             @if (!verified) { <p class="msg ng">{{ 'emailNotify.unverified' | t }}</p> }
@@ -108,7 +110,8 @@ const DUE_LEVELS: Record<DueLevel, ReminderBucket[]> = {
               </label>
             }
           </div>
-        }
+          </div>
+        </div>
       </section>
     </main>
   `,
@@ -137,6 +140,12 @@ const DUE_LEVELS: Record<DueLevel, ReminderBucket[]> = {
     .tri.up { rotate: 180deg; }
     .item { padding: 6px 0; cursor: pointer; }
     .opt { display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+    /* メールの欄：たたんでいる間も置いたままなので、section の gap（10px）が下に余らないよう打ち消し、
+       開いたときは中で同じだけ空ける（中の箱は overflow: hidden なので、余白は外へはみ出さない） */
+    .fold-body.mail { margin-top: -10px; }
+    .fold-body.mail .rows { margin-top: 10px; }
+    .fold-body.daily { margin-top: -10px; }
+    .fold-body.daily .rows { margin-top: 10px; }
   `,
 })
 export class NotifySettings implements OnInit {
@@ -146,6 +155,9 @@ export class NotifySettings implements OnInit {
 
   readonly hourList = Array.from({ length: 24 }, (_, i) => i);
   readonly minuteList = Array.from({ length: 60 / DAILY_TIME_STEP }, (_, i) => i * DAILY_TIME_STEP);
+  /** 届く時刻のチップの中身（時は 0〜23、分は 00・10…50） */
+  hourMenu = computed(() => this.hourList.map((h) => ({ value: h, label: String(h) })));
+  minuteMenu = computed(() => this.minuteList.map((m) => ({ value: m, label: this.pad(m) })));
   readonly emailGroups = EMAIL_GROUPS;
 
   /** 毎日のまとめを届けるか（届けない＝ dailyTime が 'off'） */

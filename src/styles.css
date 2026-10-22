@@ -160,6 +160,10 @@ legend { padding: 0; font-size: 14px; font-weight: bold; }
       .fold-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 200ms var(--ease-out); }
       .fold-body.open { grid-template-rows: 1fr; }
       .fold-body > * { min-height: 0; overflow: hidden; }
+     /* 開き終わったら（0.2秒後）、中身のはみ出しを見せる（中のプルダウンが、欄の下で切れないように）。
+      閉じ始めたら open が外れて、すぐ隠すに戻る（縮むときに中身がはみ出さないように） */
+      @keyframes fold-unclip { to { overflow: visible; } }
+      .fold-body.open > * { animation: fold-unclip 0s 200ms forwards; }
    
    /* かんばんの「サブタスクにする」「ここに落とすと課題に」：ふわっと */
    :where(.sub-hint, .drop-hint) { animation: im-fade 160ms var(--ease-out); }

@@ -87,12 +87,13 @@ import { LogoutDialog } from './logout-dialog';
           <div class="backdrop" (click)="bellOpen.set(false)"></div>
           <div class="panel" role="dialog" [attr.aria-label]="'notify.title' | t" animate.leave="im-out">
             <div class="panel-head">
-              <strong>{{ 'notify.title' | t }}</strong>
+              <!-- 左：見出しと「一覧へ」（どこへ行くか）。右：すべて既読（操作） -->
               <span class="head-links">
-                <button type="button" class="link" [disabled]="!notify.unread()" (click)="notify.markAllRead()">
-                  {{ 'notify.allRead' | t }}</button>
+                <strong>{{ 'notify.title' | t }}</strong>
                 <a routerLink="/notifications" class="link" (click)="bellOpen.set(false)">{{ 'notify.seeAll' | t }}</a>
               </span>
+              <button type="button" class="link" [disabled]="!notify.unread()" (click)="notify.markAllRead()">
+                {{ 'notify.allRead' | t }}</button>
             </div>
             <ul>
               @for (n of notify.list(); track n.id) {

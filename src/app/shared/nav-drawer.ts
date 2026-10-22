@@ -26,7 +26,8 @@ type Sec = 'inbox' | 'drafts' | 'projects';
     <div class="backdrop" (click)="close.emit()"></div>
     <nav class="drawer" role="dialog" aria-modal="true" [attr.aria-label]="'nav.title' | t">
       <div class="d-head">
-        <span class="brand">{{ 'app.title' | t }}</span>
+        <!-- 押しても閉じる（✕ と同じ。指やマウスで、見出しのあたりを押して閉じる人のため） -->
+        <span class="brand" (click)="close.emit()">{{ 'app.title' | t }}</span>
         <button type="button" class="x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t"
           (click)="close.emit()">✕</button>
       </div>
@@ -150,7 +151,7 @@ type Sec = 'inbox' | 'drafts' | 'projects';
     :host(.im-out-drawer) { animation: im-fade-out 200ms var(--ease-out) forwards; pointer-events: none; }
     :host(.im-out-drawer) .drawer { animation: drawer-out 200ms var(--ease-out) forwards; }
     .d-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 8px 12px; }
-    .brand { font-weight: bold; font-size: 16px; }
+    .brand { font-weight: bold; font-size: 16px; cursor: pointer; user-select: none; }
     .x { width: 36px; height: 36px; border: none; border-radius: 50%; background: none; color: var(--text-muted);
       font-size: 18px; cursor: pointer; }
     .x:hover { background: var(--surface-alt); }
