@@ -46,7 +46,7 @@ import { Crumbs, HOME } from '../../shared/crumbs';
 
           @if (menuOpen()) {
             <div class="backdrop" (click)="menuOpen.set(false)"></div>
-            <div class="menu" role="menu">
+            <div class="menu" role="menu" animate.leave="im-out">
               <a role="menuitem" [routerLink]="['/p', ctx.pid(), 'trash']" (click)="menuOpen.set(false)">
                 {{ 'trash.title' | t }}</a>
               @if (ctx.role() !== 'viewer') {

@@ -15,7 +15,7 @@ import {
   @Component({
     selector: 'app-avatar-crop-dialog',
     imports: [TPipe],
-    host: { '(document:keydown.escape)': 'cancel.emit()' },
+    host: { '(document:keydown.escape)': 'cancel.emit()', '[animate.leave]': "'im-out-dialog'" },
     template: `
       <div class="backdrop" (click)="cancel.emit()"></div>
       <section class="dialog" role="dialog" aria-modal="true" [attr.aria-label]="'crop.title' | t">

@@ -44,7 +44,7 @@ import { Avatar } from '../../shared/avatar';
                   {{ 'roles.' + m.role | t }} <span aria-hidden="true">▾</span></button>
                 @if (menuFor() === m.uid) {
                   <div class="backdrop" (click)="menuFor.set(null)"></div>
-                  <div class="menu" role="menu">
+                  <div class="menu"  animate.leave="im-out">
                     @for (r of roleOrder; track r) {
                       <button type="button" role="menuitemradio" [attr.aria-checked]="m.role === r" (click)="pickRole(m, r)">
                         <span class="check" aria-hidden="true">{{ m.role === r ? '✓' : '' }}</span>

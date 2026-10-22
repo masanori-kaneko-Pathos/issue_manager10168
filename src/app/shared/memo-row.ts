@@ -43,7 +43,7 @@ import { IssueFormService } from '../core/issue/issue-form.service';
             (click)="toggleMenu($event)">⋮</button>
           @if (menuOpen()) {
             <div class="m-backdrop" (click)="menuOpen.set(false)"></div>
-            <div class="m-menu" role="menu" [class.left]="menuLeft()">
+            <div class="m-menu" role="menu" [class.left]="menuLeft()" animate.leave="im-out">
               <button type="button" role="menuitem" (click)="toIssue()">{{ 'inbox.toIssue' | t }}</button>
               <button type="button" role="menuitem" (click)="togglePin()">
                 {{ (memo().pinned ? 'inbox.unpin' : 'inbox.pin') | t }}</button>

@@ -31,6 +31,7 @@ const FILTER_FROM = 7;
     '(document:keydown.escape)': 'cancel.emit()',
     // どこでボタンを離しても、ペンを紙から上げる（行の外で離したときも）
     '(document:pointerup)': 'painting = false',
+    '[animate.leave]': "'im-out-dialog'",
   },
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>

@@ -103,7 +103,7 @@ import { IssueFormService } from '../../core/issue/issue-form.service';
                   [attr.aria-expanded]="menuFor() === s.id" (click)="menuFor.set(menuFor() === s.id ? null : s.id)">⋮</button>
                 @if (menuFor() === s.id) {
                   <div class="backdrop" (click)="menuFor.set(null)"></div>
-                  <div class="menu" role="menu">
+                  <div class="menu" role="menu" animate.leave="im-out">
                     @if (canRemindSub(s)) {
                       <button type="button" role="menuitem" (click)="menuFor.set(null); remindFor.set(s)">
                         {{ (reminderOf(s) ? 'reminder.change' : 'reminder.open') | t }}</button>

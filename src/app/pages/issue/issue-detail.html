@@ -8,7 +8,7 @@
           [attr.aria-expanded]="menuOpen()" (click)="menuOpen.set(!menuOpen())">⋮</button>
         @if (menuOpen()) {
           <div class="backdrop" (click)="menuOpen.set(false)"></div>
-          <div class="menu" role="menu">
+          <div class="menu" role="menu" animate.leave="im-out">
             @if (canWatch()) {
               <div class="item-row">
                 <button type="button" role="menuitem" [title]="watcherNames()" (click)="menuOpen.set(false); toggleWatch()">
@@ -99,7 +99,7 @@
               (click)="typeMenu.set(!typeMenu())">{{ 'issueTypes.' + i.type | t }} <span aria-hidden="true">▾</span></button>
             @if (typeMenu()) {
               <div class="backdrop" (click)="typeMenu.set(false)"></div>
-              <div class="menu left" role="menu">
+              <div class="menu left" role="menu" animate.leave="im-out">
                 @for (t of types; track t) {
                   <button type="button" role="menuitemradio" [attr.aria-checked]="i.type === t" [disabled]="busy()"
                     (click)="typeMenu.set(false); saveNow({ type: t })">{{ 'issueTypes.' + t | t }}</button>
@@ -143,7 +143,7 @@
               {{ 'status.' + i.status | t }} <span aria-hidden="true">▾</span></button>
             @if (statusMenu()) {
               <div class="backdrop" (click)="statusMenu.set(false)"></div>
-              <div class="menu left" role="menu">
+              <div class="menu left" role="menu" animate.leave="im-out">
                 @for (a of transitions(); track a.t.key) {
                   <button type="button" role="menuitem" [disabled]="!a.allowed || busy()"
                     (click)="statusMenu.set(false); click(a.t)">{{ 'workflow.' + a.t.key | t }}</button>
@@ -179,7 +179,7 @@
                 <span aria-hidden="true">▾</span></button>
               @if (prioMenu()) {
                 <div class="backdrop" (click)="prioMenu.set(false)"></div>
-                <div class="menu left" role="menu">
+                <div class="menu left" role="menu" animate.leave="im-out">
                   @for (l of levels; track l) {
                     <button type="button" role="menuitemradio" [attr.aria-checked]="i.priorityOverride === l"
                       (click)="prioMenu.set(false); openPriority(l)">
@@ -651,7 +651,7 @@
           @if (i.status !== 'deleted' && !projectArchived()) {
             @if (causePanel()) {
               <!-- 外・Esc は閉じるだけ（書きかけは残る）。「やめる」は捨てる -->
-              <div class="modal" (keydown.escape)="causePanel.set(false)">
+              <div class="modal" (keydown.escape)="causePanel.set(false)" animate.leave="im-out-dialog">
               <div class="backdrop" (click)="causePanel.set(false)"></div>
               <section class="dialog narrow" role="dialog" aria-modal="true">
                 <h2>{{ 'causeEdit.title' | t }}</h2>
@@ -695,7 +695,7 @@
             }
 
             @if (waPanel()) {
-              <div class="modal" (keydown.escape)="waPanel.set(false)">
+              <div class="modal" (keydown.escape)="waPanel.set(false)" animate.leave="im-out-dialog">
               <div class="backdrop" (click)="waPanel.set(false)"></div>
               <section class="dialog narrow" role="dialog" aria-modal="true">
                 <h2>{{ 'workaround.title' | t }}</h2>
@@ -852,4 +852,4 @@
       </div>
     }
   </main>
-  @if (flash(); as k) { <div class="toast" role="status">{{ k | t }}</div> }
+  @if (flash(); as k) { <div class="toast" role="status" animate.leave="im-out">{{ k | t }}</div> }

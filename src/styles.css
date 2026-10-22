@@ -170,3 +170,16 @@ legend { padding: 0; font-size: 14px; font-weight: bold; }
        animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
        transition-duration: 0.01ms !important; }
    }
+
+   /* 閉じる動き：animate.leave="im-out" などを付けた要素は、消えるときにこのクラスが付き、
+      動きが終わってから Angular が消す。forwards で、消える瞬間まで見えない形のままにする。
+      消えている間は押せない（もう一度押してしまわないように） */
+      @keyframes im-out { to { opacity: 0; translate: 0 -4px; } }
+      @keyframes im-fade-out { to { opacity: 0; } }
+      @keyframes im-dialog-out { to { opacity: 0; scale: 0.96; } }
+      
+      /* メニュー・吹き出し・ベルの小窓・知らせ：開くときの逆（少し上へ動きながら消える） */
+      .im-out { animation: im-out 140ms var(--ease-out) forwards; pointer-events: none; }
+      /* 窓：部品の外側ごとふわっと消え、中の窓は少し縮む */
+      .im-out-dialog { animation: im-fade-out 160ms var(--ease-out) forwards; pointer-events: none; }
+      .im-out-dialog .dialog { animation: im-dialog-out 160ms var(--ease-out) forwards; }

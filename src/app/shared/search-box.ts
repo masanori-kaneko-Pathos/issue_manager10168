@@ -44,7 +44,7 @@ interface Row {
         <ng-container [ngTemplateOutlet]="glass" />
       </button>
       @if (open()) {
-        <div class="full" role="dialog" aria-modal="true" [attr.aria-label]="'search.title' | t">
+        <div class="full" role="dialog" aria-modal="true" [attr.aria-label]="'search.title' | t" animate.leave="im-out">
           <ng-container [ngTemplateOutlet]="bar" />
           <ng-container [ngTemplateOutlet]="results" />
         </div>
@@ -54,7 +54,7 @@ interface Row {
         @if (open()) { <div class="backdrop" (click)="close()"></div> }
         <ng-container [ngTemplateOutlet]="bar" />
         @if (open()) {
-          <div class="panel"><ng-container [ngTemplateOutlet]="results" /></div>
+          <div class="panel" animate.leave="im-out"><ng-container [ngTemplateOutlet]="results" /></div>
         }
       </div>
     }

@@ -15,7 +15,7 @@ export interface TextView {
 @Component({
   selector: 'app-text-viewer',
   imports: [TPipe],
-  host: { '(document:keydown.escape)': 'close.emit()' },
+  host: { '(document:keydown.escape)': 'close.emit()', '[animate.leave]': "'im-out-dialog'" },
   template: `
     <div class="lb" role="dialog" aria-modal="true" [attr.aria-label]="view().name" (click)="close.emit()">
       <section class="panel" (click)="$event.stopPropagation()">

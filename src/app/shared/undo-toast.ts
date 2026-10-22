@@ -6,7 +6,7 @@ import { TPipe } from '../i18n/i18n';
 @Component({
   selector: 'app-undo-toast',
   imports: [TPipe],
-  host: { '(document:keydown)': 'onKey($event)' },
+  host: { '(document:keydown)': 'onKey($event)', '[animate.leave]': "'im-out-dialog'" },
   template: `
     @if (undo.notice(); as n) {
       <div class="toast" role="status" (mouseenter)="undo.pause()" (mouseleave)="undo.resume()">

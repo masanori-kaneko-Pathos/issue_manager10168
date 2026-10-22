@@ -11,7 +11,7 @@ export interface ViewerImage { id: string; name: string; url: string; }
 @Component({
   selector: 'app-image-viewer',
   imports: [TPipe],
-  host: { '(document:keydown)': 'onKey($event)' },
+  host: { '(document:keydown)': 'onKey($event)', '[animate.leave]': "'im-out-dialog'" },
   template: `
     <div class="lb" role="dialog" aria-modal="true" [attr.aria-label]="cur().name" (click)="close.emit()">
       <img [src]="cur().url" [alt]="cur().name" (click)="$event.stopPropagation()" />

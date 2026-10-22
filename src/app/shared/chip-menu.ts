@@ -17,7 +17,7 @@ export interface ChipOption { value: string | number; label: string; }
     </div>
     @if (open()) {
       <div class="backdrop" (click)="open.set(false)"></div>
-      <div class="menu" role="menu">
+      <div class="menu" role="menu" animate.leave="im-out">
         @for (o of options(); track o.value) {
           <button type="button" role="menuitemradio" [attr.aria-checked]="o.value === value()"
             [class.on]="o.value === value()" (click)="choose(o.value)">

@@ -17,7 +17,7 @@ import { TPipe } from '../i18n/i18n';
   host: { '(document:keydown.escape)': 'onEsc()' },
   template: `
     @for (c of shown(); track c.key) {
-      <div class="layer">
+      <div class="layer" animate.leave="im-out-dialog">
         <div class="backdrop" (click)="form.close()"></div>
         <section class="dialog" role="dialog" aria-modal="true" [attr.aria-label]="'issueNew.title' | t">
           <button type="button" class="x" [attr.aria-label]="'workflow.cancel' | t" [title]="'workflow.cancel' | t"
@@ -31,7 +31,7 @@ import { TPipe } from '../i18n/i18n';
       </div>
     }
     @if (form.created(); as c) {
-      <div class="made" role="status">
+      <div class="made" role="status" animate.leave="im-out">
         <span>{{ 'issueNew.created' | t: { n: '' + c.number } }}</span>
         <a [routerLink]="['/p', c.pid, 'i', c.iid]" (click)="form.created.set(null)">{{ 'issueNew.openCreated' | t }}</a>
       </div>

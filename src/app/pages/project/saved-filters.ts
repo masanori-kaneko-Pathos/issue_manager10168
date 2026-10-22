@@ -24,7 +24,7 @@ const norm = (s: string) => s.trim().normalize('NFKC').toLowerCase();
       </button>
       @if (open()) {
         <div class="backdrop" (click)="close()"></div>
-        <div class="pop" role="menu">
+        <div class="pop" role="menu" animate.leave="im-out" animate.leave="im-out">
           <div class="rows">
             @for (f of list(); track f.id) {
               <div class="row">

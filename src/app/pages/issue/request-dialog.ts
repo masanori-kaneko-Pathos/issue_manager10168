@@ -13,7 +13,7 @@ import { DraftService, fieldPlace } from '../../core/draft/draft.service';
   selector: 'app-request-dialog',
   imports: [FormsModule, TPipe],
   // 日本語の変換は、確定したときに ngModel の値が入る（その瞬間には input が来ない）ので、確定のときにもしまう
-  host: { '(document:keydown.escape)': 'cancel.emit()', '(input)': 'stash()', '(compositionend)': 'stash()' },
+  host: { '(document:keydown.escape)': 'cancel.emit()', '(input)': 'stash()', '(compositionend)': 'stash()', '[animate.leave]': "'im-out-dialog'" },
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
     <section class="dialog" role="dialog" aria-modal="true" [attr.aria-label]="'request.title.' + kind() | t">

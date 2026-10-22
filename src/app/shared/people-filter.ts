@@ -43,7 +43,7 @@ export function whoQuery(who: string[]) {
       </button>
       @if (open()) {
         <div class="backdrop" (click)="close()"></div>
-        <div class="pop" role="menu">
+        <div class="pop" role="menu" animate.leave="im-out">
           <!-- 一覧のスクロールの外に置くので、いつも一番上に見えている -->
           <button type="button" role="menuitemradio" class="row all" [attr.aria-checked]="!value().length"
             (click)="clearAll()">

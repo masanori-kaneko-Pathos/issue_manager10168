@@ -110,7 +110,7 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
 
           @if (showFilters()) {
             <div class="backdrop" (click)="showFilters.set(false)"></div>
-            <div class="panel" role="dialog" [attr.aria-label]="'list.filters' | t">
+            <div class="panel" role="dialog" [attr.aria-label]="'list.filters' | t" animate.leave="im-out">
               <p class="label">{{ 'list.status' | t }}</p>
               <div class="chips">
                 <button type="button" [class.on]="scope() === 'open'" (click)="setScope('open')">{{ 'list.scopeOpen' | t }}</button>

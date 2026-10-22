@@ -10,7 +10,7 @@ import { TPipe } from '../../i18n/i18n';
 @Component({
   selector: 'app-archive-dialog',
   imports: [FormsModule, TPipe],
-  host: { '(document:keydown.escape)': 'cancel.emit()' },
+  host: { '(document:keydown.escape)': 'cancel.emit()', '[animate.leave]': "'im-out-dialog'" },
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
     <section class="dialog narrow" role="dialog" aria-modal="true" [attr.aria-label]="'archive.title' | t">

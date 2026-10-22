@@ -21,7 +21,7 @@ interface ProjectDraft {
 @Component({
   selector: 'app-project-new-dialog',
   imports: [FormsModule, TPipe, InvitePicker],
-  host: { '(document:keydown.escape)': 'close.emit()' },
+  host: { '(document:keydown.escape)': 'close.emit()', '[animate.leave]': "'im-out-dialog'" },
   template: `
     <div class="backdrop" (click)="close.emit()"></div>
     <section class="dialog narrow" [class.wide]="inviteOpen()" role="dialog" aria-modal="true"

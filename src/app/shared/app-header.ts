@@ -53,7 +53,7 @@ import { RequestBadge } from '../core/request/request-badge.service';
           [attr.aria-label]="'menu.add' | t" [title]="'menu.add' | t" (click)="toggleAdd()">＋</button>
         @if (addOpen()) {
           <div class="backdrop" (click)="addOpen.set(false)"></div>
-          <div class="menu" role="menu">
+          <div class="menu" role="menu" animate.leave="im-out" >
             <button type="button" role="menuitem" class="primary-item" (click)="newIssue()">
               {{ 'menu.newIssue' | t }}</button>
             <!-- 下書きは、1件以上あるときだけ出す -->
@@ -83,7 +83,7 @@ import { RequestBadge } from '../core/request/request-badge.service';
         </button>
         @if (bellOpen()) {
           <div class="backdrop" (click)="bellOpen.set(false)"></div>
-          <div class="panel" role="dialog" [attr.aria-label]="'notify.title' | t">
+          <div class="panel" role="dialog" [attr.aria-label]="'notify.title' | t" animate.leave="im-out">
             <div class="panel-head">
               <strong>{{ 'notify.title' | t }}</strong>
               <span class="head-links">
@@ -110,7 +110,7 @@ import { RequestBadge } from '../core/request/request-badge.service';
                     [attr.aria-expanded]="rowMenu() === n.id" (click)="toggleRowMenu(n.id, $event)">⋮</button>
                   @if (rowMenu() === n.id) {
                     <div class="n-backdrop" (click)="rowMenu.set(null)"></div>
-                    <div class="n-menu" role="menu" [class.up]="rowMenuUp()">
+                    <div class="n-menu" role="menu" [class.up]="rowMenuUp()" animate.leave="im-out">
                       <button type="button" role="menuitem" (click)="act(n, n.read ? 'unread' : 'read')">
                         {{ (n.read ? 'notify.markUnread' : 'notify.markRead') | t }}</button>
                       <button type="button" role="menuitem" (click)="act(n, n.pinned ? 'unpin' : 'pin')">
@@ -136,7 +136,7 @@ import { RequestBadge } from '../core/request/request-badge.service';
 
         @if (open()) {
           <div class="backdrop" (click)="open.set(false)"></div>
-          <div class="menu" role="menu">
+          <div class="menu" role="menu" animate.leave="im-out">
             <div class="who">
               <strong>{{ name() }}</strong>
               <span>{{ email() }}</span>
@@ -154,7 +154,7 @@ import { RequestBadge } from '../core/request/request-badge.service';
         }
       </div>
     </header>
-    @if (inbox.flash(); as key) { <div class="toast" role="status">{{ key | t }}</div> }
+    @if (inbox.flash(); as key) { <div class="toast" role="status" animate.leave="im-out">{{ key | t }}</div> }
     @if (projectNewOpen()) {
       @defer (on immediate) {
         @if (projectDraftId(); as id) {

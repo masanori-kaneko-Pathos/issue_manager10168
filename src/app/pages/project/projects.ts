@@ -88,7 +88,7 @@ type Group = 'pinned' | 'rest';
                         (click)="toggleRowMenu(p.id, $event)">⋮</button>
                       @if (rowMenu() === p.id) {
                         <div class="backdrop" (click)="rowMenu.set(null)"></div>
-                        <div class="menu" role="menu" [class.up]="rowMenuUp()">
+                        <div class="menu" role="menu" [class.up]="rowMenuUp()" animate.leave="im-out">
                           <button type="button" role="menuitem" [disabled]="busy()" (click)="unarchive(p)">
                             {{ 'archive.unarchive' | t }}</button>
                           <div class="sep" role="separator"></div>

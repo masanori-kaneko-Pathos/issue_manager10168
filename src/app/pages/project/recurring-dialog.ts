@@ -16,7 +16,7 @@ import { MemberSelect } from '../../shared/member-select';
 @Component({
   selector: 'app-recurring-dialog',
   imports: [FormsModule, TPipe, LabelPicker, MemberSelect],
-  host: { '(document:keydown.escape)': 'cancel.emit()' },
+  host: { '(document:keydown.escape)': 'cancel.emit()', '[animate.leave]': "'im-out-dialog'" },
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
     <section class="dialog" role="dialog" aria-modal="true"

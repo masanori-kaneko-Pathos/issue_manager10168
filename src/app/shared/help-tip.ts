@@ -30,7 +30,7 @@ const HOVER = typeof window !== 'undefined' && window.matchMedia('(hover: hover)
     </button>
     @if (open()) {
       <div class="backdrop" (click)="open.set(false)"></div>
-      <div class="pop" [class.right]="align() === 'right'" role="dialog">
+      <div class="pop" [class.right]="align() === 'right'" role="dialog" animate.leave="im-out">
         @for (k of keys(); track k) { <p>{{ k | t }}</p> }
         <button type="button" class="close" (click)="open.set(false)">{{ 'list.close' | t }}</button>
       </div>

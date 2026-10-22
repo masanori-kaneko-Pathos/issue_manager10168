@@ -17,7 +17,7 @@ import { I18nService, TPipe } from '../i18n/i18n';
     </h2>
     @if (open()) {
       <div class="backdrop" (click)="open.set(false)"></div>
-      <div class="picker" role="dialog" [attr.aria-label]="'calendar.pick' | t">
+      <div class="picker" role="dialog" [attr.aria-label]="'calendar.pick' | t" animate.leave="im-out">
         <div class="picker-head">
           <button type="button" class="arrow" [attr.aria-label]="'calendar.prevYear' | t"
             (click)="year.set(year() - 1)">‹</button>

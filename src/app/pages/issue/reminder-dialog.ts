@@ -20,7 +20,7 @@ function hmIn(d: Date, tz: string) {
 @Component({
     selector: 'app-reminder-dialog',
     imports: [FormsModule, TPipe],
-    host: { '(document:keydown.escape)': 'cancel.emit()' },
+    host: { '(document:keydown.escape)': 'cancel.emit()', '[animate.leave]': "'im-out-dialog'" },
     template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
     <section class="dialog narrow" role="dialog" aria-modal="true" [attr.aria-label]="'reminder.title' | t">

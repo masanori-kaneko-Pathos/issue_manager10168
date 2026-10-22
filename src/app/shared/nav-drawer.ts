@@ -21,7 +21,7 @@ type Sec = 'inbox' | 'drafts' | 'projects';
 @Component({
   selector: 'app-nav-drawer',
   imports: [RouterLink, TPipe],
-  host: { '(document:keydown.escape)': 'close.emit()' },
+  host: { '(document:keydown.escape)': 'close.emit()', '[animate.leave]': "'im-out-drawer'" },
   template: `
     <div class="backdrop" (click)="close.emit()"></div>
     <nav class="drawer" role="dialog" aria-modal="true" [attr.aria-label]="'nav.title' | t">
@@ -145,6 +145,10 @@ type Sec = 'inbox' | 'drafts' | 'projects';
       display: flex; flex-direction: column; gap: 2px; overflow-y: auto; scrollbar-gutter: stable;
       padding: 8px 8px calc(16px + env(safe-area-inset-bottom)); background: var(--surface); color: var(--text);
       box-shadow: 4px 0 20px rgba(0, 0, 0, 0.2); animation: drawer-in 220ms var(--ease-out); }
+    /* 閉じるとき：全体はふわっと消え、引き出しは左へ戻る */
+    @keyframes drawer-out { to { translate: -100% 0; } }
+    :host(.im-out-drawer) { animation: im-fade-out 200ms var(--ease-out) forwards; pointer-events: none; }
+    :host(.im-out-drawer) .drawer { animation: drawer-out 200ms var(--ease-out) forwards; }
     .d-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 8px 12px; }
     .brand { font-weight: bold; font-size: 16px; }
     .x { width: 36px; height: 36px; border: none; border-radius: 50%; background: none; color: var(--text-muted);

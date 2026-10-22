@@ -33,7 +33,7 @@ const norm = (s: string) => s.normalize('NFKC').toLowerCase();
       </button>
       @if (open()) {
         <!-- 外の label に「押した」を伝えない（伝わると、開くボタンが押されたことになり、開き直る） -->
-        <div class="panel" (click)="$event.preventDefault()">
+        <div class="panel" (click)="$event.preventDefault()" animate.leave="im-out">
           <input #search type="text" class="search" role="combobox" autocomplete="off"
             aria-expanded="true" [attr.aria-controls]="listId" [attr.aria-activedescendant]="activeId()"
             [placeholder]="'memberSelect.search' | t" [attr.aria-label]="'memberSelect.search' | t"

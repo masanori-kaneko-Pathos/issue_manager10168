@@ -14,6 +14,8 @@ import { TPipe } from '../i18n/i18n';
 @Component({
   selector: 'app-inbox-pop',
   imports: [FormsModule, RouterLink, TPipe, MemoRow],
+  // ヘッダーの @if で消えるのは、この部品の外側。中の .pop に付けても動かないので、外側に付ける
+  host: { '[animate.leave]': "'im-out'" },
   template: `
     <div class="backdrop" (click)="close.emit()"></div>
     <div class="pop" role="dialog" [attr.aria-label]="'inbox.write' | t">

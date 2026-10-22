@@ -19,7 +19,7 @@ type Step = 'pick' | 'fix' | 'map' | 'review' | 'done';
 @Component({
   selector: 'app-import',
   imports: [RouterLink, TPipe],
-  host: { '(document:keydown)': 'onKey($event)' },
+  host: { '(document:keydown)': 'onKey($event)', '[animate.leave]': "'im-out-dialog'" },
   template: `
     <section>
       <div class="head">
