@@ -690,8 +690,19 @@ service cloud.firestore {
           && get(projectPath(pid)).data.archived == false;
 
         match /events/{eid} {
+          // 経緯は、決まった種類と欄だけ。書いた人は本人、時刻は今（過去や先の日付の経緯は作れない）。
+          // 種類や欄を足したら、ここにも足すこと（漏れると、課題の保存ごと断られる）
+          function validEvent() {
+            let d = request.resource.data;
+            return d.keys().hasOnly(['type', 'by', 'tz', 'at', 'from', 'to', 'reason', 'fields', 'changes',
+                     'fromPriority', 'toPriority', 'autoPriority', 'link', 'sub', 'merged', 'file', 'importId'])
+              && d.type in ['created', 'imported', 'status', 'edit', 'priority', 'link', 'merge', 'subtask',
+                            'attachment']
+              && d.by == request.auth.uid
+              && d.at == request.time;
+          }
           allow read: if isMember(pid);
-          allow create: if canWrite(pid) && request.resource.data.by == request.auth.uid;
+          allow create: if canWrite(pid) && validEvent();
           allow delete: if purgeChildAllowed(pid, iid);
         }
 
