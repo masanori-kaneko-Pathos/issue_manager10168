@@ -361,21 +361,30 @@ export interface IssueRequest {
 }
 
 /**
- * 課題のリマインド（users/{uid}/reminders/{pid_iid}）。本人だけが読み書きする。1つの課題に1つ。
- * 届けたら関数が消す（記録はお知らせに残る）
+ * リマインド（users/{uid}/reminders/{rid}）。本人だけが読み書きする。
+ * 文書の名前：課題は「pid_iid」、サブタスクは「pid_iid_sid」（1つに1つ）、自由入力は自動の名前（_ を含まない）。
+ * 届けても消さない（pending を false にして firedAt を書く）。完了にすると30日後に自動で消える（TTL）
  */
 export interface Reminder {
   id: string;
-  pid: string;
-  iid: string;
-  number: number;        // 写し（お知らせと一覧のため）
-  title: string;         // 写し
-  projectName: string;   // 写し
-  sid?: string;          // サブタスクのリマインドのときだけ
+  pid?: string;          // 課題・サブタスクのときだけ（自由入力には無い）
+  iid?: string;          // 課題・サブタスクのときだけ
+  number?: number;       // 写し（課題・サブタスクのときだけ）
+  title: string;         // 課題・サブタスクは課題名の写し、自由入力は本文（200字まで）
+  projectName?: string;  // 写し（課題・サブタスクのときだけ）
+  sid?: string;          // サブタスクのときだけ
   subTitle?: string;     // サブタスク名の写し（サブタスクのときだけ）
   at: Timestamp;         // 届ける時刻
   createdAt: Timestamp;
+  pending: boolean;      // まだ届けていない（関数は true のものだけ探す）
+  firedAt?: Timestamp;   // 届けた時刻（関数が書く）
+  doneAt?: Timestamp;    // 完了にした時刻
+  expireAt?: Timestamp;  // この日時を過ぎると Firestore が自動で消す（完了にしたものだけ）
 }
+/** 完了にしたリマインドを残す日数 */
+export const REMINDER_KEEP_DAYS = 30;
+/** 自由入力のリマインドの数（ルールでは数えられないので、画面で止める） */
+export const MAX_FREE_REMINDERS = 100;
 
 /** 保存した絞り込み（users/{uid}/filters）。query は URL の ? より後ろの文字列 */
 export interface SavedFilter {

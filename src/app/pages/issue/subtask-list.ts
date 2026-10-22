@@ -13,7 +13,7 @@ import { enterKey } from '../../core/dom';
 import { MemberSelect } from '../../shared/member-select';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { ReminderService } from '../../core/reminder/reminder.service';
-import { ReminderDialog } from './reminder-dialog';
+import { ReminderHub } from '../../core/reminder/reminder-hub.service';
 import { IssueFormService } from '../../core/issue/issue-form.service';
 
 /**
@@ -22,7 +22,7 @@ import { IssueFormService } from '../../core/issue/issue-form.service';
  */
 @Component({
   selector: 'app-subtask-list',
-  imports: [FormsModule, RouterLink, CdkDropList, CdkDrag, CdkDragHandle, MemberSelect, TPipe, ReminderDialog],
+  imports: [FormsModule, RouterLink, CdkDropList, CdkDrag, CdkDragHandle, MemberSelect, TPipe],
   host: {
     // Esc：行の編集は捨てる、追加の欄は書きかけを残して閉じる
     '(document:keydown.escape)': 'menuFor.set(null); editing.set(null); hideAdd()',
@@ -88,8 +88,8 @@ import { IssueFormService } from '../../core/issue/issue-form.service';
                 @if (beyond(s)) { <span class="late">{{ 'subtask.beyondParent' | t }}</span> }
                 @if (reminderOf(s); as r) {
                   <!-- 自分にだけ見える札。押すと変える・外す -->
-                  <button type="button" class="remind" [title]="'reminder.change' | t"
-                    [attr.aria-label]="'reminder.badge' | t: { when: remindText(r) }" (click)="remindFor.set(s)">
+                  <button type="button" class="remind" [class.late]="!r.pending" [title]="'reminder.change' | t"
+                    [attr.aria-label]="'reminder.badge' | t: { when: remindText(r) }" (click)="openReminder(s)">
                     <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor"
                       stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5" /><path d="M5 3 2 6M19 3l3 3" /></svg>
@@ -105,7 +105,7 @@ import { IssueFormService } from '../../core/issue/issue-form.service';
                   <div class="backdrop" (click)="menuFor.set(null)"></div>
                   <div class="menu" role="menu" animate.leave="im-out">
                     @if (canRemindSub(s)) {
-                      <button type="button" role="menuitem" (click)="menuFor.set(null); remindFor.set(s)">
+                      <button type="button" role="menuitem" (click)="menuFor.set(null); openReminder(s)">
                         {{ (reminderOf(s) ? 'reminder.change' : 'reminder.open') | t }}</button>
                     }
                     @if (canToggle(s) && s.status !== 'done') {
@@ -156,10 +156,6 @@ import { IssueFormService } from '../../core/issue/issue-form.service';
       }
     }
     @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
-    @if (remindFor(); as s) {
-      <app-reminder-dialog [pid]="pid()" [issue]="issue()" [projectName]="projectName()" [current]="reminderOf(s)"
-        [sub]="s" (done)="remindFor.set(null)" (cancel)="remindFor.set(null)" />
-    }
   `,
   styles: `
     :host { display: block; }
@@ -184,6 +180,7 @@ import { IssueFormService } from '../../core/issue/issue-form.service';
     .late { color: var(--danger-text); font-weight: bold; }
     .remind { display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; border: 1px solid var(--primary);
       border-radius: 8px; background: var(--primary-bg); color: var(--primary); font-size: 12px; cursor: pointer; }
+    .remind.late { border-color: var(--danger); background: var(--danger-bg); color: var(--danger-text); }
     .more-wrap { position: relative; }
     .more { width: 32px; height: 32px; border: none; background: none; border-radius: 6px; color: var(--text-muted);
       cursor: pointer; }
@@ -250,8 +247,7 @@ export class SubtaskList implements OnInit {
   protected issueForm = inject(IssueFormService);
   /** サブタスクに置いた、自分のリマインド（sid → リマインド） */
   private reminders = signal(new Map<string, Reminder>());
-  /** リマインドの窓を開いているサブタスク */
-  remindFor = signal<Subtask | null>(null);
+  private remindHub = inject(ReminderHub);
   readonly max = MAX_SUBTASKS;
 
   list = signal<Subtask[]>([]);
@@ -309,8 +305,19 @@ export class SubtaskList implements OnInit {
     return this.canRemind() && s.status !== 'done' && !s.splitTo;
   }
 
+  /** 札に出すリマインド：完了していないものだけ */
   reminderOf(s: Subtask) {
-    return this.reminders().get(s.id) ?? null;
+    const r = this.reminders().get(s.id);
+    return r && !r.doneAt ? r : null;
+  }
+
+  /** リマインドの窓を、このサブタスクの変更の画面で開く */
+  openReminder(s: Subtask) {
+    const i = this.issue();
+    this.remindHub.openFor({
+      pid: this.pid(), iid: i.id, number: i.number, title: i.title, projectName: this.projectName(),
+      sid: s.id, subTitle: s.title,
+    });
   }
 
   remindText(r: Reminder) {

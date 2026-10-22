@@ -36,7 +36,7 @@ import { DeleteDialog } from './delete-dialog';
 import { RequestService } from '../../core/request/request.service';
 import { commentSegments } from '../../core/issue/comment';
 import { ReminderService } from '../../core/reminder/reminder.service';
-import { ReminderDialog } from './reminder-dialog';
+import { ReminderHub } from '../../core/reminder/reminder-hub.service';
 import { AttachmentService } from '../../core/attachment/attachment.service';
 import { AttachmentList } from './attachment-list';
 import { DraftService, fieldPlace } from '../../core/draft/draft.service';
@@ -70,7 +70,7 @@ function sameField(k: keyof IssueEdits, a: Issue, b: Issue): boolean {
 @Component({
   selector: 'app-issue-detail',
   imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, StatusDialog, PriorityMark, LinkDialog,
-    MergeDialog, LabelPicker, MemberSelect, SubtaskList, CommentBox, RequestDialog, DeleteDialog, ReminderDialog,
+    MergeDialog, LabelPicker, MemberSelect, SubtaskList, CommentBox, RequestDialog, DeleteDialog,
     AttachmentList, Avatar, Crumbs, RecurMark],
     host: {
       '(document:keydown.escape)':
@@ -289,20 +289,27 @@ export class IssueDetail implements OnInit {
   private reminders = inject(ReminderService);
   /** この課題の、自分のリマインド（なければ null） */
   reminder = signal<Reminder | null>(null);
-  reminderOpen = signal(false);
+  /** 札に出すリマインド：完了していないものだけ */
+  activeReminder = computed(() => {
+    const r = this.reminder();
+    return r && !r.doneAt ? r : null;
+  });
+  private remindHub = inject(ReminderHub);
   /** 置けるか：メンバーなら閲覧者も。課題がまだ動いていて、アーカイブ中でないとき */
   canRemind = computed(() => {
     const s = this.issue()?.status;
     return !!this.role() && !this.projectArchived() && !!s && !['closed', 'deleted', 'merged', 'rejected'].includes(s);
   });
   remindLabel = computed(() => {
-    const r = this.reminder();
+    const r = this.activeReminder();
     return r ? this.fmt(r.at) : '';
   });
 
-  onReminderDone(at: Date | null) {
-    this.reminderOpen.set(false);
-    this.showFlash(at ? 'reminder.saved' : 'reminder.removed');
+  /** リマインドの窓を、この課題の変更の画面で開く */
+  openReminder() {
+    const i = this.issue();
+    if (!i) return;
+    this.remindHub.openFor({ pid: this.pid, iid: i.id, number: i.number, title: i.title, projectName: this.projectName() });
   }
   // ---- 添付 ----
   private attachments = inject(AttachmentService);

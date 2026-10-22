@@ -110,24 +110,43 @@ service cloud.firestore {
           && request.resource.data.fid == fid
           && request.resource.data.createdAt is timestamp;
       }
-      // 課題のリマインド：本人だけ。文書の名前は「プロジェクトid_課題id」（1つの課題に1つ。置き直すと上書き）
+      // リマインド：本人だけ。課題は「pid_iid」、サブタスクは「pid_iid_sid」（1つに1つ・置き直すと上書き）、
+      // 自由入力は自動の名前（_ を含まない）。届けても消さず、関数が pending・firedAt を書く
       match /reminders/{rid} {
+        // どの種類にも共通する形
+        function validReminder() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['pid', 'iid', 'sid', 'subTitle', 'number', 'title', 'projectName', 'at', 'createdAt',
+                   'pending', 'firedAt', 'doneAt', 'expireAt'])
+            && d.title is string && d.title.size() > 0 && d.title.size() <= 200
+            && d.at is timestamp
+            && d.createdAt is timestamp
+            && d.pending is bool
+            && (!('firedAt' in d) || d.firedAt is timestamp)
+            && (!('doneAt' in d) || d.doneAt is timestamp)
+            && (!('expireAt' in d) || d.expireAt is timestamp);
+        }
+        // 課題・サブタスクのリマインド（今までと同じ確かめ）
+        function issueReminderOk() {
+          let d = request.resource.data;
+          return (rid == d.pid + '_' + d.iid
+              || (d.get('sid', null) is string && rid == d.pid + '_' + d.iid + '_' + d.sid))
+            && d.get('subTitle', '') is string && d.get('subTitle', '').size() <= 200
+            && d.number is int
+            && d.projectName is string && d.projectName.size() <= 100
+            // 自分がメンバーのプロジェクトの課題にだけ置ける
+            && exists(/databases/$(database)/documents/projects/$(d.pid)/members/$(uid));
+        }
+        // 自由入力：課題の欄を持たない。名前に _ を含まない（課題のリマインドの名前と、ぶつからないように）
+        function freeReminderOk() {
+          return !request.resource.data.keys().hasAny(['iid', 'sid', 'subTitle', 'number', 'projectName'])
+            && !rid.matches('.*_.*');
+        }
         allow read, delete: if request.auth != null && request.auth.uid == uid;
         allow create, update: if request.auth != null && request.auth.uid == uid
-          && request.resource.data.keys()
-               .hasOnly(['pid', 'iid', 'sid', 'subTitle', 'number', 'title', 'projectName', 'at', 'createdAt'])
-          // 課題のリマインドは「pid_iid」、サブタスクのリマインドは「pid_iid_sid」
-          && (rid == request.resource.data.pid + '_' + request.resource.data.iid
-              || (request.resource.data.get('sid', null) is string
-                  && rid == request.resource.data.pid + '_' + request.resource.data.iid + '_' + request.resource.data.sid))
-          && request.resource.data.get('subTitle', '') is string && request.resource.data.get('subTitle', '').size() <= 200
-          && request.resource.data.number is int
-          && request.resource.data.title is string && request.resource.data.title.size() <= 200
-          && request.resource.data.projectName is string && request.resource.data.projectName.size() <= 100
-          && request.resource.data.at is timestamp
-          && request.resource.data.createdAt is timestamp
-          // 自分がメンバーのプロジェクトの課題にだけ置ける
-          && exists(/databases/$(database)/documents/projects/$(request.resource.data.pid)/members/$(uid));
+          && validReminder()
+          && (('pid' in request.resource.data && issueReminderOk())
+              || (!('pid' in request.resource.data) && freeReminderOk()));
       }
       // 保存した絞り込み：本人だけ。条件は URL の ? より後ろの文字列をそのまま持つ。
       // 1プロジェクト20個まで・同じ名前は上書き、は画面で守る（ルールは数えられないため）

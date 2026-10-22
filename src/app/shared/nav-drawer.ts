@@ -8,10 +8,12 @@ import { InboxService } from '../core/inbox/inbox.service';
 import { Draft, DraftService } from '../core/draft/draft.service';
 import { IssueFormService } from '../core/issue/issue-form.service';
 import { RequestBadge } from '../core/request/request-badge.service';
-import { ProjectWithRole } from '../core/models';
-import { TPipe } from '../i18n/i18n';
+import { ProjectWithRole, Reminder } from '../core/models';
+import { ReminderHub, reminderTitle } from '../core/reminder/reminder-hub.service';
+import { shortDue } from '../core/time/time';
+import { I18nService, TPipe } from '../i18n/i18n';
 
-type Sec = 'inbox' | 'drafts' | 'projects';
+type Sec = 'inbox' | 'reminders' | 'drafts' | 'projects';
 
 /**
  * 引き出し（ヘッダーの ☰ から、左からすっと出る。どの画面でも）。ホーム・受信箱・下書き・プロジェクトへの近道。
@@ -66,6 +68,34 @@ type Sec = 'inbox' | 'drafts' | 'projects';
           @if (inbox.count() > memos().length) {
             <a routerLink="/inbox" class="item more" (click)="close.emit()">
               <span class="mark"></span>{{ 'nav.more' | t: { n: '' + (inbox.count() - memos().length) } }}</a>
+          }
+        </div>
+      </div>
+
+      <!-- リマインド（いつも出す。見るだけで、押すと窓が開く。届いたものは時刻が赤） -->
+      <div class="sec-row">
+        <button type="button" class="sec" [attr.aria-expanded]="isOpen('reminders')" (click)="toggle('reminders')">
+          <span class="tri" [class.shut]="!isOpen('reminders')" aria-hidden="true">▾</span>
+          <span class="grow">{{ 'reminder.title' | t }}</span>
+        </button>
+        @if (isOpen('reminders')) {
+          <button type="button" class="all" (click)="openReminders()">{{ 'nav.seeAll' | t }}</button>
+        }
+        @if (remind.count()) { <span class="n">{{ remind.count() }}</span> }
+      </div>
+      <div class="fold-body" [class.open]="isOpen('reminders')" [attr.inert]="isOpen('reminders') ? null : ''">
+        <div class="sub">
+          @for (r of reminderList(); track r.id) {
+            <button type="button" class="item" [title]="titleOf(r)" (click)="openReminder(r.id)">
+              <span class="mark"></span>
+              <span class="grow pname">{{ titleOf(r) }}</span>
+              <span class="r-when" [class.late]="!r.pending">{{ when(r) }}</span></button>
+          } @empty {
+            <p class="small">{{ 'reminder.none' | t }}</p>
+          }
+          @if (remind.count() > reminderList().length) {
+            <button type="button" class="item more" (click)="openReminders()">
+              <span class="mark"></span>{{ 'nav.more' | t: { n: '' + (remind.count() - reminderList().length) } }}</button>
           }
         </div>
       </div>
@@ -191,6 +221,11 @@ type Sec = 'inbox' | 'drafts' | 'projects';
     .n { flex: none; font-size: 12px; font-weight: normal; padding: 0 8px; border-radius: 10px;
       background: var(--surface-alt); color: var(--text-muted); }
     .role { flex: none; font-size: 11px; padding: 1px 6px; border-radius: 10px; background: var(--chip-bg); }
+    /* 「すべて見る」をボタンで出すとき（リマインドは窓で開くので、リンクではない） */
+    button.all { border: none; background: none; font: inherit; font-size: 13px; cursor: pointer; }
+    /* リマインドの時刻。届いたものは赤 */
+    .r-when { flex: none; font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+    .r-when.late { color: var(--danger-text); font-weight: bold; }
     .sep { height: 1px; margin: 8px 4px; background: var(--border); }
     .small { margin: 4px 12px; font-size: 13px; color: var(--text-muted); }
   `,
@@ -205,6 +240,8 @@ export class NavDrawer implements OnInit {
   protected badge = inject(RequestBadge);
   private authService = inject(AuthService);
   private ps = inject(ProjectService);
+  protected remind = inject(ReminderHub);
+  private i18n = inject(I18nService);
 
   private projects = signal<ProjectWithRole[]>([]);
   loading = signal(true);
@@ -249,6 +286,30 @@ export class NavDrawer implements OnInit {
   });
   /** 下書き（新しい順。8件まで） */
   draftList = computed(() => this.drafts.drafts().slice(0, PROJECT_FOLD));
+
+  /** リマインド：届いたもの（古い順）→ 予定（近い順）。8件まで */
+  reminderList = computed(() => [...this.remind.fired(), ...this.remind.scheduled()].slice(0, PROJECT_FOLD));
+
+  titleOf(r: Reminder) {
+    return reminderTitle(r);
+  }
+
+  /** 狭い引き出しに合わせて、短い時刻で */
+  when(r: Reminder) {
+    return shortDue(r.at.toDate(), this.authService.profile()?.timeZone ?? 'Asia/Tokyo', this.i18n.lang(), Date.now());
+  }
+
+  /** 引き出しを閉じて、一覧の窓を開く */
+  openReminders() {
+    this.close.emit();
+    this.remind.openList();
+  }
+
+  /** 引き出しを閉じて、そのリマインドの変更の画面を開く（終わったら一覧へ） */
+  openReminder(id: string) {
+    this.close.emit();
+    this.remind.openEdit(id);
+  }
 
   /** 続きを書く：課題は登録の窓、プロジェクトはヘッダーに作成の窓を開いてもらう */
   openDraft(d: Draft) {

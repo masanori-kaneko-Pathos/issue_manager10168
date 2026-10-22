@@ -469,17 +469,60 @@ async function runRecurring(ref: DocumentReference, seenNext: Timestamp, now: Da
   });
 }
 
-// ---- 課題のリマインド ----
+// ---- リマインド ----
 
 /** これらのステータスの課題には、リマインドを届けない（もう取りかかることがない） */
 const FINISHED = ['closed', 'deleted', 'merged', 'rejected'];
 
+/** お知らせに入れる中身（送った人・時刻などは、書くときに足す） */
+interface ReminderNotice {
+  type: 'reminder' | 'subtaskReminder';
+  pid: string; projectName: string; iid: string | null; issueNumber: number | null;
+  issueTitle: string; detail: string;
+}
+
 /**
- * 時刻が来たリマインドを、お知らせにして届け、リマインドは消す。
- * Admin はルールを通らないので、「課題がまだ動いているか」「本人が今もメンバーか」「アーカイブ中でないか」をここで確かめる
+ * 課題・サブタスクのリマインドの中身。届けないもの（課題が無い・終わった・本人が抜けた・アーカイブ中・
+ * サブタスクが完了か切り出し済みか削除済み）なら null。Admin はルールを通らないので、ここで確かめる
+ */
+async function issueReminderNotice(uid: string, d: DocumentData): Promise<ReminderNotice | null> {
+  const [issue, member, project] = await Promise.all([
+    db.doc(`projects/${d.pid}/issues/${d.iid}`).get(),
+    db.doc(`projects/${d.pid}/members/${uid}`).get(),
+    db.doc(`projects/${d.pid}`).get(),
+  ]);
+  const i = issue.data();
+  const sub = d.sid ? (await db.doc(`projects/${d.pid}/issues/${d.iid}/subtasks/${d.sid}`).get()).data() : null;
+  const subOk = !d.sid || (!!sub && sub.status !== 'done' && !sub.splitTo);
+  if (!i || !member.exists || FINISHED.includes(i.status) || project.get('archived') || !subOk) return null;
+  const n = (i.number ?? d.number ?? null) as number | null;
+  const issueTitle = String(i.title ?? d.title ?? '');
+  return {
+    type: d.sid ? 'subtaskReminder' : 'reminder',
+    pid: d.pid, projectName: project.get('name') ?? d.projectName ?? '', iid: d.iid, issueNumber: n,
+    // 1行目：課題は課題名、サブタスクはサブタスク名。2行目（detail）：課題は「#12」、サブタスクは「#12 課題名」
+    issueTitle: (d.sid ? String(sub?.title ?? d.subTitle ?? '') : issueTitle).slice(0, 200),
+    detail: (d.sid ? `#${n} ${issueTitle}` : `#${n}`).slice(0, 200),
+  };
+}
+
+/** 自由入力のリマインドの中身（課題がないので、確かめることもない） */
+function freeReminderNotice(d: DocumentData): ReminderNotice {
+  return {
+    type: 'reminder', pid: '', projectName: '', iid: null, issueNumber: null,
+    issueTitle: String(d.title ?? '').slice(0, 200), detail: '',
+  };
+}
+
+/**
+ * 時刻が来たリマインドを、お知らせにして届ける。届けたものは消さずに pending: false・firedAt を書く
+ * （一覧に「届いたもの」として残し、本人が完了にするまで見せるため）。
+ * 届けないもの（課題が終わったなど）は、今までどおり消す
  */
 async function sendReminders(now: Date) {
-  const due = await db.collectionGroup('reminders').where('at', '<=', Timestamp.fromDate(now)).get();
+  // 届けたものも残るので、時刻だけで探すと毎回引っかかる。まだ届けていないもの（pending）で絞る
+  const due = await db.collectionGroup('reminders')
+    .where('pending', '==', true).where('at', '<=', Timestamp.fromDate(now)).get();
   if (due.empty) return;
   let written = 0;
   await Promise.all(due.docs.map(async (r) => {
@@ -487,29 +530,12 @@ async function sendReminders(now: Date) {
     if (!uid) return;
     const d = r.data();
     try {
-      const [issue, member, project] = await Promise.all([
-        db.doc(`projects/${d.pid}/issues/${d.iid}`).get(),
-        db.doc(`projects/${d.pid}/members/${uid}`).get(),
-        db.doc(`projects/${d.pid}`).get(),
-      ]);
-      const i = issue.data();
-      // サブタスクのリマインドなら、サブタスクも読む（完了・切り出し済み・削除済みなら届けない）
-      const sub = d.sid ? (await db.doc(`projects/${d.pid}/issues/${d.iid}/subtasks/${d.sid}`).get()).data() : null;
-      const subOk = !d.sid || (!!sub && sub.status !== 'done' && !sub.splitTo);
-      // 課題がない・終わった・本人が抜けた・アーカイブ中なら、届けずに消すだけ
-      if (i && member.exists && !FINISHED.includes(i.status) && !project.get('archived') && subOk) {
-        const n = i.number ?? d.number ?? null;
-        const issueTitle = (i.title ?? d.title ?? '') as string;
+      const notice = d.pid ? await issueReminderNotice(uid, d) : freeReminderNotice(d);
+      if (notice) {
         try {
-          // 名札：同じリマインドが2回届かないように（関数が重なって動いても）
+          // 名札：同じリマインドが2回届かないように（関数が重なって動いても）。時刻を変えたら名札も変わり、改めて届く
           await db.doc(`users/${uid}/notifications/reminder-${r.id}-${d.at.toMillis()}`).create({
-            type: d.sid ? 'subtaskReminder' : 'reminder',
-            pid: d.pid, projectName: project.get('name') ?? d.projectName ?? '', iid: d.iid, issueNumber: n,
-            // サブタスクのときは、1行目に出す名前をサブタスク名に、2行目（detail）に「#番号 課題名」を入れる
-            // （課題名が長くても、サブタスク名が読み切れるように）
-            issueTitle: d.sid ? ((sub?.title ?? d.subTitle ?? '') as string).slice(0, 200) : issueTitle,
-            detail: d.sid ? `#${n} ${issueTitle}`.slice(0, 200) : '',
-            by: '', byName: '',
+            ...notice, by: '', byName: '',
             at: FieldValue.serverTimestamp(), read: false,
             expireAt: Timestamp.fromMillis(now.getTime() + NOTIFY_KEEP_DAYS * DAY),
           });
@@ -518,11 +544,13 @@ async function sendReminders(now: Date) {
           if ((e as { code?: number }).code !== 6) throw e; // ALREADY_EXISTS：もう届けてある
         }
       }
-      // 消すのは届けたあと（先に消すと、届けるのに失敗したとき何も残らない）。
-      // 待っている間に本人が時刻を変えていたら、消さない（変えた時刻に、改めて届く）
+      // 印を付ける（届けた）か、消す（届けない）。どちらも届けたあと。
+      // 待っている間に本人が時刻を変えた・完了にしたなら、触らない（変えた時刻に、改めて届く）
       await db.runTransaction(async (tx) => {
         const cur = await tx.get(r.ref);
-        if (cur.exists && cur.get('at')?.toMillis() === d.at.toMillis()) tx.delete(r.ref);
+        if (!cur.exists || cur.get('pending') !== true || cur.get('at')?.toMillis() !== d.at.toMillis()) return;
+        if (notice) tx.update(r.ref, { pending: false, firedAt: FieldValue.serverTimestamp() });
+        else tx.delete(r.ref);
       });
     } catch (e) {
       logger.error('reminder failed', { uid, rid: r.id, error: String(e) });
@@ -574,7 +602,7 @@ const PUSH_TEXT: Record<'ja' | 'en', Record<string, string>> = {
     request: '{{name}} さんから、#{{n}}「{{title}}」について依頼が届きました',
     requestDone: '{{name}} さんが、#{{n}}「{{title}}」の依頼に対応しました',
     requestDeclined: '{{name}} さんが、#{{n}}「{{title}}」の依頼を見送りました',
-    reminder: 'リマインド：#{{n}}「{{title}}」',
+    reminder: 'リマインド：{{title}}',
     subtaskReminder: 'リマインド：{{title}}',
     recurring: '定期課題から #{{n}}「{{title}}」ができました',
     recurringStopped: '定期課題「{{title}}」を止めました。担当者か作った人が、もう担当できないためです',
@@ -601,7 +629,7 @@ const PUSH_TEXT: Record<'ja' | 'en', Record<string, string>> = {
     request: '{{name}} sent a request about #{{n}} "{{title}}"',
     requestDone: '{{name}} acted on your request about #{{n}} "{{title}}"',
     requestDeclined: '{{name}} declined your request about #{{n}} "{{title}}"',
-    reminder: 'Reminder: #{{n}} "{{title}}"',
+    reminder: 'Reminder: {{title}}',
     subtaskReminder: 'Reminder: {{title}}',
     recurring: 'A recurring issue created #{{n}} "{{title}}"',
     recurringStopped: 'The recurring issue "{{title}}" was paused because its assignee or creator can no longer be assigned',
@@ -746,6 +774,8 @@ function pushUrl(uid: string, n: DocumentData): string {
   if (n.type === 'daily') return '/#today';
   if (n.type === 'projectDeleted') return '/';
   if (n.type === 'recurringStopped') return `/p/${n.pid}/recurring`;
+  // 自由入力のリマインド：課題がないので、どの画面でもリマインドの一覧の窓を開く
+  if (n.type === 'reminder' && !n.iid) return '/?reminders=1';
   if (n.iid) return `/p/${n.pid}/i/${n.iid}`;
   if (n.type === 'handover') return `/p/${n.pid}/list?assignee=${uid}`;
   return `/p/${n.pid}`;

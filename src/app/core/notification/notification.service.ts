@@ -144,6 +144,10 @@ export class NotificationService {
   /** 押したときの行き先（プッシュの pushUrl と同じ決まり） */
   target(n: AppNotification): { commands: unknown[]; extras: NavigationExtras } {
     if (n.type === 'daily') return { commands: ['/'], extras: { fragment: 'today' } };
+    // 自由入力のリマインド：課題がないので、今の画面のまま一覧の窓を開く（窓の側が ?reminders=1 を見て開き、印を消す）
+    if (n.type === 'reminder' && !n.iid) {
+      return { commands: [], extras: { queryParams: { reminders: '1' }, queryParamsHandling: 'merge' } };
+    }
     if (n.iid) return { commands: ['/p', n.pid, 'i', n.iid], extras: {} };
     if (n.type === 'projectDeleted') return { commands: ['/'], extras: {} };
     if (n.type === 'recurringStopped') return { commands: ['/p', n.pid, 'recurring'], extras: {} };
