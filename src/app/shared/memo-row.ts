@@ -86,10 +86,12 @@ import { IssueFormService } from '../core/issue/issue-form.service';
       background: var(--warning-bg); color: var(--warning-text); }
     /* 吹き出しの中：1行に、タイトルと詳しいことを15文字ほどで切って並べる */
     :host(.compact) .main { flex-direction: row; align-items: baseline; gap: 10px; padding: 4px 6px; min-height: 30px; }
-    :host(.compact) .t { flex: none; max-width: 15em; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    :host(.compact) .t { flex: 0 1 auto; min-width: 0; max-width: 15em; font-size: 13px; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap; }
     :host(.compact) .b { min-width: 0; max-width: 15em; font-size: 11px; color: var(--text-muted); }
-    .acts { display: none; gap: 2px; }
-    .acts.always { display: flex; flex: none; }
+    /* アイコンは、文字の右に並べる（重ねない）。長い題名でも、文字の上にかぶらない */
+    .acts { display: none; flex: none; gap: 2px; }
+    .acts.always { display: flex; }
     .ic { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0;
       border: none; border-radius: 6px; background: none; color: var(--text-muted); cursor: pointer; }
     .ic:hover { background: var(--surface-muted); color: var(--text); }
@@ -98,9 +100,16 @@ import { IssueFormService } from '../core/issue/issue-form.service';
     .pin-mark { vertical-align: -1px; margin-right: 4px; color: var(--primary); }
     @media (hover: hover) and (pointer: fine) {
       .row:hover { background: var(--surface-alt); }
-      .row:hover .acts, .row:focus-within .acts { display: flex; position: absolute; right: 4px; top: 50%;
-        transform: translateY(-50%); padding: 2px; border-radius: 8px; background: var(--surface-alt); }
+      /* ページ：場所はいつも空けておき、見せるのは乗せたときだけ（出し入れで、長い題名が折り返し直さない） */
+      :host(:not(.compact)) .acts { display: flex; visibility: hidden; }
+      :host(:not(.compact)) .row:hover .acts,
+      :host(:not(.compact)) .row:focus-within .acts { visibility: visible; }
+      /* 吹き出し：1行で「…」にしているので、乗せたときだけ場所を空ける（ふだんは題名を長く見せる） */
+      :host(.compact) .row:hover .acts,
+      :host(.compact) .row:focus-within .acts { display: flex; }
     }
+    /* 吹き出しの行（30px）より高くならないよう、アイコンを少し小さく（乗せたときに行の高さが動かないように） */
+    :host(.compact) .ic { width: 28px; height: 28px; }
     .more { flex: none; width: 32px; height: 32px; border: none; border-radius: 6px; background: none;
       color: var(--text-muted); font-size: 16px; cursor: pointer; }
     .m-backdrop { position: fixed; inset: 0; z-index: 1; }
