@@ -311,7 +311,17 @@ service cloud.firestore {
         || (admin && from == 'rejected' && to == 'open' && hasReason())
         || (admin && from == 'closed' && to == 'in_progress' && hasReason());
     }
-
+    // ステータスの移動で書いてよい欄：解決の欄は解決のときだけ、クローズの欄はクローズのときだけ
+    // （どの移動でも同じ欄の一覧を通していたので、保留にする保存に効果やクローズ日時を混ぜられた）
+    function statusFieldsOk() {
+      let keys = request.resource.data.diff(resource.data).affectedKeys();
+      let to = request.resource.data.status;
+      return (to == 'resolved'
+              || !keys.hasAny(['cause', 'countermeasure', 'causeCategory', 'resolvedAt',
+                               'resolvedAssignee', 'workaroundEnded', 'actualHours']))
+        && (to == 'closed' || !keys.hasAny(['effect', 'learning', 'closedAt']))
+        && (to in ['resolved', 'closed'] || !keys.hasAny(['doneCriteriaMet']));
+    }
         // 編集：提起者・担当者・管理者。クローズ後は不可
     function editAllowed(pid) {
       let d = request.resource.data;
@@ -656,7 +666,8 @@ service cloud.firestore {
                'status', 'statusReason', 'updatedAt', 'updatedBy', 'cause', 'countermeasure', 'causeCategory',
                'doneCriteriaMet', 'resolvedAt', 'effect', 'learning', 'closedAt', 'workaroundEnded', 'resolvedAssignee',
                'actualHours'])
-             && statusChangeAllowed(pid))
+             && statusChangeAllowed(pid)
+             && statusFieldsOk())
             || editAllowed(pid)
             || priorityAllowed(pid)
             || causeAllowed(pid)
