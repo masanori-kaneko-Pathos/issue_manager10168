@@ -15,9 +15,9 @@ const DAY = 24 * 60 * 60 * 1000;
  * ※ functions/src/index.ts の DAILY_KEYS・PEOPLE_OF と同じに保つこと
  */
 const DAILY_KEYS: Record<DailyGroup, string[]> = {
-  due: ['overdue', 'today', 'tomorrow', 'in3', 'inboxOld'],
-  priority: ['high', 'mid', 'low', 'inboxOld'],
-  assignee: ['active', 'overdueAll', 'inboxOld'],
+  due: ['overdue', 'today', 'tomorrow', 'in3', 'effect', 'inboxOld'],
+  priority: ['high', 'mid', 'low', 'effect', 'inboxOld'],
+  assignee: ['active', 'overdueAll', 'effect', 'inboxOld'],
 };
 const PEOPLE_OF: Record<string, string> = { active: 'people', overdueAll: 'overduePeople' };
 /** 通知が自動で消えるまでの日数（TTL） */

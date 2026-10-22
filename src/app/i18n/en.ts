@@ -103,6 +103,7 @@ export const en: Dict = {
     failed: "Couldn't send",
     retryNote: "These invitations couldn't be sent when the project was created. Please check them and send again.",
     someFailed: 'Some invitations were not sent. Check them, then send again or remove them.',
+    alreadyMember: 'Already a member',
   },
   roles: { admin: 'Admin', member: 'Member', viewer: 'Viewer' },
   labels: { customer: 'Customer', internal: 'Internal', spec: 'Spec & design', ops: 'Operations', quality: 'Quality' },
@@ -301,6 +302,7 @@ export const en: Dict = {
     editLabels: 'Edit labels',
     needReason: 'Enter a reason before closing. (Press Esc to discard your changes.)',
     resolvedAssignee: 'This issue is resolved. Changing the assignee keeps the record of who resolved it. Send-backs and effect-check notices go to the new assignee.',
+    assigneeGone: 'The assignee is no longer in this project. Click the assignee to choose someone else.',
   },
   edit: {
     open: 'Edit',
@@ -706,7 +708,17 @@ export const en: Dict = {
     choose: 'Choose a person',
     reason: 'Reason',
     reasonHint: 'e.g. Going on extended leave',
-    confirm: { handover: 'Hand over', remove: 'Remove', role: 'Change', leave: 'Leave', self: 'Hand over', },
+    confirm: { 
+    handover: 'Hand over', 
+    remove: 'Remove', 
+    role: 'Change', 
+    leave: 'Leave', 
+    self: 'Hand over', 
+    },
+    subtasksMove: 'Subtasks assigned to this person (in {{n}} issues) go to the assignee of each issue.',
+    subtasksFollow: 'Subtasks you are assigned in the issues you hand over go along with them.',
+    recurTo: 'Next recurring issues ({{n}}) go to',
+    recurToHelp: 'The assignee of issues created from the next run on. It starts with the person receiving the most issues.',
   },
   inbox: {
     title: 'Inbox',
@@ -829,6 +841,8 @@ export const en: Dict = {
     needWeekday: 'Choose at least one day of the week.',
     save: 'Save',
     describe: { daily: 'Daily {{time}}', weekly: 'Weekly {{days}} {{time}}', monthly: 'Monthly, {{day}} {{time}}' },
+    showUpcoming: 'Show recurring',
+    upcomingTitle: '{{title}} (recurring, upcoming)',
   },
   overview: {
     description: 'Description',
@@ -954,6 +968,9 @@ export const en: Dict = {
       in3: 'Showing only issues due in 2–3 days.',
     },
     clear: 'Show all',
+    effect: 'Effect check',
+    effectHelp: 'Issues you reported that were resolved a while ago. Check whether the fix worked, then close them.',
+    resolvedAgo: 'Resolved {{n}}d ago',
   },
 
   csv: {
@@ -1388,6 +1405,7 @@ export const en: Dict = {
       low: '{{n}} low',
       active: '{{n}} open ({{p}} people)',
       overdueAll: '{{n}} overdue ({{p}} people)',
+      effect: '{{n}} effect checks',
     },
   },
 };

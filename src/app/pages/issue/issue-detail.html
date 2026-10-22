@@ -1,7 +1,11 @@
-<header class="bar">
+<header class="bar" [class.hide]="barHidden()">
   <app-crumbs [items]="crumbs()">
     @if (issue(); as i) { <span class="crumb-num">#{{ i.number }}</span> }
   </app-crumbs>
+  <!-- 題名がスクロールで隠れたら、帯に出す（何の課題を見ているか分かるように） -->
+  @if (titleHidden() && issue(); as i) {
+    <span class="bar-title" [title]="i.title">{{ i.title }}</span>
+  }
     @if (issue(); as i) {
       <div class="more-wrap">
         <button type="button" class="more" [attr.aria-label]="'detailMenu.open' | t" [title]="'detailMenu.open' | t"
@@ -133,7 +137,7 @@
       } @else {
         <h1>{{ i.title }}</h1>
       }
-      <div class="badges">
+      <div class="badges" #titleEnd>
         <!-- ステータス：押すと、今選べる操作が並ぶ -->
         <div class="dd">
           @if (transitions().length) {
@@ -376,12 +380,15 @@
                 <button type="button" class="text-btn" (click)="openField('assignee')">
                   <span class="who"><app-avatar [name]="memberName(i.assigneeId)" [uid]="i.assigneeId"
                     [photo]="memberPhoto(i.assigneeId)" [size]="20" />{{ memberName(i.assigneeId) }}</span></button>
-              } @else {
-                <span class="who"><app-avatar [name]="memberName(i.assigneeId)" [uid]="i.assigneeId"
-                  [photo]="memberPhoto(i.assigneeId)" [size]="20" />{{ memberName(i.assigneeId) }}</span>
-              }
-            </dd>
-            <dt>{{ 'detail.reporter' | t }}</dt>
+                  } @else {
+                    <span class="who"><app-avatar [name]="memberName(i.assigneeId)" [uid]="i.assigneeId"
+                      [photo]="memberPhoto(i.assigneeId)" [size]="20" />{{ memberName(i.assigneeId) }}</span>
+                  }
+                  @if (assigneeGone() && canEdit() && editField() !== 'assignee') {
+                    <p class="warn gone">{{ 'field.assigneeGone' | t }}</p>
+                  }
+                </dd>
+                <dt>{{ 'detail.reporter' | t }}</dt>
             <dd><span class="who"><app-avatar [name]="memberName(i.reporterId)" [uid]="i.reporterId"
               [photo]="memberPhoto(i.reporterId)" [size]="20" />{{ memberName(i.reporterId) }}</span></dd>
             <dt>{{ 'issue.importance' | t }}</dt>
@@ -851,4 +858,10 @@
       </div>
     }
   </main>
-  @if (flash(); as k) { <div class="toast" role="status" animate.leave="im-out">{{ k | t }}</div> }
+  @if (flash(); as k) {
+    <div class="toast" role="status" animate.leave="im-out">
+      <span>{{ k | t }}</span>
+      <button type="button" class="toast-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t"
+        (click)="closeFlash()">✕</button>
+    </div>
+  }

@@ -36,8 +36,12 @@ main { max-width: 1040px; margin: 0 auto; padding: 16px 16px 48px; }
 .menu .danger-item:not(:disabled) { color: var(--danger-text); }
 .recommend a { margin-left: 8px; }
 .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%);
-  z-index: 200; padding: 10px 18px; border-radius: 20px; background: var(--text); color: var(--surface);
+  z-index: 200; display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 32px); box-sizing: border-box;
+  padding: 6px 6px 6px 18px; border-radius: 20px; background: var(--text); color: var(--surface);
   font-size: 14px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); }
+.toast-x { flex: none; width: 32px; height: 32px; padding: 0; border: none; border-radius: 50%;
+  background: none; color: inherit; font-size: 14px; cursor: pointer; }
+.toast-x:hover { background: rgba(255, 255, 255, 0.15); }
 h1 { font-size: 20px; margin: 4px 0 8px; overflow-wrap: anywhere; }
 h2 { font-size: 16px; margin-top: 24px; }
 .num { color: var(--text-muted); font-size: 13px; margin: 0; }
@@ -187,6 +191,13 @@ a.add-link { display: inline-flex; align-items: center; text-decoration: none; }
 .modal > .dialog { z-index: 1; }
 /* ウォッチの人数（メニューの行の右に小さく） */
 .watch-n { flex: none; margin-right: 4px; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.props .warn.gone { margin: 6px 0 0; font-size: 12px; }
+/* 帯の題名（スクロールしたら出る）。長い題名は1行で「…」。⋮ は右端のまま */
+.bar app-crumbs { flex: 0 1 auto; min-width: 0; }
+.bar-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 14px; font-weight: bold; animation: bar-title-in 160ms var(--ease-out); }
+@keyframes bar-title-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .bar-title { animation: none; } }
 /* コメントの直す・消すは、マウスを乗せられる端末では、乗せたコメント（キーボードで移ったものも）だけ見せる。
    隠すのは visibility なので、出し入れで行の高さや文字の位置は動かない */
 @media (hover: hover) and (pointer: fine) {
@@ -196,3 +207,9 @@ a.add-link { display: inline-flex; align-items: center; text-decoration: none; }
 @media (min-width: 861px) {
   .side .inline-edit input, .side .inline-edit textarea, .side select { font-size: 14px; padding: 6px 8px; }
 }
+/* スマホだけ：下へスクロールすると、帯を青いヘッダーの裏へ引っ込める（ヘッダーの z-index のほうが高い） */
+@media (max-width: 600px) {
+  .bar { transition: translate 200ms var(--ease-out); }
+  .bar.hide { translate: 0 -100%; }
+}
+@media (prefers-reduced-motion: reduce) { .bar { transition: none; } }

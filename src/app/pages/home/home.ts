@@ -8,13 +8,13 @@ import { sendEmailVerification } from 'firebase/auth';
 import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth/auth.service';
 import { ProjectService } from '../../core/project/project.service';
-import { Invitation, Issue, Level, ProjectWithRole } from '../../core/models';
+import { DEFAULT_SETTINGS, Invitation, Issue, Level, ProjectWithRole } from '../../core/models';
 import { IssueService } from '../../core/issue/issue.service';
 import { InboxService } from '../../core/inbox/inbox.service';
 import { Clock } from '../../core/time/clock';
 import { PriorityMark } from '../../shared/priority-mark';
 import { compareIssues, isManualPriority, priorityOf } from '../../core/issue/priority';
-import { DueBucket, dueBucket, remainingOf, shortDue } from '../../core/time/time';
+import { DueBucket, dateKey, dueBucket, remainingOf, shortDue } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
 import { RequestService } from '../../core/request/request.service';
 import { Router } from '@angular/router';
@@ -24,6 +24,11 @@ import { MineCalendar } from './mine-calendar';
 import { TabInk } from '../../shared/tab-ink';
 import { RecurMark } from '../../shared/recur-mark';
 import { orderProjects } from '../../core/project/project-order';
+
+/** 'YYYY-MM-DD' どうしの日数の差（関数の daysBetween と同じ） */
+function daysBetweenKeys(from: string, to: string) {
+  return Math.round((Date.parse(to + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z')) / 86400000);
+}
 
 @Component({
   selector: 'app-home',
@@ -133,6 +138,10 @@ import { orderProjects } from '../../core/project/project-order';
                 {{ 'today.buckets.' + b | t }} <strong>{{ todayCounts()[b] }}</strong>
               </button>
             }
+            @if (effectDue().length) {
+              <button type="button" class="t-chip" (click)="jumpEffect()">
+                {{ 'today.effect' | t }} <strong>{{ effectDue().length }}</strong></button>
+            }
             @if (oldMemos()) {
               <a routerLink="/inbox" class="t-chip">{{ 'today.oldMemos' | t }} <strong>{{ oldMemos() }}</strong></a>
             }
@@ -168,6 +177,22 @@ import { orderProjects } from '../../core/project/project-order';
             </div>
           } @empty {
             <p class="empty">{{ 'mine.empty' | t }}</p>
+          }
+
+          @if (effectDue().length) {
+            <h3 class="sec" id="sec-effect">{{ 'today.effect' | t }}<span class="n">{{ effectDue().length }}</span></h3>
+            <p class="small">{{ 'today.effectHelp' | t }}</p>
+            <ul class="ilist">
+              @for (i of effectDue(); track i.id) {
+                <li>
+                  <span class="prio-none"></span>
+                  <a class="ititle" [routerLink]="['/p', i.projectId, 'i', i.id]">
+                    <span class="num">#{{ i.number }}</span> {{ i.title }}</a>
+                  <span class="iproj">{{ projectName(i.projectId) }}</span>
+                  <span class="idue">{{ 'today.resolvedAgo' | t: { n: '' + resolvedDays(i) } }}</span>
+                </li>
+              }
+            </ul>
           }
 
           @if (mySubtaskIssues().length) {
@@ -386,6 +411,8 @@ export class Projects implements OnInit {
   private mineFailed = new Set<string>();
   /** プロジェクトごとの、自分が担当の課題（pid → 課題） */
   private mineByProject = signal<Record<string, (Issue & { projectId: string })[]>>({});
+  /** プロジェクトごとの、自分が提起した解決済みの課題（効果確認のため） */
+  private reportedByProject = signal<Record<string, (Issue & { projectId: string })[]>>({});
   private stopInvitations: Unsubscribe | null = null;
   private requests = inject(RequestService);
   /** 管理者のプロジェクトごとの、対応待ちの依頼の見張り（pid → やめる関数） */
@@ -511,7 +538,34 @@ export class Projects implements OnInit {
   });
   /** 7日以上たった、未整理のメモの数 */
   oldMemos = computed(() => this.inbox.active().filter((m) => this.inbox.isOld(m)).length);
-  hasToday = computed(() => Object.values(this.todayCounts()).some((n) => n > 0) || this.oldMemos() > 0);
+  /**
+   * 効果を確かめる時期になった課題：自分が提起した・解決済み・プロジェクトの日数がたった（自分の暦で数える）。
+   * アーカイブ中のプロジェクトは除く。解決が古い順（長く待たせているものが上）
+   */
+  effectDue = computed(() => {
+    const today = dateKey(new Date(this.clock.now()), this.tz());
+    return Object.values(this.reportedByProject()).flat()
+      .filter((i) => {
+        if (i.status !== 'resolved' || !i.resolvedAt || this.archivedIds().has(i.projectId)) return false;
+        const days = this.projects().find((p) => p.id === i.projectId)?.settings?.effectCheckDays
+          ?? DEFAULT_SETTINGS.effectCheckDays;
+        return daysBetweenKeys(dateKey(i.resolvedAt.toDate(), this.tz()), today) >= days;
+      })
+      .sort((a, b) => a.resolvedAt!.toMillis() - b.resolvedAt!.toMillis());
+  });
+
+  /** 解決してから何日か（自分の暦で） */
+  resolvedDays(i: Issue) {
+    if (!i.resolvedAt) return 0;
+    return daysBetweenKeys(dateKey(i.resolvedAt.toDate(), this.tz()), dateKey(new Date(this.clock.now()), this.tz()));
+  }
+
+  /** 今日のまとめの「効果確認」のチップ：下の見出しへ飛ぶ */
+  jumpEffect() {
+    setTimeout(() => document.getElementById('sec-effect')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }
+  hasToday = computed(() => Object.values(this.todayCounts()).some((n) => n > 0) || this.oldMemos() > 0
+    || this.effectDue().length > 0);
   /** 初期は自分の手が必要なもの（未着手・対応中・保留）。切り替えで解決済み・クローズも表示 */
   /**
    * 自分の課題を、期限の見出しで区切る（今日のまとめのチップと同じ区分 ＋「それより先」）。
@@ -729,7 +783,11 @@ export class Projects implements OnInit {
     // 新しく増えたプロジェクトに見張りを張る
     for (const pid of pids) {
       if (this.mineStops.has(pid) || this.mineFailed.has(pid)) continue;
-      this.mineStops.set(pid, this.issueService.watchMyIssuesIn(
+      // 提起した解決済みの課題（効果確認）。外されたときは、下の「自分の課題」の見張りの側で気づいて片づける
+      const stopReported = this.issueService.watchReportedIn(pid, uid,
+        (issues) => this.reportedByProject.update((m) => ({ ...m, [pid]: issues })),
+        (e) => console.error('提起した課題の見張りに失敗', pid, e));
+      const stopMine = this.issueService.watchMyIssuesIn(
         pid, uid,
         (issues) => this.mineByProject.update((m) => ({ ...m, [pid]: issues })),
         (e) => {
@@ -739,7 +797,11 @@ export class Projects implements OnInit {
           this.stopMineIn(pid);
           if (e.code === 'permission-denied') this.load();
         },
-      ));
+      );
+      this.mineStops.set(pid, () => {
+        stopMine();
+        stopReported();
+      });
     }
   }
 
@@ -768,6 +830,10 @@ export class Projects implements OnInit {
     this.mineStops.get(pid)?.();
     this.mineStops.delete(pid);
     this.mineByProject.update((m) => {
+      const { [pid]: _removed, ...rest } = m;
+      return rest;
+    });
+    this.reportedByProject.update((m) => {
       const { [pid]: _removed, ...rest } = m;
       return rest;
     });

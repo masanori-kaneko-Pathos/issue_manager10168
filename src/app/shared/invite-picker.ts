@@ -15,7 +15,10 @@ const SEP = /[\s,;、，；]+/;
 
 /** 招待が送れなかった理由（翻訳キー） */
 export function inviteErrorKey(e: unknown): string {
-  return e instanceof Error && e.message === 'already-invited' ? 'invite.already' : 'invite.failed';
+  if (!(e instanceof Error)) return 'invite.failed';
+  if (e.message === 'already-invited') return 'invite.already';
+  if (e.message === 'already-member') return 'invite.alreadyMember';
+  return 'invite.failed';
 }
 
 /**

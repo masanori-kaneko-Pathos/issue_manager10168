@@ -97,10 +97,11 @@ export const ja = {
     badEmail: '形式が正しくないアドレスがあります：{{emails}}',
     self: '自分は招待しなくても、プロジェクトに入っています。',
     submit: '招待を送る（{{n}}人）',
-    already: '招待済みのため、送りませんでした',
+    already: '招待済みです',
     failed: '送れませんでした',
     retryNote: 'プロジェクトの作成のときに送れなかった招待です。確かめて、もう一度送ってください。',
     someFailed: '送れなかった招待が残っています。確かめて、もう一度送るか、外してください。',
+    alreadyMember: 'すでに所属しているメンバーには、招待を送れません',
   },
   roles: { admin: '管理者', member: 'メンバー', viewer: '閲覧者' },
   labels: { customer: '顧客対応', internal: '社内対応', spec: '仕様設計', ops: '運用保守', quality: '品質' },
@@ -298,6 +299,7 @@ export const ja = {
     editLabels: 'ラベルを変える',
     needReason: '理由を書いてから閉じてください。（書いた内容を捨てるときは Esc）',
     resolvedAssignee: 'この課題は解決済みです。担当者を変えても、解決した人の記録は残ります。差し戻しや効果確認の知らせは、新しい担当者に届きます。',
+    assigneeGone: '担当者は、もうこのプロジェクトにいません。担当者を押して、選び直してください。',
   },
   edit: {
     open: '編集',
@@ -702,7 +704,17 @@ export const ja = {
     choose: '引き継ぐ人を選ぶ',
     reason: '理由',
     reasonHint: '例：長期の休みに入るため',
-    confirm: { handover: '引き継ぐ', remove: '外す', role: '変える', leave: '抜ける' , self: '引き継ぐ',},
+    confirm: { 
+      handover: '引き継ぐ', 
+      remove: '外す', 
+      role: '変える', 
+      leave: '抜ける' , 
+      self: '引き継ぐ',
+    },
+    subtasksMove: '担当しているサブタスク（{{n}}件の課題）は、それぞれの課題の担当者に渡ります。',
+    subtasksFollow: '渡した課題の中で担当しているサブタスクも、一緒に渡ります。',
+    recurTo: 'Next recurring issues ({{n}}) go to',
+    recurToHelp: 'The assignee of issues created from the next run on. It starts with the person receiving the most issues.',
   },
   inbox: {
     title: '受信箱',
@@ -825,6 +837,8 @@ export const ja = {
     needWeekday: '曜日を1つ以上選んでください。',
     save: '保存する',
     describe: { daily: '毎日 {{time}}', weekly: '毎週 {{days}} {{time}}', monthly: '毎月 {{day}} {{time}}' },
+    showUpcoming: '定期課題を表示',
+    upcomingTitle: '{{title}}（定期課題・予定）',
   },
   overview: {
     description: '説明',
@@ -951,6 +965,9 @@ export const ja = {
       in3: '期限が2〜3日後の課題だけを表示しています。',
     },
     clear: 'すべて表示',
+    effect: '効果確認',
+    effectHelp: 'あなたが提起して、解決してから日数がたった課題です。効果を確かめて、クローズしてください。',
+    resolvedAgo: '解決から{{n}}日',
   },
 
   csv: {
@@ -1387,6 +1404,7 @@ export const ja = {
       low: '「低」{{n}}件',
       active: '未完了 {{n}}件（{{p}}人）',
       overdueAll: '期限切れ {{n}}件（{{p}}人）',
+      effect: '効果確認 {{n}}件',
     },
   },
 };

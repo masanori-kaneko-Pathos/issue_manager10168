@@ -1,4 +1,4 @@
-import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, ElementRef, OnInit, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { FirestoreError, Unsubscribe } from 'firebase/firestore';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -72,11 +72,12 @@ function sameField(k: keyof IssueEdits, a: Issue, b: Issue): boolean {
   imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, StatusDialog, PriorityMark, LinkDialog,
     MergeDialog, LabelPicker, MemberSelect, SubtaskList, CommentBox, RequestDialog, DeleteDialog, ReminderDialog,
     AttachmentList, Avatar, Crumbs, RecurMark],
-  host: {
-    '(document:keydown.escape)':
-      'menuOpen.set(false); statusMenu.set(false); prioMenu.set(false); typeMenu.set(false); closeField()',
-    '(document:click)': 'onDocClick($event)',
-  },
+    host: {
+      '(document:keydown.escape)':
+        'menuOpen.set(false); statusMenu.set(false); prioMenu.set(false); typeMenu.set(false); closeField()',
+      '(document:click)': 'onDocClick($event)',
+      '(window:scroll)': 'onScroll()',
+    },
   templateUrl: './issue-detail.html',
   styleUrl: './issue-detail.css',
 })
@@ -185,6 +186,20 @@ export class IssueDetail implements OnInit {
       this.stops.forEach((stop) => stop());
       this.linkStops.forEach((stop) => stop());
       clearTimeout(this.flashTimer);
+    });
+
+    // 題名の下の行を見張る。読み込みが終わって行ができたら見張り始め、行が消えたらやめる
+    effect((onCleanup) => {
+      const el = this.titleEnd()?.nativeElement;
+      if (!el) return;
+      // 青いヘッダー（52px）と帯（57px）の下に入ったら「隠れた」
+      const top = 52 + 57;
+      const io = new IntersectionObserver(
+        ([e]) => this.titleHidden.set(!e.isIntersecting && e.boundingClientRect.top < top),
+        { rootMargin: `-${top}px 0px 0px 0px` },
+      );
+      io.observe(el);
+      onCleanup(() => io.disconnect());
     });
   }
   busy = signal(false);
@@ -477,6 +492,12 @@ export class IssueDetail implements OnInit {
   }
   /** 担当者にできる人（閲覧者は担当者になれない） */
   assignable = computed(() => this.members().filter((m) => m.role !== 'viewer'));
+  /** 担当者が、もうこのプロジェクトにいない（抜けた・外された）。まだ終わっていない課題のときだけ知らせる */
+  assigneeGone = computed(() => {
+    const i = this.issue();
+    return !!i && this.members().length > 0 && OPEN_STATUSES.includes(i.status)
+      && !this.members().some((m) => m.uid === i.assigneeId);
+  });
   assigneeChanged = computed(() => this.draftAssignee() !== this.editBase()?.assigneeId);
   dueChanged = computed(() => {
     const d = this.draftDue();
@@ -496,6 +517,23 @@ export class IssueDetail implements OnInit {
   /** 登録画面から来て、添付できなかったファイル（1回だけ出す） */
   attachFailed = signal<string[]>(
     ((history.state as Record<string, unknown> | null)?.['attachFailed'] as string[] | undefined) ?? []);
+  /** 題名のすぐ下の行（これが帯の下にもぐったら、題名が隠れたとみなす） */
+  private titleEnd = viewChild<ElementRef<HTMLElement>>('titleEnd');
+  /** 題名がスクロールで隠れたか（隠れたら、帯に題名を出す） */
+  titleHidden = signal(false);
+  /** スマホで、下へスクロールしている間は帯を隠す（上へ戻すと出す。PC では CSS で効かせない） */
+  barHidden = signal(false);
+  private lastY = 0;
+
+  onScroll() {
+    const y = window.scrollY;
+    const dy = y - this.lastY;
+    // 小さな揺れは無視する（指を離したあとの跳ね返りで、帯が出たり消えたりしないように）
+    if (Math.abs(dy) < 8) return;
+    this.lastY = y;
+    // 一番上のあたりと、⋮ のメニューを開いている間は、いつも出す
+    this.barHidden.set(dy > 0 && y > 120 && !this.menuOpen());
+  }
   /** 下に数秒だけ出す知らせ（翻訳キー） */
   flash = signal('');
   private flashTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1246,6 +1284,11 @@ export class IssueDetail implements OnInit {
     this.flash.set(key);
     clearTimeout(this.flashTimer);
     this.flashTimer = setTimeout(() => this.flash.set(''), 3000);
+  }
+
+  closeFlash() {
+    clearTimeout(this.flashTimer);
+    this.flash.set('');
   }
 
   openDelete() {

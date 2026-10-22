@@ -151,6 +151,13 @@ export class InboxService {
     clearTimeout(this.flashTimer);
     this.flashTimer = setTimeout(() => this.flash.set(null), 4000);
   }
+
+  /** 知らせを、待たずに閉じる（✕） */
+  hideFlash() {
+    clearTimeout(this.flashTimer);
+    this.flash.set(null);
+  }
+
 }
 
 /** 1つの欄の文字を、タイトル（1行目）と詳しいこと（2行目から）に分ける */

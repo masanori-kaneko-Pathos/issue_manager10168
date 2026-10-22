@@ -1021,6 +1021,23 @@ export class IssueService {
     );
   }
 
+  /**
+   * 1つのプロジェクトで、自分が提起した解決済みの課題を見張る（ホームの「効果確認」用。プロジェクトごとに1本）。
+   * 絞るのは提起者だけにして、解決済みかは画面で見る（2つの欄で絞ると、索引を作る必要が出ることがあるため）
+   */
+  watchReportedIn(
+    pid: string, uid: string,
+    onData: (issues: (Issue & { projectId: string })[]) => void,
+    onError: (e: FirestoreError) => void,
+  ): Unsubscribe {
+    return onSnapshot(
+      query(collection(db, 'projects', pid, 'issues'), where('reporterId', '==', uid)),
+      (s) => onData(s.docs.map((d) => ({ ...toIssue(d), projectId: pid })).filter((i) => i.status === 'resolved')),
+      onError,
+    );
+  }
+
+
   /** 直近 days 日以内にクローズした課題を見張る（かんばんの「完了」の列用） */
   watchRecentlyClosed(
     pid: string, days: number, onData: (issues: Issue[]) => void, onError: (e: FirestoreError) => void,

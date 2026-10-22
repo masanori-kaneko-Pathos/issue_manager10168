@@ -158,7 +158,13 @@ import { LogoutDialog } from './logout-dialog';
         }
       </div>
     </header>
-    @if (inbox.flash(); as key) { <div class="toast" role="status" animate.leave="im-out">{{ key | t }}</div> }
+    @if (inbox.flash(); as key) {
+      <div class="toast" role="status" animate.leave="im-out">
+        <span>{{ key | t }}</span>
+        <button type="button" class="toast-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t"
+          (click)="inbox.hideFlash()">✕</button>
+      </div>
+    }
     @if (projectNewOpen()) {
       @defer (on immediate) {
         @if (projectDraftId(); as id) {
@@ -198,8 +204,12 @@ import { LogoutDialog } from './logout-dialog';
       border-radius: 9px; background: var(--on-primary); color: var(--primary); font-size: 11px; font-weight: bold;
       line-height: 18px; text-align: center; box-sizing: border-box; }
     .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%);
-      z-index: 200; padding: 10px 18px; border-radius: 20px; background: var(--text); color: var(--surface);
+      z-index: 200; display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 32px); box-sizing: border-box;
+      padding: 6px 6px 6px 18px; border-radius: 20px; background: var(--text); color: var(--surface);
       font-size: 14px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); }
+    .toast-x { flex: none; width: 32px; height: 32px; padding: 0; border: none; border-radius: 50%;
+      background: none; color: inherit; font-size: 14px; cursor: pointer; }
+    .toast-x:hover { background: rgba(255, 255, 255, 0.15); }
     .add { position: relative; }
     .primary-item { font-weight: bold; color: var(--primary) !important; }
     .item-row { display: flex; align-items: center; padding-right: 12px; }

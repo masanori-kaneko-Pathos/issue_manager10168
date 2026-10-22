@@ -64,7 +64,9 @@ interface IssueDraft {
     recurrenceOf: { iid: string; number: number } | null;
     splitFrom: { iid: string; sid: string; number: number } | null;
     linkFrom?: { iid: string; number: number } | null;
-    linkKind?: LinkKind;
+    /** 複製元の課題（下書きから開き直しても、似た課題から外せるように） */
+    copyFrom?: string | null;  linkKind?: LinkKind;
+
     notes: {
       from: number | null; copy: number | null; recur: number | null; split: { n: number; title: string } | null;
       link?: { n: number; title: string } | null;
@@ -339,6 +341,8 @@ export class IssueNew implements OnInit {
   /** 登録したあとに戻る画面（かんばんの列の ＋ から来たとき）。同じプロジェクトの中の道だけ受け付ける */
   private readonly ret = this.qp.get('ret');
   copyNumber = signal<number | null>(null);
+  /** 複製元の課題の id（下書きから開いたときは、下書きにしまってあった値） */
+  private copySrc: string | null = this.copyIid;
     /** 新しく作ってつなぐときの、元の課題の id（詳細の「新しく作ってつなぐ」から来たとき） */
     private readonly linkOfIid = this.qp.get('linkFrom');
     private linkFrom: { iid: string; number: number } | null = null;
@@ -451,7 +455,7 @@ export class IssueNew implements OnInit {
     const typed = bigrams(this.titleQ());
     if (typed.size < 3) return [];
     const skip = new Set([
-      this.relatedFrom?.iid, this.recurrenceOf?.iid, this.splitFrom?.iid, this.linkFrom?.iid, this.copyIid,
+      this.relatedFrom?.iid, this.recurrenceOf?.iid, this.splitFrom?.iid, this.linkFrom?.iid, this.copySrc,
     ]);
     return this.pool()
       .filter((p) => p.issue.status !== 'deleted' && p.issue.status !== 'merged' && !skip.has(p.issue.id))
@@ -823,7 +827,7 @@ export class IssueNew implements OnInit {
       estimate: this.estimate,
       src: {
         memoId: this.memoId, relatedFrom: this.relatedFrom, recurrenceOf: this.recurrenceOf, splitFrom: this.splitFrom,
-        linkFrom: this.linkFrom, linkKind: this.linkKind(),
+        linkFrom: this.linkFrom, linkKind: this.linkKind(), copyFrom: this.copySrc,
         notes: {
           from: this.fromNumber(), copy: this.copyNumber(), recur: this.recurNumber(), split: this.splitNote(),
           link: this.linkNote(),
@@ -877,7 +881,7 @@ export class IssueNew implements OnInit {
       this.splitNote.set(v.src.notes.split);
       this.linkFrom = v.src.linkFrom ?? null;
       this.linkKind.set(v.src.linkKind ?? 'relates');
-      this.linkNote.set(v.src.notes.link ?? null);
+      this.copySrc = v.src.copyFrom ?? this.copySrc;
     }
     return true;
   }
