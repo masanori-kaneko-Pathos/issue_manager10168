@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { CdkDrag, CdkDragDrop, CdkDropList, CdkDropListGroup } from '@angular/cdk/drag-drop';
 import { auth } from '../../core/firebase';
@@ -7,7 +7,9 @@ import { PriorityMark } from '../../shared/priority-mark';
 import { AuthService } from '../../core/auth/auth.service';
 import { Clock } from '../../core/time/clock';
 import { IssueService } from '../../core/issue/issue.service';
-import { Issue, Level } from '../../core/models';
+import { Issue, Level, RecurringTemplate } from '../../core/models';
+import { RecurringService } from '../../core/recurring/recurring.service';
+import { upcomingDues } from '../../core/recurring/schedule';
 import { compareIssues, isManualPriority, priorityOf } from '../../core/issue/priority';
 import { ProjectContext } from './project-context';
 import { dateKey } from '../../core/time/time';
@@ -19,6 +21,8 @@ import { UndoService } from '../../core/undo/undo.service';
 import { IssueFormService } from '../../core/issue/issue-form.service';
 import { MonthPicker } from '../../shared/month-picker';
 import { RecurMark } from '../../shared/recur-mark';
+
+const DAY = 24 * 60 * 60 * 1000;
 
 type Mode = 'month' | 'week';
 interface Day { key: string; d: number; dow: number; inRange: boolean; }
@@ -54,6 +58,13 @@ function addDays(dt: Date, n: number): Date {
           {{ 'calendar.today' | t }}</button>
       </div>
       <div class="modes">
+        @if (hasMyRecur()) {
+          <label class="up-toggle" [title]="'recurring.showUpcoming' | t">
+            <input type="checkbox" [checked]="showUpcoming()" [attr.aria-label]="'recurring.showUpcoming' | t"
+              (change)="recurService.setShowUpcoming(!showUpcoming())" />
+            <app-recur-mark [size]="12" [decorative]="true" /><span class="up-label">{{ 'recurring.showUpcoming' | t }}</span>
+          </label>
+        }
         <button type="button" [class.on]="mode() === 'month'" (click)="setMode('month')">{{ 'calendar.month' | t }}</button>
         <button type="button" [class.on]="mode() === 'week'" (click)="setMode('week')">{{ 'calendar.week' | t }}</button>
       </div>
@@ -70,6 +81,7 @@ function addDays(dt: Date, n: number): Date {
         }
         @for (day of days(); track day.key) {
           @let items = byDay().get(day.key) ?? [];
+          @let ghosts = ghostsByDay().get(day.key) ?? [];
           <div class="cell" [class.out]="!day.inRange" [class.today]="day.key === todayKey()"
             [class.sun]="day.dow === 0" [class.sat]="day.dow === 6" (click)="onCellTap(day.key)"
             cdkDropList [cdkDropListData]="day.key" [cdkDropListSortingDisabled]="true"
@@ -98,9 +110,15 @@ function addDays(dt: Date, n: number): Date {
                   <span class="num">#{{ i.number }}</span> @if (i.recurringId) { <app-recur-mark [size]="11" /> } {{ i.title }}
                 </div>
               }
-              @if (mode() === 'month' && items.length > 3) {
+              <!-- 定期課題の先の回（薄く。押すと定期課題のページへ）。月の表示では、課題と合わせて3つまで -->
+              @for (g of (mode() === 'week' ? ghosts : ghosts.slice(0, items.length >= 3 ? 0 : 3 - items.length)); track $index) {
+                <a class="item ghost" [routerLink]="['/p', ctx.pid(), 'recurring']"
+                  [title]="'recurring.upcomingTitle' | t: { title: g.title }" (click)="$event.stopPropagation()">
+                  <app-recur-mark [size]="11" [decorative]="true" /> {{ g.title }}</a>
+              }
+              @if (mode() === 'month' && items.length + ghosts.length > 3) {
                 <button type="button" class="more" (click)="openWeek(day.key); $event.stopPropagation()">
-                  +{{ items.length - 3 }}</button>
+                  +{{ items.length + ghosts.length - 3 }}</button>
               }
             </div>
           </div>
@@ -181,6 +199,12 @@ function addDays(dt: Date, n: number): Date {
     .cdk-drag-preview { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25); max-width: 240px; }
     .cdk-drag-placeholder { opacity: 0.3; }
     .more { border: none; background: none; color: var(--primary); font-size: 11px; text-align: left; padding: 0 4px; cursor: pointer; }
+    /* 定期課題の先の回：点線の枠で薄く（まだできていない課題だと分かるように） */
+    .item.ghost { background: none; border: 1px dashed var(--border-strong); border-left-width: 3px;
+      color: var(--text-muted); }
+    .item.ghost:hover { background: var(--surface-alt); }
+    .up-toggle { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; font-size: 12px;
+      color: var(--text-muted); cursor: pointer; }
 
     /* スマホ：月はマスに件数だけ出し、押すとその週を開く。週は縦に1日ずつ並べる */
     @media (max-width: 600px) {
@@ -209,6 +233,40 @@ export class ProjectCalendar implements OnInit {
   private router = inject(Router);
   private i18n = inject(I18nService);
   private readonly myUid = auth.currentUser!.uid;
+  protected recurService = inject(RecurringService);
+  /** 自分が担当の、動いている定期課題の雛形（このプロジェクト） */
+  private myRecur = signal<RecurringTemplate[]>([]);
+  /** 先の回を出せるか：使う機能がオン・アーカイブ中でない・自分が担当の雛形がある（切り替えも、このときだけ出す） */
+  hasMyRecur = computed(() => !!this.ctx.project()?.settings?.features?.recurring && !this.ctx.archived()
+    && this.myRecur().length > 0);
+  showUpcoming = this.recurService.showUpcoming;
+
+  constructor() {
+    const stop = this.recurService.watch(this.ctx.pid(),
+      (l) => this.myRecur.set(l.filter((t) => t.active && !t.stopped && t.assigneeId === this.myUid)),
+      (e) => console.error(e));
+    inject(DestroyRef).onDestroy(stop);
+  }
+
+  /** 先の回（期限の日 → 雛形）。人の絞り込みで自分を外しているときは出さない */
+  ghostsByDay = computed(() => {
+    const map = new Map<string, RecurringTemplate[]>();
+    if (!this.hasMyRecur() || !this.showUpcoming()) return map;
+    const who = this.who();
+    if (who.length && !who.includes(this.myUid)) return map;
+    const days = this.days();
+    const first = days[0].key;
+    const last = days[days.length - 1].key;
+    // 表の最後の日まで（タイムゾーンの差の分、2日の余裕をみる）
+    const until = Date.parse(last + 'T00:00:00Z') + 2 * DAY;
+    for (const t of this.myRecur()) {
+      for (const due of upcomingDues(t, until)) {
+        const k = dateKey(new Date(due), this.tz());
+        if (k >= first && k <= last) map.set(k, [...(map.get(k) ?? []), t]);
+      }
+    }
+    return map;
+  });
 
   dragging = signal<Issue | null>(null);
   /** 落としたあと、モーダルで確かめ中の変更 */

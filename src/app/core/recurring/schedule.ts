@@ -57,3 +57,20 @@ export function nextOccurrence(s: RecurSpec, afterMs: number): number {
 export function hhmm(time: number) {
   return `${Math.floor(time / 60)}:${String(time % 60).padStart(2, '0')}`;
 }
+
+/**
+ * 定期課題の先の回の期限（ミリ秒）を、作る時刻が untilMs までのぶんだけ並べる（カレンダーに薄く出すため）。
+ * 期限は、作る日（雛形のタイムゾーンの暦）の dueDays 日後の 23:59（関数の runRecurring と同じ決まり）
+ */
+export function upcomingDues(
+  t: RecurSpec & { nextAt: { toMillis(): number }; dueDays: number }, untilMs: number, max = 62,
+): number[] {
+  const out: number[] = [];
+  let at = t.nextAt.toMillis();
+  for (let k = 0; k < max && at <= untilMs; k++) {
+    const p = partsIn(at, t.tz);
+    out.push(zonedMs(p.y, p.m, p.d + t.dueDays, 23, 59, t.tz));
+    at = nextOccurrence(t, at);
+  }
+  return out;
+}

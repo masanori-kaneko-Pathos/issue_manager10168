@@ -1,9 +1,9 @@
-import { Injectable } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 import {
   FirestoreError, Timestamp, Unsubscribe, collection, deleteDoc, deleteField, doc, onSnapshot, serverTimestamp,
   setDoc, updateDoc,
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { auth, db } from '../firebase';
 import { RecurringTemplate } from '../models';
 import { nextOccurrence } from './schedule';
 
@@ -15,6 +15,30 @@ export type RecurringInput = Pick<RecurringTemplate,
 /** 定期課題の雛形の読み書き（書けるのは管理者だけ。ルールで確認）。課題を作るのは関数 */
 @Injectable({ providedIn: 'root' })
 export class RecurringService {
+  /** カレンダーに先の回を出すか（この端末に覚える。最初は出す。プロジェクトとホームのカレンダーで同じ） */
+  showUpcoming = signal(this.readShow());
+
+  private showKey() {
+    return `issuemanager.recurCal.${auth.currentUser?.uid ?? ''}`;
+  }
+
+  private readShow() {
+    try {
+      return localStorage.getItem(this.showKey()) !== '0';
+    } catch {
+      return true;
+    }
+  }
+
+  setShowUpcoming(on: boolean) {
+    this.showUpcoming.set(on);
+    try {
+      localStorage.setItem(this.showKey(), on ? '1' : '0');
+    } catch {
+      // 覚えておけなくても、今は切り替えられる
+    }
+  }
+
   private col(pid: string) {
     return collection(db, 'projects', pid, 'recurring');
   }

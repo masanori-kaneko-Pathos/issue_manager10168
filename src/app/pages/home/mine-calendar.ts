@@ -1,11 +1,13 @@
-import { Component, computed, inject, input, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { CdkDrag, CdkDragDrop, CdkDropList, CdkDropListGroup } from '@angular/cdk/drag-drop';
 import { auth } from '../../core/firebase';
 import { AuthService } from '../../core/auth/auth.service';
 import { Clock } from '../../core/time/clock';
 import { ProjectService } from '../../core/project/project.service';
-import { Issue, Level, Member, ProjectWithRole } from '../../core/models';
+import { Issue, Level, Member, ProjectWithRole, RecurringTemplate } from '../../core/models';
+import { RecurringService } from '../../core/recurring/recurring.service';
+import { upcomingDues } from '../../core/recurring/schedule';
 import { compareIssues, isManualPriority, priorityOf } from '../../core/issue/priority';
 import { dateKey, shortDue } from '../../core/time/time';
 import { PriorityMark } from '../../shared/priority-mark';
@@ -14,6 +16,8 @@ import { I18nService, TPipe } from '../../i18n/i18n';
 import { MonthPicker } from '../../shared/month-picker';
 import { RecurMark } from '../../shared/recur-mark';
 
+const DAY = 24 * 60 * 60 * 1000;
+type Ghost = RecurringTemplate & { pid: string };
 type Mine = Issue & { projectId: string };
 interface Day { key: string; d: number; dow: number; inRange: boolean; }
 
@@ -45,6 +49,13 @@ function addDays(dt: Date, n: number): Date {
       <app-month-picker [value]="cursor()" [label]="title()" [today]="todayKey()" (picked)="go($event)" />
       <button type="button" class="arrow" [attr.aria-label]="'calendar.next' | t" (click)="move(1)">›</button>
       <button type="button" class="today-btn" [disabled]="showingToday()" (click)="goToday()">{{ 'calendar.today' | t }}</button>
+      @if (hasMyRecur()) {
+        <label class="up-toggle" [title]="'recurring.showUpcoming' | t">
+          <input type="checkbox" [checked]="showUpcoming()" [attr.aria-label]="'recurring.showUpcoming' | t"
+            (change)="recurService.setShowUpcoming(!showUpcoming())" />
+          <app-recur-mark [size]="12" [decorative]="true" /><span class="up-label">{{ 'recurring.showUpcoming' | t }}</span>
+        </label>
+      }
     </div>
     <!-- 月を移るたびに表を作り直し、新しい表のマスをすべり込ませる -->
     @for (g of [gridKey()]; track g) {
@@ -54,6 +65,7 @@ function addDays(dt: Date, n: number): Date {
       }
       @for (day of days(); track day.key) {
         @let items = byDay().get(day.key) ?? [];
+        @let ghosts = ghostsByDay().get(day.key) ?? [];
         <div class="cell" [class.out]="!day.inRange" [class.today]="day.key === todayKey()"
           [class.sel]="day.key === selected()" (click)="selected.set(day.key)"
           cdkDropList [cdkDropListData]="day.key" [cdkDropListSortingDisabled]="true"
@@ -74,7 +86,12 @@ function addDays(dt: Date, n: number): Date {
                 (click)="open(i); $event.stopPropagation()" (keydown.enter)="open(i)">
                 <span class="num">#{{ i.number }}</span> @if (i.recurringId) { <app-recur-mark [size]="11" /> } {{ i.title }}</div>
             }
-            @if (items.length > 3) { <span class="more">+{{ items.length - 3 }}</span> }
+            @for (g of ghosts.slice(0, items.length >= 3 ? 0 : 3 - items.length); track $index) {
+              <a class="item ghost" [routerLink]="['/p', g.pid, 'recurring']"
+                [title]="'recurring.upcomingTitle' | t: { title: g.title }" (click)="$event.stopPropagation()">
+                <app-recur-mark [size]="11" [decorative]="true" /> {{ g.title }}</a>
+            }
+            @if (items.length + ghosts.length > 3) { <span class="more">+{{ items.length + ghosts.length - 3 }}</span> }
           </div>
         </div>
       }
@@ -93,7 +110,15 @@ function addDays(dt: Date, n: number): Date {
             <span class="idue" [class.overdue]="overdue(i)">{{ dueLabel(i) }}</span>
           </li>
         } @empty {
-          <li class="none">{{ 'calendar.noneOnDay' | t }}</li>
+          @if (!(ghostsByDay().get(k) ?? []).length) { <li class="none">{{ 'calendar.noneOnDay' | t }}</li> }
+        }
+        @for (g of ghostsByDay().get(k) ?? []; track $index) {
+          <li class="ghost-row">
+            <span class="prio-none"></span>
+            <a class="ititle" [routerLink]="['/p', g.pid, 'recurring']">
+              <app-recur-mark [size]="11" [decorative]="true" /> {{ 'recurring.upcomingTitle' | t: { title: g.title } }}</a>
+            <span class="iproj">{{ nameOf()(g.pid) }}</span>
+          </li>
         }
       </ul>
     }
@@ -169,6 +194,12 @@ function addDays(dt: Date, n: number): Date {
     .idue { flex: none; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
     .idue.overdue { color: var(--danger-text); font-weight: bold; }
     .none { color: var(--text-muted); font-size: 13px; }
+    .item.ghost { background: none; border: 1px dashed var(--border-strong); border-left-width: 3px;
+      color: var(--text-muted); }
+    .ghost-row .ititle { color: var(--text-muted); }
+    .up-toggle { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-size: 12px;
+      color: var(--text-muted); cursor: pointer; }
+
     /* スマホ：マスには件数だけ。押すと、下の一覧で見る（マスの中の課題は出さないので、ドラッグは PC だけ） */
     @media (max-width: 600px) {
       .cell { min-height: 48px; }
@@ -212,7 +243,28 @@ export class MineCalendar {
   pending = signal<{ issue: Mine; date: string; members: Member[] } | null>(null);
   /** 離した直後のクリックで、詳細が開かないようにする目印 */
   private justDragged = false;
+  protected recurService = inject(RecurringService);
+  /** 自分が担当の、動いている定期課題の雛形（全プロジェクト。どのプロジェクトのものかも持つ） */
+  private myRecur = signal<Ghost[]>([]);
+  hasMyRecur = computed(() => this.myRecur().length > 0);
+  showUpcoming = this.recurService.showUpcoming;
 
+  /** 先の回（期限の日 → 雛形） */
+  ghostsByDay = computed(() => {
+    const map = new Map<string, Ghost[]>();
+    if (!this.showUpcoming()) return map;
+    const days = this.days();
+    const first = days[0].key;
+    const last = days[days.length - 1].key;
+    const until = Date.parse(last + 'T00:00:00Z') + 2 * DAY;
+    for (const t of this.myRecur()) {
+      for (const due of upcomingDues(t, until)) {
+        const k = dateKey(new Date(due), this.tz());
+        if (k >= first && k <= last) map.set(k, [...(map.get(k) ?? []), t]);
+      }
+    }
+    return map;
+  });
   /** 表示する月を変える。今より先なら右から、前なら左から（選び窓からも呼ぶ） */
   go(next: string) {
     const cur = this.cursor();
@@ -224,6 +276,18 @@ export class MineCalendar {
     const t = this.todayKey();
     this.cursor.set(t);
     this.selected.set(t);
+    // 定期課題がオンのプロジェクトごとに、雛形を見張る（プロジェクトの一覧が変わったら、張り直す）
+    effect((onCleanup) => {
+      const pids = this.projects()
+        .filter((p) => !p.archived && p.settings?.features?.recurring).map((p) => p.id);
+      const per = new Map<string, Ghost[]>();
+      this.myRecur.set([]);
+      const stops = pids.map((pid) => this.recurService.watch(pid, (l) => {
+        per.set(pid, l.filter((t) => t.active && !t.stopped && t.assigneeId === this.myUid).map((t) => ({ ...t, pid })));
+        this.myRecur.set([...per.values()].flat());
+      }, (e) => console.error(e)));
+      onCleanup(() => stops.forEach((stop) => stop()));
+    });
   }
 
   /** 日曜はじまりの月の表 */
