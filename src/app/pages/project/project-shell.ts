@@ -116,7 +116,7 @@ import { Crumbs, HOME } from '../../shared/crumbs';
       <div class="sample" role="status">
         <p>{{ 'sample.banner' | t }}</p>
         @if (ctx.role() === 'admin') {
-          <button type="button" class="sample-end" (click)="sampleEnd.set(true); archiveOpen.set(true)">
+          <button type="button" class="sample-end" (click)="archiveOpen.set(true)">
             {{ 'sample.end' | t }}</button>
         }
       </div>
@@ -132,8 +132,7 @@ import { Crumbs, HOME } from '../../shared/crumbs';
     <app-csv-export-dialog (done)="exportOpen.set(false)" (cancel)="exportOpen.set(false)" />
   }
   @if (archiveOpen()) {
-    <app-archive-dialog [presetReason]="sampleEnd() ? i18n.t('sample.endReason') : ''"
-      (done)="archiveOpen.set(false); sampleEnd.set(false)" (cancel)="archiveOpen.set(false); sampleEnd.set(false)" />
+    <app-archive-dialog (done)="archiveOpen.set(false)" (cancel)="archiveOpen.set(false)" />
   }
   @if (deleteOpen()) {
     <app-delete-project-dialog [pid]="ctx.pid()" [name]="ctx.project()!.name" [others]="ctx.members().length - 1"
@@ -216,8 +215,6 @@ export class ProjectHome {
   exportOpen = signal(false);
   archiveOpen = signal(false);
   deleteOpen = signal(false);
-  /** 見本を終えるために、アーカイブの窓を開いた（理由を最初から入れておく） */
-  sampleEnd = signal(false);
   busy = signal(false);
   error = signal('');
   protected i18n = inject(I18nService);

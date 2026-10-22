@@ -8,18 +8,17 @@ import { HelpTip } from '../../shared/help-tip';
 import { PASSWORD_RULE } from '../login/login';
 import { Router } from '@angular/router';
 import { auth } from '../../core/firebase';
-import { ProjectService } from '../../core/project/project.service';
-import { SampleService } from '../../core/project/sample.service';
 import { Avatar } from '../../shared/avatar';
 import { AvatarCropDialog } from '../../shared/avatar-crop-dialog';
 import { PwField } from '../../shared/pw-field';
+import { LogoutDialog } from '../../shared/logout-dialog';
 
 
 type Section = 'general' | 'password' | 'email';
 
 @Component({
   selector: 'app-settings',
-  imports: [FormsModule, RouterLink, TPipe, HelpTip, Avatar, AvatarCropDialog, PwField],
+  imports: [FormsModule, RouterLink, TPipe, HelpTip, Avatar, AvatarCropDialog, PwField, LogoutDialog],
   host: { '(window:beforeunload)': 'onBeforeUnload($event)' },
   template: `
     <main>
@@ -125,7 +124,7 @@ type Section = 'general' | 'password' | 'email';
 
         <section>
           <h2>{{ 'common.logout' | t }}</h2>
-          <button type="button" class="ghost-btn" (click)="logout()">{{ 'common.logout' | t }}</button>
+          <button type="button" class="ghost-btn" (click)="logoutOpen.set(true)">{{ 'common.logout' | t }}</button>
         </section>
 
         <!-- 危ない操作は一番下に、赤い枠で -->
@@ -139,17 +138,7 @@ type Section = 'general' | 'password' | 'email';
       @if (section === 'intro') {
         <section>
           <p class="help">{{ 'intro.settingsHelp' | t }}</p>
-          <div class="row-start">
-            @if (activeSample(); as pid) {
-              <button type="button" class="primary" (click)="openSample(pid)">{{ 'intro.openSample' | t }}</button>
-            } @else {
-              <button type="button" class="primary" [disabled]="sampleBusy()" (click)="makeSample()">
-                {{ (sampleBusy() ? 'intro.making' : 'intro.makeSample') | t }}</button>
-            }
-            <button type="button" class="link" [disabled]="!introHidden()" (click)="showIntroAgain()">
-              {{ (introHidden() ? 'intro.showAgain' : 'intro.shown') | t }}</button>
-          </div>
-          @if (introMsg()) { <p class="msg" [class.ng]="introMsg() === 'common.saveError'">{{ introMsg() | t }}</p> }
+          <button type="button" class="primary start-btn" (click)="startIntro()">{{ 'intro.start' | t }}</button>
         </section>
       }
 
@@ -168,6 +157,7 @@ type Section = 'general' | 'password' | 'email';
     @if (cropFile(); as f) {
       <app-avatar-crop-dialog [file]="f" (done)="savePhoto($event)" (cancel)="cropFile.set(null)" />
     }
+    @if (logoutOpen()) { <app-logout-dialog (cancel)="logoutOpen.set(false)" /> }
   `,
   styles: `
     .bar { padding: 8px 16px; border-bottom: 1px solid var(--border); }
@@ -214,6 +204,7 @@ type Section = 'general' | 'password' | 'email';
     .current { margin: 0; font-size: 15px; overflow-wrap: anywhere; }
     .danger-zone { border-color: var(--danger); }
     .ghost-btn { align-self: flex-start; background: var(--surface); }
+    .start-btn { align-self: flex-start; }
   `,
 })
 export class Settings implements OnInit {
@@ -231,6 +222,8 @@ export class Settings implements OnInit {
   emailPw = '';
   /** 確認メールを送った先（送ったら、欄の代わりに知らせを出す） */
   emailSent = signal<string | null>(null);
+  /** ログアウトの確かめの窓 */
+  logoutOpen = signal(false);
 
   async changeEmail() {
     const to = this.newEmail.trim();
@@ -249,9 +242,9 @@ export class Settings implements OnInit {
       const code = (e as { code?: string }).code ?? '';
       const key = code.includes('invalid-credential') || code.includes('wrong-password') ? 'settings.pwWrong'
         : code.includes('invalid-email') ? 'account.invalidEmail'
-        : code.includes('email-already-in-use') ? 'account.inUse'
-        : code.includes('too-many-requests') ? 'account.tooMany'
-        : 'common.saveError';
+          : code.includes('email-already-in-use') ? 'account.inUse'
+            : code.includes('too-many-requests') ? 'account.tooMany'
+              : 'common.saveError';
       this.msg.set({ section: 'email', key, ok: false });
     } finally {
       this.busy.set(false);
@@ -263,43 +256,15 @@ export class Settings implements OnInit {
     await this.router.navigateByUrl('/login');
   }
   private authService = inject(AuthService);
-  private ps = inject(ProjectService);
-  private sample = inject(SampleService);
   private router = inject(Router);
-  /** 進行中の見本（あれば、作り直さずに開く。見本が増えすぎないように） */
-  activeSample = signal<string | null>(null);
-  sampleBusy = signal(false);
-  introMsg = signal('');
-  introHidden = computed(() => !!this.authService.profile()?.introHidden);
 
-  async makeSample() {
-    this.sampleBusy.set(true);
-    this.introMsg.set('');
-    try {
-      const pid = await this.sample.create();
-      await this.router.navigate(['/p', pid, 'board']);
-    } catch (e) {
-      console.error(e);
-      this.introMsg.set('common.saveError');
-    } finally {
-      this.sampleBusy.set(false);
-    }
+  /**
+   * イントロダクションを始める：ホームへ移り、ようこその箱を出してもらう。
+   * プロジェクトがあっても出すよう、印（intro）を添える。見本を作る・開くは、箱の中のボタンに任せる
+   */
+  startIntro() {
+    this.router.navigate(['/'], { state: { intro: true } });
   }
-
-  openSample(pid: string) {
-    this.router.navigate(['/p', pid, 'board']);
-  }
-
-  /** ようこその箱を、ホームにもう一度出す */
-  async showIntroAgain() {
-    try {
-      await this.authService.updateProfile({ introHidden: false });
-      this.introMsg.set('intro.shownDone');
-    } catch (e) {
-      console.error(e);
-      this.introMsg.set('common.saveError');
-    }
-  }  
   protected i18n = inject(I18nService);
 
   readonly uid = auth.currentUser!.uid;
@@ -354,29 +319,29 @@ export class Settings implements OnInit {
   readonly commonZones = COMMON_TIMEZONES.map((z) => ({ value: z, label: `${z}（${tzOffset(z)}）` }));
   readonly allZones = Intl.supportedValuesOf('timeZone').map((z) => ({ value: z, label: `${z}（${tzOffset(z)}）` }));
 
-   // 画面上の値（保存するまでは反映しない）
-   displayName = signal('');
-   language = signal<Lang>('ja');
-   timeZone = signal('Asia/Tokyo');
-   defaultView = signal<'list' | 'board'>('list');
-   // 保存済みの値（変更があるかの比較用）
-   private saved = signal({
+  // 画面上の値（保存するまでは反映しない）
+  displayName = signal('');
+  language = signal<Lang>('ja');
+  timeZone = signal('Asia/Tokyo');
+  defaultView = signal<'list' | 'board'>('list');
+  // 保存済みの値（変更があるかの比較用）
+  private saved = signal({
     displayName: '', language: 'ja' as Lang, timeZone: 'Asia/Tokyo', defaultView: 'list' as 'list' | 'board',
   });
- 
-   currentPw = '';
-   newPw = '';
-   busy = signal(false);
-   msg = signal<{ section: Section; key: string; ok: boolean } | null>(null);
- 
-   nowInZone = computed(() => formatDateTime(new Date(), this.timeZone(), this.i18n.lang()));
-   dirty = computed(() => {
-     const s = this.saved();
-     return this.displayName().trim() !== s.displayName
-       || this.language() !== s.language
-       || this.timeZone() !== s.timeZone
-       || this.defaultView() !== s.defaultView;
-   });
+
+  currentPw = '';
+  newPw = '';
+  busy = signal(false);
+  msg = signal<{ section: Section; key: string; ok: boolean } | null>(null);
+
+  nowInZone = computed(() => formatDateTime(new Date(), this.timeZone(), this.i18n.lang()));
+  dirty = computed(() => {
+    const s = this.saved();
+    return this.displayName().trim() !== s.displayName
+      || this.language() !== s.language
+      || this.timeZone() !== s.timeZone
+      || this.defaultView() !== s.defaultView;
+  });
 
   async ngOnInit() {
     const p = this.authService.profile() ?? (await this.authService.fetchProfile());
@@ -385,12 +350,6 @@ export class Settings implements OnInit {
         displayName: p.displayName, language: p.language, timeZone: p.timeZone, defaultView: p.defaultView ?? 'list',
       });
       this.discard();
-    }
-    try {
-      const list = await this.ps.listMyProjects(auth.currentUser!.uid);
-      this.activeSample.set(list.find((p) => p.sample && !p.archived && p.role === 'admin')?.id ?? null);
-    } catch (e) {
-      console.error(e);
     }
   }
   /** 変えた項目だけをまとめて保存する */
@@ -409,8 +368,8 @@ export class Settings implements OnInit {
       this.saved.set({
         displayName: name, language: this.language(), timeZone: this.timeZone(), defaultView: this.defaultView(),
       });
-      });
-    
+    });
+
   }
 
   /** 保存済みの値に戻す */

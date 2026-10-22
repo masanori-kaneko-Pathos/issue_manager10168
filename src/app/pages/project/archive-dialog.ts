@@ -4,7 +4,8 @@ import { auth } from '../../core/firebase';
 import { ArchiveKind } from '../../core/models';
 import { ProjectService } from '../../core/project/project.service';
 import { ProjectContext } from './project-context';
-import { TPipe } from '../../i18n/i18n';
+import { TPipe, I18nService } from '../../i18n/i18n';
+import { AuthService } from '../../core/auth/auth.service';
 
 /** プロジェクトのアーカイブ。種類（完了／打ち切り）と理由を書いて確定する。課題のステータスは変えない */
 @Component({
@@ -65,6 +66,10 @@ export class ArchiveDialog implements OnInit {
 
   private ctx = inject(ProjectContext);
   private ps = inject(ProjectService);
+  private i18n = inject(I18nService);
+  private authService = inject(AuthService);
+  /** 見本のプロジェクトか（見本なら、どの入口から開いても、理由を最初から入れる） */
+  private readonly isSample = !!this.ctx.project()?.sample;
 
   readonly kinds: ArchiveKind[] = ['completed', 'cancelled'];
   kind = signal<ArchiveKind>('completed');
@@ -76,7 +81,8 @@ export class ArchiveDialog implements OnInit {
 
   ngOnInit() {
     this.kind.set(this.presetKind());
-    this.reason = this.presetReason();
+    // 外から渡された理由がなくても、見本なら「イントロダクションを完了しました」を入れておく（書き換えられる）
+    this.reason = this.presetReason() || (this.isSample ? this.i18n.t('sample.endReason') : '');
   }
 
   async confirm() {
@@ -84,6 +90,11 @@ export class ArchiveDialog implements OnInit {
     this.error.set('');
     try {
       await this.ps.archive(this.ctx.pid(), this.kind(), this.reason.trim(), auth.currentUser!.uid, this.ctx.role()!);
+      // 見本を終えた＝イントロダクションは済んだ。あとでプロジェクトが0件に戻っても、ようこそは自動では出さない
+      if (this.isSample && !this.authService.profile()?.introHidden) {
+        this.authService.updateProfile({ introHidden: true })
+          .catch((e) => console.warn('イントロダクションを終えたことを覚えられませんでした', e));
+      }
       this.done.emit();
     } catch (e) {
       console.error(e);

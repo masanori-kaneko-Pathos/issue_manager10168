@@ -71,7 +71,7 @@ import { orderProjects } from '../../core/project/project-order';
           </ol>
           <div class="intro-actions">
             <button type="button" class="primary" [disabled]="sampleBusy()" (click)="trySample()">
-              {{ (sampleBusy() ? 'intro.making' : 'intro.trySample') | t }}</button>
+              {{ (sampleBusy() ? 'intro.making' : existingSample() ? 'intro.openSample' : 'intro.trySample') | t }}</button>
             <button type="button" class="ghost" [disabled]="sampleBusy()" (click)="newOpen.set(true)">
               {{ 'projectNew.title' | t }}</button>
             <button type="button" class="link" [disabled]="sampleBusy()" (click)="later()">{{ 'intro.later' | t }}</button>
@@ -188,6 +188,13 @@ import { orderProjects } from '../../core/project/project-order';
       </div>
     </main>
     @if (newOpen()) { <app-project-new-dialog (close)="newOpen.set(false)" /> }
+    @if (toast(); as k) {
+      <div class="toast" role="status" animate.leave="im-out">
+        <span>{{ k.key | t: k.params }}</span>
+        <button type="button" class="toast-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t"
+          (click)="closeToast()">✕</button>
+      </div>
+    }
   `,
   styles: `
     main { max-width: 1200px; margin: 0 auto; padding: 16px 16px 48px; box-sizing: border-box; }
@@ -324,6 +331,14 @@ import { orderProjects } from '../../core/project/project-order';
     .tri { display: inline-block; width: 12px; font-size: 11px; text-align: center; transition: rotate 160ms var(--ease-out); }
     .tri.shut { rotate: -90deg; }
     .tri.up { rotate: 180deg; }
+    .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+      z-index: 200; display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 32px); box-sizing: border-box;
+      padding: 6px 6px 6px 18px; border-radius: 20px; background: var(--text); color: var(--surface);
+      font-size: 14px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); }
+    /* 暗い知らせの上の ✕。押しやすいよう 32px の丸 */
+    .toast-x { flex: none; width: 32px; height: 32px; padding: 0; border: none; border-radius: 50%;
+      background: none; color: inherit; font-size: 14px; cursor: pointer; }
+    .toast-x:hover { background: rgba(255, 255, 255, 0.15); }
     @media (max-width: 600px) {
       .iproj { display: none; }
     }
@@ -386,6 +401,7 @@ export class Projects implements OnInit {
     });
     // ホームを離れたら、見張りをやめる
     inject(DestroyRef).onDestroy(() => {
+      clearTimeout(this.toastTimer);
       this.mineStops.forEach((stop) => stop());
       this.reqStops.forEach((stop) => stop());
       this.stopInvitations?.();
@@ -558,6 +574,20 @@ export class Projects implements OnInit {
     const s = (history.state ?? {}) as Record<string, unknown>;
     return typeof s['deletedProject'] === 'string' ? { name: s['deletedProject'] as string, byMe: !!s['byMe'] } : null;
   })());
+  /** 自分でした操作の知らせ（自分で消した・抜けた）。下に出して、5秒で消す */
+  toast = signal<{ key: string; params: Record<string, string> } | null>(null);
+  private toastTimer: ReturnType<typeof setTimeout> | undefined;
+
+  closeToast() {
+    clearTimeout(this.toastTimer);
+    this.toast.set(null);
+  }
+
+  private showToast(key: string, params: Record<string, string>) {
+    this.toast.set({ key, params });
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => this.toast.set(null), 5000);
+  }
   loading = signal(true);
   busy = signal(false);
   error = signal('');
@@ -571,15 +601,43 @@ export class Projects implements OnInit {
    * ようこその箱：進行中のプロジェクトが0件（全部アーカイブした・外れた人も）で、届いている招待もなく、
    * 「後で見る」を押していないとき（招待が届いている人は、まず参加してもらう）
    */
-  showIntro = computed(() => !this.loading() && !this.activeProjects().length && !this.invitations().length
-    && !this.authService.profile()?.introHidden);
+  /** 招待の最初の1回が届いたか（届く前の「0件」は、本当の0件と見分けられないため） */
+  private invitesReady = signal(false);
+  /** 設定の「イントロダクションを始める」から来た（プロジェクトがあっても、ようこそを出す） */
+  introForced = signal(!!(history.state as Record<string, unknown> | null)?.['intro']);
+  /** もう作ってある見本（あれば、ボタンは「見本を開く」にする。2つ目を作らないため） */
+  existingSample = computed(() => this.projects().find((p) => p.sample && !p.archived) ?? null);
+  showIntro = computed(() => {
+    const profile = this.authService.profile();
+    // プロジェクト・招待・設定を、全部読み終わるまでは出さない（読む前の「0件」「未設定」で一瞬出てしまうため）
+    if (this.loading() || !this.invitesReady() || !profile) return false;
+    if (this.introForced()) return true;
+    return !this.activeProjects().length && !this.invitations().length && !profile.introHidden;
+  });
+
+  /**
+   * 見本に進んだ＝イントロダクションを始めた。あとでプロジェクトが0件に戻っても、ようこそは自動では出さない
+   * （もう一度見たいときは、設定の「イントロダクションを始める」から）。覚えられなくても、見本は使えるので止めない
+   */
+  private markIntroStarted() {
+    if (this.authService.profile()?.introHidden) return;
+    this.authService.updateProfile({ introHidden: true })
+      .catch((e) => console.warn('イントロダクションを始めたことを覚えられませんでした', e));
+  }
 
   /** 見本を作って、かんばんを開く */
   async trySample() {
+    const s = this.existingSample();
+    if (s) {
+      this.markIntroStarted();
+      await this.router.navigate(['/p', s.id, 'board']);
+      return;
+    }
     this.sampleBusy.set(true);
     this.error.set('');
     try {
       const pid = await this.sample.create();
+      this.markIntroStarted();
       await this.router.navigate(['/p', pid, 'board']);
     } catch (e) {
       console.error(e);
@@ -592,6 +650,7 @@ export class Projects implements OnInit {
 
   /** 後で見る：箱を閉じる（設定の「イントロダクション」から、いつでも戻せる） */
   async later() {
+    this.introForced.set(false);
     try {
       await this.authService.updateProfile({ introHidden: true });
     } catch (e) {
@@ -602,9 +661,20 @@ export class Projects implements OnInit {
 
   ngOnInit() {
     // 外されたときの知らせは1回だけ。読んだら履歴から消し、再読み込みで出し直さない
-    const { removedFrom, leftFrom, deletedProject, byMe, ...rest } = (history.state ?? {}) as Record<string, unknown>;
-    if (removedFrom !== undefined || leftFrom !== undefined || deletedProject !== undefined) {
+    const { removedFrom, leftFrom, deletedProject, byMe, intro, ...rest } = (history.state ?? {}) as Record<string, unknown>;
+    if (removedFrom !== undefined || leftFrom !== undefined || deletedProject !== undefined || intro !== undefined) {
       history.replaceState(rest, '');
+    }
+    // 自分でした操作は、下の知らせで5秒だけ（上の箱は出さない）。外された・ほかの人が消したは、箱で残す
+    const d = this.deletedProject();
+    if (d?.byMe) {
+      this.showToast('deleteProject.done', { name: d.name });
+      this.deletedProject.set(null);
+    }
+    const left = this.leftFrom();
+    if (left !== null) {
+      this.showToast('projects.leftNotice', { project: left });
+      this.leftFrom.set(null);
     }
     const u = auth.currentUser!;
     this.needsVerify.set(!!u.email && !u.emailVerified);
@@ -629,11 +699,22 @@ export class Projects implements OnInit {
   /** 自分宛ての招待を見張る。メールの確認が済むまでは読めないので始めない */
   private watchInvitations() {
     const email = auth.currentUser!.email;
-    if (!email || this.needsVerify() || this.stopInvitations) return;
+    // 見張れない（メールの確認がまだ）なら、招待は「0件」で確定
+    if (!email || this.needsVerify()) {
+      this.invitesReady.set(true);
+      return;
+    }
+    if (this.stopInvitations) return;
     this.stopInvitations = this.projectService.watchMyInvitations(
       email,
-      (list) => this.invitations.set(list),
-      (e) => console.error('招待の見張りに失敗', e),
+      (list) => {
+        this.invitations.set(list);
+        this.invitesReady.set(true);
+      },
+      (e) => {
+        console.error('招待の見張りに失敗', e);
+        this.invitesReady.set(true); // 読めなくても、ようこそは出せるように
+      },
     );
   }
 
