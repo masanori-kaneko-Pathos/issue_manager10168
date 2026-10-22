@@ -226,6 +226,11 @@ export class ProjectSettings implements OnInit {
     this.settings.set(s);
   }
 
+  /** 今のプロジェクトの設定（見張りで届いた最新。足りない項目は既定の値で埋める） */
+  private latest(): SettingsData {
+    return { ...DEFAULT_SETTINGS, ...(this.ctx.project()?.settings ?? this.savedSettings()) };
+  }
+
   range(k: NumKey) {
     return RANGES[k];
   }
@@ -242,13 +247,15 @@ export class ProjectSettings implements OnInit {
    */
   async setFeature(f: Feature, e: Event) {
     const el = e.target as HTMLInputElement;
-    const prev = this.savedSettings();
-    const next = { ...prev, features: { ...prev.features, [f]: el.checked } };
     this.busy.set(true);
     this.error.set('');
     this.info.set('');
     try {
-      await this.ps.updateSettings(this.ctx.pid(), next);
+      // その機能の欄だけを書く（ほかの管理者が同時に別の欄を変えても、消さない）
+      await this.ps.updateSettingFields(this.ctx.pid(), { [`features.${f}`]: el.checked });
+      // 手元の値は、最新（見張りで届いた、ほかの管理者の変更も入ったもの）に、自分が変えた所を重ねる
+      const cur = this.latest();
+      const next = { ...cur, features: { ...cur.features, [f]: el.checked } };
       this.ctx.setSettings(next);
       this.savedSettings.set(next);
       this.settings.set(next);
@@ -336,9 +343,16 @@ export class ProjectSettings implements OnInit {
         this.labels.set(list);
       }
       if (this.settingsDirty()) {
-        await this.ps.updateSettings(this.ctx.pid(), s);
-        this.ctx.setSettings(s);
-        this.savedSettings.set(s);
+        // 開いたときから変えた数の欄だけを書く
+        const prev = this.savedSettings();
+        const changed: Partial<Record<NumKey, number>> = {};
+        for (const k of Object.keys(RANGES) as NumKey[]) if (s[k] !== prev[k]) changed[k] = s[k];
+        await this.ps.updateSettingFields(this.ctx.pid(), changed as Record<string, number>);
+        // 最新（ほかの管理者の変更も入ったもの）に、自分が変えた欄を重ねて、画面もそれに合わせる
+        const merged = { ...this.latest(), ...changed };
+        this.ctx.setSettings(merged);
+        this.savedSettings.set(merged);
+        this.settings.set(merged);
       }
       this.info.set('settings.saved');
     } catch (e) {
