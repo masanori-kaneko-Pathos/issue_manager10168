@@ -1,4 +1,7 @@
-.bar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--border); }
+:host { display: block; }
+/* 帯は、青いヘッダー（52px）のすぐ下に止める。ヘッダー（z-index: 50）より下、本文より上 */
+.bar { position: sticky; top: 52px; z-index: 40; display: flex; align-items: center; gap: 12px; padding: 8px 16px;
+  border-bottom: 1px solid var(--border); background: var(--surface); }
 .crumbs { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 14px; color: var(--text-muted); }
 .crumb-project { display: block; min-width: 0; color: var(--primary); text-decoration: none;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -6,7 +9,7 @@
 main { max-width: 1040px; margin: 0 auto; padding: 16px 16px 48px; }
 .layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 32px; align-items: start; margin-top: 16px; }
 .body { grid-column: 1; grid-row: 1; min-width: 0; }
-.side { grid-column: 2; grid-row: 1; position: sticky; top: 64px; padding: 12px 14px;
+.side { grid-column: 2; grid-row: 1; position: sticky; top: calc(52px + 57px + 12px); padding: 12px 14px;
   border: 1px solid var(--border); border-radius: 10px; }
 .props { display: grid; grid-template-columns: max-content 1fr; gap: 10px 12px; margin: 0; }
 .props dt { color: var(--text-muted); font-size: 13px; }
@@ -24,7 +27,7 @@ main { max-width: 1040px; margin: 0 auto; padding: 16px 16px 48px; }
 .backdrop { position: fixed; inset: 0; z-index: 51; }
 .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 52; min-width: 240px; background: var(--surface);
   border-radius: 10px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2); padding: 6px 0; display: flex; flex-direction: column; }
-.menu a, .menu button { display: block; text-align: left; padding: 0 16px; min-height: 44px; line-height: 44px;
+  .menu a, .menu button { display: block; text-align: left; padding: 12px 16px; min-height: 44px; line-height: 1.4;
   background: none; border: none; color: var(--text); text-decoration: none; font-size: 14px; cursor: pointer; }
 .menu a:hover, .menu button:hover:not(:disabled) { background: var(--surface-alt); }
 .menu button:disabled { color: var(--text-disabled); cursor: default; }
@@ -182,6 +185,8 @@ a.add-link { display: inline-flex; align-items: center; text-decoration: none; }
 /* 幕は下、窓は上（メニュー用の .backdrop の z-index: 51 を受け継がないように、窓の中だけ決め直す） */
 .modal > .backdrop { position: absolute; inset: 0; z-index: 0; background: rgba(0, 0, 0, 0.4); }
 .modal > .dialog { z-index: 1; }
+/* ウォッチの人数（メニューの行の右に小さく） */
+.watch-n { flex: none; margin-right: 4px; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
 /* コメントの直す・消すは、マウスを乗せられる端末では、乗せたコメント（キーボードで移ったものも）だけ見せる。
    隠すのは visibility なので、出し入れで行の高さや文字の位置は動かない */
 @media (hover: hover) and (pointer: fine) {

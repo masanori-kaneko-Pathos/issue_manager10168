@@ -22,6 +22,8 @@ import { Crumbs, Crumb, HOME } from '../../shared/crumbs';
 import { ISSUE_NEW_EMBED } from '../../core/issue/issue-form.service';
 import { SearchService } from '../../core/search/search.service';
 
+/** 新しく作ってつなぐときの、つなぎ方 */
+type LinkKind = 'relates' | 'waitsFor' | 'recurrence';
 const LAST_PROJECT_KEY = 'issuemanager.lastProject';
 
 function readLastProject(): string | null {
@@ -62,7 +64,7 @@ interface IssueDraft {
     recurrenceOf: { iid: string; number: number } | null;
     splitFrom: { iid: string; sid: string; number: number } | null;
     linkFrom?: { iid: string; number: number } | null;
-    linkKind?: 'relates' | 'waitsFor';
+    linkKind?: LinkKind;
     notes: {
       from: number | null; copy: number | null; recur: number | null; split: { n: number; title: string } | null;
       link?: { n: number; title: string } | null;
@@ -85,9 +87,9 @@ interface IssueDraft {
         <div class="notice link-note">
           <p>{{ 'links.newCreating' | t: { n: '' + l.n, title: l.title } }}</p>
           <div class="chips">
-            @for (k of linkKinds; track k) {
+            @for (k of linkKinds(); track k) {
               <button type="button" [class.on]="linkKind() === k" [attr.aria-pressed]="linkKind() === k"
-                (click)="linkKind.set(k); touch()">{{ 'links.newKinds.' + k | t: { n: '' + l.n } }}</button>
+                (click)="pickLinkKind(k)">{{ 'links.newKinds.' + k | t: { n: '' + l.n } }}</button>
             }
           </div>
         </div>
@@ -343,8 +345,14 @@ export class IssueNew implements OnInit {
     /** 窓の上に出す「#12『〇〇』とつなぐ」 */
     linkNote = signal<{ n: number; title: string } | null>(null);
     /** つなぎ方（元の課題から見た種類） */
-    linkKind = signal<'relates' | 'waitsFor'>('relates');
-    readonly linkKinds = ['relates', 'waitsFor'] as const;
+    linkKind = signal<LinkKind>('relates');
+    /** つなぐ元の課題（再発を選べるか、再発の雛形を作るために読む） */
+    private linkSrc = signal<Issue | null>(null);
+    /** 選べるつなぎ方。「再発」は、元の課題が解決済み・クローズのときだけ（今までの ⋮ と同じ決まり） */
+    linkKinds = computed<LinkKind[]>(() => {
+      const s = this.linkSrc()?.status;
+      return s === 'resolved' || s === 'closed' ? ['relates', 'waitsFor', 'recurrence'] : ['relates', 'waitsFor'];
+    });
   /** 再発として登録するときの、元の課題の id（詳細画面の「再発として新しく登録」から来たとき） */
   private readonly recurIid = this.qp.get('recur');
   private recurrenceOf: { iid: string; number: number } | null = null;
@@ -442,7 +450,9 @@ export class IssueNew implements OnInit {
   similar = computed(() => {
     const typed = bigrams(this.titleQ());
     if (typed.size < 3) return [];
-    const skip = new Set([this.relatedFrom?.iid, this.recurrenceOf?.iid, this.splitFrom?.iid, this.linkFrom?.iid]);
+    const skip = new Set([
+      this.relatedFrom?.iid, this.recurrenceOf?.iid, this.splitFrom?.iid, this.linkFrom?.iid, this.copyIid,
+    ]);
     return this.pool()
       .filter((p) => p.issue.status !== 'deleted' && p.issue.status !== 'merged' && !skip.has(p.issue.id))
       .map((p) => ({ issue: p.issue, score: coverage(typed, p.grams) }))
@@ -531,6 +541,8 @@ export class IssueNew implements OnInit {
         if (this.copyIid && this.fromPid) await this.fillCopy(this.fromPid, this.copyIid);
         if (this.linkOfIid && this.fromPid) await this.fillLink(this.fromPid, this.linkOfIid);
       }
+      // 下書きの続きから開いたときも、つなぐ元の課題を読む（再発を選べるかと、再発の雛形のため）
+      if (restored && this.linkFrom && this.pid()) await this.loadLinkSrc(this.pid()!, this.linkFrom.iid);
       // 受信箱のメモや再発などで題名が入ったときも、似た課題を出す
       this.titleQ.set(this.title);
     } catch (e) {
@@ -732,6 +744,55 @@ export class IssueNew implements OnInit {
     if (!src || this.pid() !== pid) return;
     this.linkFrom = { iid: src.id, number: src.number };
     this.linkNote.set({ n: src.number, title: src.title });
+    this.linkSrc.set(src);
+  }
+
+  /** つなぐ元の課題を読む（読めなくても登録はできる。「再発」が出ないだけ） */
+  private async loadLinkSrc(pid: string, iid: string) {
+    const src = await this.issues.get(pid, iid).catch(() => null);
+    if (src && this.pid() === pid) this.linkSrc.set(src);
+  }
+
+  /** 再発の雛形（題名と内容）。今までの「再発として登録」と同じ文 */
+  private recurTexts(s: Issue) {
+    const p = { n: String(s.number), title: s.title, cause: s.cause ?? '', countermeasure: s.countermeasure ?? '' };
+    return {
+      title: this.i18n.t('links.recurTitle', p).slice(0, 200),
+      description: this.i18n.t('links.recurDescription', p),
+    };
+  }
+
+  /**
+   * つなぎ方を選ぶ。「再発」にしたら再発の雛形を入れ、ほかに戻したら外す。
+   * どちらも、手で書き換えていない欄だけ（書いたものを勝手に消さないため）
+   */
+  pickLinkKind(k: LinkKind) {
+    const s = this.linkSrc();
+    const was = this.linkKind();
+    this.linkKind.set(k);
+    this.touch();
+    if (!s || (was === 'recurrence') === (k === 'recurrence')) return;
+    const r = this.recurTexts(s);
+    // 内容が「空」か「種別の例文のまま」なら、まだ書いていないとみなす
+    const t = this.type();
+    const blankDesc = !this.description.trim() || (t !== null && this.description === this.i18n.t('descTemplate.' + t));
+    if (k === 'recurrence') {
+      // 種別・重要度は、まだ選んでいなければ元の課題に合わせる（完了条件の例文も種別に合わせて入る）
+      if (!this.type()) this.selectType(s.type);
+      if (!this.importance()) this.importance.set(s.importance);
+      if (!this.title.trim()) this.title = r.title;
+      // selectType で例文が入っていても、ここで再発の雛形に替わる
+      if (blankDesc || !this.description.trim() || this.description === this.i18n.t('descTemplate.' + this.type())) {
+        this.description = r.description;
+        this.showDetail.set(true);
+      }
+    } else {
+      if (this.title === r.title) this.title = '';
+      if (this.description === r.description) {
+        this.description = this.type() ? this.i18n.t('descTemplate.' + this.type()) : '';
+      }
+    }
+    this.titleQ.set(this.title);
   }
 
   /** やめる（窓のとき）：書きかけを捨てて閉じる。外・Esc・✕ で閉じたときは、下書きに残る */
@@ -858,6 +919,10 @@ export class IssueNew implements OnInit {
 
     this.busy.set(true);
     this.error.set('');
+    // 「再発」を選んでいたら、つなぐ保存ではなく、今までの再発の保存（recurrenceOf）で登録する
+    const kind = this.linkKind();
+    const recurOf = this.linkFrom && kind === 'recurrence'
+      ? { iid: this.linkFrom.iid, number: this.linkFrom.number } : this.recurrenceOf;
     try {
       const pid = this.pid()!;
       const { iid, number } = await this.issues.create(pid, {
@@ -873,9 +938,9 @@ export class IssueNew implements OnInit {
         impact: this.impact.trim(),
         estimateHours,
         relatedFrom: this.relatedFrom,
-        recurrenceOf: this.recurrenceOf,
+        recurrenceOf: recurOf,
         splitFrom: this.splitFrom,
-        linkFrom: this.linkFrom ? { ...this.linkFrom, kind: this.linkKind() } : null,
+        linkFrom: this.linkFrom && kind !== 'recurrence' ? { ...this.linkFrom, kind } : null,
       }, this.myUid, this.tz(), this.memoId ?? undefined);
       writeLastProject(pid);
       // 検索は、プロジェクトごとの課題を5分取っておくので、捨てて読み直させる（登録した課題が、すぐ検索に出るように）

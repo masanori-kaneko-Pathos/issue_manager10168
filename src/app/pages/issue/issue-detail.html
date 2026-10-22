@@ -12,7 +12,8 @@
             @if (canWatch()) {
               <div class="item-row">
                 <button type="button" role="menuitem" [title]="watcherNames()" (click)="menuOpen.set(false); toggleWatch()">
-                  {{ (watching() ? 'watch.stop' : 'watch.start') | t: { n: '' + watchCount() } }}</button>
+                  {{ (watching() ? 'watch.stop' : 'watch.start') | t }}</button>
+                <span class="watch-n" [title]="watcherNames()">{{ 'watch.count' | t: { n: '' + watchCount() } }}</span>
                 <app-help-tip align="right" [keys]="['watch.help']" />
               </div>
               @if (canRemind()) {
@@ -41,8 +42,6 @@
             @if (canCreate() && (i.status === 'resolved' || i.status === 'closed')) {
               <button type="button" role="menuitem" (click)="menuOpen.set(false); issueForm.open(pid, { from: i.id })">
                 {{ 'prevention.create' | t }}</button>
-              <button type="button" role="menuitem" (click)="menuOpen.set(false); issueForm.open(pid, { recur: i.id })">
-                {{ 'detailMenu.recur' | t }}</button>
             }
             @if (showMerge() && !projectArchived()) {
               @if (role() === 'member') {
