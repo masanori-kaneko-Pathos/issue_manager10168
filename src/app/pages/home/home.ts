@@ -122,7 +122,7 @@ import { orderProjects } from '../../core/project/project-order';
           @if (view() === 'board') {
             <app-mine-board [issues]="openMine()" [nameOf]="nameFn" [projects]="projects()" />
           } @else if (view() === 'calendar') {
-            <app-mine-calendar [issues]="openMine()" [nameOf]="nameFn" />
+            <app-mine-calendar [issues]="openMine()" [nameOf]="nameFn" [projects]="projects()" />
           } @else {
           <div class="today" role="group" [attr.aria-label]="'today.title' | t">
             <span class="today-title">{{ 'today.title' | t }}</span>
@@ -145,8 +145,8 @@ import { orderProjects } from '../../core/project/project-order';
               <button type="button" class="fold" [attr.aria-expanded]="!closed" (click)="toggleFold(s.key)">
                 <span class="tri" [class.shut]="closed" aria-hidden="true">▾</span>
                 {{ s.label | t }}<span class="n">{{ s.items.length }}</span></button></h3>
-            @if (!closed) {
-            <ul class="ilist reveal">
+            <div class="fold-body" [class.open]="!closed" [attr.inert]="closed ? '' : null">
+            <ul class="ilist">
               @for (i of s.items; track i.id) {
                 <li>
                   @if (isActive(i)) {
@@ -165,7 +165,7 @@ import { orderProjects } from '../../core/project/project-order';
                 </li>
               }
             </ul>
-            }
+            </div>
           } @empty {
             <p class="empty">{{ 'mine.empty' | t }}</p>
           }

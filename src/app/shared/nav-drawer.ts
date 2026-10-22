@@ -47,8 +47,8 @@ type Sec = 'inbox' | 'drafts' | 'projects';
         @if (isOpen('inbox')) { <a routerLink="/inbox" class="all" (click)="close.emit()">{{ 'nav.seeAll' | t }}</a> }
         @if (inbox.count()) { <span class="n">{{ inbox.count() }}</span> }
       </div>
-      @if (isOpen('inbox')) {
-        <div class="sub reveal">
+      <div class="fold-body" [class.open]="isOpen('inbox')" [attr.inert]="isOpen('inbox') ? null : ''">
+        <div class="sub">
           @for (m of memos(); track m.id) {
             <a class="item" routerLink="/inbox" [queryParams]="{ m: m.id }" [title]="m.title" (click)="close.emit()">
               <span class="mark">
@@ -67,7 +67,7 @@ type Sec = 'inbox' | 'drafts' | 'projects';
               <span class="mark"></span>{{ 'nav.more' | t: { n: '' + (inbox.count() - memos().length) } }}</a>
           }
         </div>
-      }
+      </div>
 
       <!-- 下書き（1件以上あるときだけ） -->
       @if (drafts.count()) {
@@ -79,8 +79,8 @@ type Sec = 'inbox' | 'drafts' | 'projects';
           @if (isOpen('drafts')) { <a routerLink="/drafts" class="all" (click)="close.emit()">{{ 'nav.seeAll' | t }}</a> }
           <span class="n">{{ drafts.count() }}</span>
         </div>
-        @if (isOpen('drafts')) {
-          <div class="sub reveal">
+        <div class="fold-body" [class.open]="isOpen('drafts')" [attr.inert]="isOpen('drafts') ? null : ''">
+          <div class="sub">
             @for (d of draftList(); track d.id) {
               <!-- 押すと続きを書く（課題は登録の窓、プロジェクトは作成の窓。下書きのページと同じ開き方） -->
               <button type="button" class="item" [title]="d.title" (click)="openDraft(d)">
@@ -93,7 +93,7 @@ type Sec = 'inbox' | 'drafts' | 'projects';
                 <span class="mark"></span>{{ 'nav.more' | t: { n: '' + (drafts.count() - draftList().length) } }}</a>
             }
           </div>
-        }
+        </div>
       }
 
       <!-- プロジェクト（並びはプロジェクトのページで決めたもの。依頼があれば名前の左に赤い丸） -->
@@ -106,8 +106,8 @@ type Sec = 'inbox' | 'drafts' | 'projects';
         @if (isOpen('projects')) { <a routerLink="/projects" class="all" (click)="close.emit()">{{ 'nav.seeAll' | t }}</a> }
         @if (activeCount()) { <span class="n">{{ activeCount() }}</span> }
       </div>
-      @if (isOpen('projects')) {
-        <div class="sub reveal">
+      <div class="fold-body" [class.open]="isOpen('projects')" [attr.inert]="isOpen('projects') ? null : ''">
+        <div class="sub">
           @if (loading()) {
             <p class="small">{{ 'common.loading' | t }}</p>
           } @else {
@@ -127,13 +127,13 @@ type Sec = 'inbox' | 'drafts' | 'projects';
             } @empty {
               <p class="small">{{ 'projects.empty' | t }}</p>
             }
-          @if (activeCount() > shown().length) {
+            @if (activeCount() > shown().length) {
               <a routerLink="/projects" class="item more" (click)="close.emit()">
                 <span class="mark"></span>{{ 'nav.more' | t: { n: '' + (activeCount() - shown().length) } }}</a>
             }
           }
         </div>
-      }
+      </div>
     </nav>
   `,
   styles: `
