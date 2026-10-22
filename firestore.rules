@@ -511,16 +511,8 @@ service cloud.firestore {
 
       match /invitations/{email} {
         allow read: if isAdmin(pid);
-        allow create: if isAdmin(pid)
-          && email == request.resource.data.email
-          && email == email.lower()
-          && request.resource.data.role in ['admin', 'member', 'viewer']
-          && request.resource.data.invitedBy == request.auth.uid
-          && request.resource.data.keys().hasOnly(
-               ['email', 'role', 'projectName', 'invitedBy', 'invitedByName', 'createdAt'])
-          && get(projectPath(pid)).data.archived == false
-          // 見本のプロジェクトには招待できない（自分だけの練習場なので）
-          && get(projectPath(pid)).data.get('sample', false) == false;
+        // 作るのは関数（imInvite）だけ。もうメンバーかどうかは、メールアドレスから人を引ける関数でしか確かめられないため
+        allow create: if false;
         // 取り消し（管理者）と、承諾・辞退（招待された本人）
         allow delete: if isAdmin(pid)
           || (emailVerified() && email == request.auth.token.email.lower());
@@ -850,6 +842,12 @@ service cloud.firestore {
                 && resource.data.assigneeId == request.auth.uid
                 && !(parentIssue().status in ['closed', 'deleted', 'merged'])
                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt', 'updatedBy']))
+              // 抜ける本人：自分が担当のサブタスクを、親の課題の担当者に返す（渡す先は親の担当者に限る）
+              || (canWrite(pid)
+                && resource.data.assigneeId == request.auth.uid
+                && request.resource.data.assigneeId == parentIssue().assigneeId
+                && !(parentIssue().status in ['closed', 'deleted', 'merged'])
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['assigneeId', 'updatedAt', 'updatedBy']))
             );
 
           allow delete: if canEditParent() || purgeChildAllowed(pid, iid);

@@ -3,7 +3,7 @@ import { User } from 'firebase/auth';
 import {
     FirestoreError, Unsubscribe, collection, collectionGroup, doc, getDoc, getDocs, onSnapshot, query, where,
     orderBy, limit,
-    serverTimestamp, writeBatch, setDoc, deleteDoc, updateDoc, runTransaction, deleteField,
+    serverTimestamp, writeBatch, setDoc, deleteDoc, updateDoc, runTransaction, deleteField, DocumentReference,
 } from 'firebase/firestore';
 import { db, firebaseApp } from '../firebase';
 import { AuthService } from '../auth/auth.service';
@@ -130,18 +130,24 @@ export class ProjectService {
         return s.docs.map((d) => ({ ...(d.data() as Omit<Invitation, 'projectId'>), projectId: pid }));
     }
 
-    /** 招待（管理者のみ）。同じメールアドレスへの二重招待はエラーにする */
-    async invite(project: Project, email: string, role: Role, inviter: User) {
-        const ref = doc(db, 'projects', project.id, 'invitations', email);
-        if ((await getDoc(ref)).exists()) throw new Error('already-invited');
-        await setDoc(ref, {
-            email,
-            role,
-            projectName: project.name,
-            invitedBy: inviter.uid,
-            invitedByName: this.authService.myName(inviter),
-            createdAt: serverTimestamp(),
-        });
+    /**
+     * 招待（管理者のみ）。関数に頼む（もうメンバーの人・招待済みの人には送らない）。
+     * 失敗の理由は、今までどおり Error のメッセージで返す（already-invited / already-member / invite-failed）
+     */
+    async invite(project: Project, email: string, role: Role, _inviter: User) {
+        // 関数の窓口は、使うときだけ読み込む（最初の画面を軽く保つため）
+        const { getFunctions, httpsCallable } = await import('firebase/functions');
+        const call = httpsCallable(getFunctions(firebaseApp, 'asia-northeast1'), 'imInvite');
+        try {
+            await call({ pid: project.id, email, role });
+        } catch (e) {
+            // 関数の理由の文は、前後に飾りが付いて届くことがあるので、「含まれているか」で見る
+            const msg = (e as { message?: string }).message ?? '';
+            const reason = ['already-invited', 'already-member'].find((r) => msg.includes(r));
+            // 理由の分からない失敗は、元のエラーを残す（あとで調べられるように）
+            if (!reason) console.error('招待の関数のエラー', e);
+            throw new Error(reason ?? 'invite-failed');
+        }
     }
 
     cancelInvitation(pid: string, email: string) {
@@ -213,6 +219,15 @@ export class ProjectService {
         return updateDoc(doc(db, 'projects', pid), { settings });
     }
 
+    /**
+     * 設定の、変えた欄だけを保存する（管理者が2人同時に触っても、別々の欄なら両方残る）。
+     * 名前は settings の中の場所（'staleDays'、'features.gantt' など）。形と範囲はルールで確かめる
+     */
+    updateSettingFields(pid: string, fields: Record<string, number | boolean>) {
+        return updateDoc(doc(db, 'projects', pid),
+            Object.fromEntries(Object.entries(fields).map(([k, v]) => [`settings.${k}`, v])));
+    }
+
     /** プロジェクト名を変える（管理者のみ。1〜100文字の文字列かはルールで確認） */
     rename(pid: string, name: string) {
         return updateDoc(doc(db, 'projects', pid), { name });
@@ -257,6 +272,37 @@ export class ProjectService {
     }
 
     /**
+     * 引き継ぎで動かすサブタスク（トランザクションの中では検索できないので、先に集める）。
+     * 渡し先は、親の課題の担当者（その課題も引き継ぐなら、引き継ぐ人）。
+     * leaving＝外す・閲覧者にする・抜ける（全部動かす）。担当を渡すだけなら、渡した課題の中のものだけ
+     */
+    private async subtasksToMove(pid: string, uid: string, dests: Record<string, string>, leaving: boolean) {
+        const projectRef = doc(db, 'projects', pid);
+        const [issues, members] = await Promise.all([
+            getDocs(query(collection(projectRef, 'issues'), where('subtaskAssignees', 'array-contains', uid))),
+            getDocs(collection(projectRef, 'members')),
+        ]);
+        // 担当者になれる人（本人と閲覧者は除く）
+        const workers = new Set(members.docs
+            .filter((m) => m.id !== uid && m.data()['role'] !== 'viewer').map((m) => m.id));
+        const out: { ref: DocumentReference; to: string }[] = [];
+        for (const i of issues.docs) {
+            const d = i.data();
+            // 終わった課題の中のサブタスクは、記録として残す
+            if (!OPEN_STATUSES.includes(d['status'] as IssueStatus)) continue;
+            if (!leaving && !dests[i.id]) continue;
+            const to = dests[i.id] ?? (d['assigneeId'] as string);
+            // 親の担当者も、もういない人なら動かさない（ルールで「担当者になれる人か」を確かめているため）
+            if (!workers.has(to)) continue;
+            const subs = await getDocs(query(collection(i.ref, 'subtasks'), where('assigneeId', '==', uid)));
+            for (const s of subs.docs) {
+                if (s.data()['status'] !== 'done' && !s.data()['splitTo']) out.push({ ref: s.ref, to });
+            }
+        }
+        return out;
+    }
+
+    /**
      * 担当の引き継ぎと、役割の変更・外す・抜けるを、1つのトランザクションで行う（全部か無か）。
      * dests は「課題id → 引き継ぐ人」。課題ごとに渡す人を分けられる（渡さない課題は入れない）
      */
@@ -268,12 +314,16 @@ export class ProjectService {
         const projectRef = doc(db, 'projects', pid);
         const memberRef = doc(projectRef, 'members', target.uid);
         const ids = Object.keys(dests);
+        // 外す・閲覧者にする・抜ける：サブタスクを全部動かす。担当を渡すだけ・管理者やメンバーへの役割の変更：渡した課題の中だけ
+        const leaving = change !== null && (change.kind !== 'role' || change.role === 'viewer');
+        const subs = await this.subtasksToMove(pid, target.uid, dests, leaving);
         await runTransaction(db, async (tx) => {
             // トランザクションは「読むのが先、書くのは後」の決まり
             const [project, ...snaps] = await Promise.all([
                 tx.get(projectRef),
                 ...ids.map((id) => tx.get(doc(projectRef, 'issues', id))),
             ]);
+            const subSnaps = await Promise.all(subs.map((s) => tx.get(s.ref)));
             /** 受け取った人ごとの件数（通知を1人1通にまとめるため） */
             const movedTo: Record<string, number> = {};
             snaps.forEach((s, k) => {
@@ -288,6 +338,12 @@ export class ProjectService {
                     reason, by, tz, at: serverTimestamp(),
                 });
                 movedTo[to] = (movedTo[to] ?? 0) + 1;
+            });
+            // サブタスク：集めたあとで変わったもの（ほかの人が担当を替えた・完了にした）は触らない
+            subSnaps.forEach((s, k) => {
+                const d = s.data();
+                if (!d || d['assigneeId'] !== target.uid || d['status'] === 'done' || d['splitTo']) return;
+                tx.update(s.ref, { assigneeId: subs[k].to, updatedAt: serverTimestamp(), updatedBy: by });
             });
             const moved = Object.values(movedTo).reduce((a, b) => a + b, 0);
             // 定期課題の雛形：次の回からの担当・作った人を、同じ封筒で替える（読む必要はないので、書くだけ）

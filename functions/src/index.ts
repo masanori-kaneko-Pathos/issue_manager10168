@@ -170,11 +170,16 @@ async function sendMorningSummaries(now: Date) {
   }
   if (!targets.length) return;
 
-  // ④ 今その時刻の人がいるプロジェクトだけ、未完了の課題を読む（プロジェクトごとに1回）
+  // ④ 今その時刻の人がいるプロジェクトだけ、未完了の課題と解決済みの課題を読む（プロジェクトごとに1回ずつ）
   const openByPid = new Map<string, DocumentData[]>();
+  const resolvedByPid = new Map<string, DocumentData[]>();
   await Promise.all([...new Set(targets.flatMap((t) => t.pids))].map(async (pid) => {
-    const s = await db.collection(`projects/${pid}/issues`).where('status', 'in', ACTIVE).get();
-    openByPid.set(pid, s.docs.map((d) => d.data()));
+    const [open, resolved] = await Promise.all([
+      db.collection(`projects/${pid}/issues`).where('status', 'in', ACTIVE).get(),
+      db.collection(`projects/${pid}/issues`).where('status', '==', 'resolved').get(),
+    ]);
+    openByPid.set(pid, open.docs.map((d) => d.data()));
+    resolvedByPid.set(pid, resolved.docs.map((d) => d.data()));
   }));
 
   // ⑤ 人ごとに数えて、1通書く（1人の失敗で、ほかの人の分を止めない）
@@ -182,19 +187,45 @@ async function sendMorningSummaries(now: Date) {
   for (const t of targets) {
     if (t.off) continue; // 届けないにした人には、まとめを書かない（効果確認は ⑥ で届く）
     try {
-      if (await writeSummary(t, openByPid, now)) written++;
+      if (await writeSummary(t, openByPid, now, effectCount(t, resolvedByPid, projects, membersOf, now))) written++;
     } catch (e) {
       logger.error('daily summary failed', { uid: t.uid, error: String(e) });
     }
   }
   logger.info('morning summaries', { targets: targets.length, written });
 
-  // ⑥ 効果確認（解決済みにしてから、決まった日数がたった課題）
-  await sendEffectChecks(targets, projects, membersOf, now);
+  // ⑥ 効果確認の1件ずつのお知らせは、毎日のまとめを「届けない」にした人にだけ（ほかの人は、まとめの中で数える）
+  await sendEffectChecks(targets.filter((t) => t.off), projects, membersOf, now);
+}
+
+/**
+ * その人が確かめる時期になった効果確認の数。提起者の分として数え、提起者が抜けた課題は、そのプロジェクトの管理者の分にする
+ * （sendEffectChecks と同じ決まり。日数は、受け取る人の暦で数える）
+ */
+function effectCount(
+  t: Target, resolvedByPid: Map<string, DocumentData[]>, projects: Map<string, DocumentData>,
+  membersOf: Map<string, { uid: string; role: string }[]>, now: Date,
+): number {
+  let n = 0;
+  const today = dateKey(now, t.tz);
+  for (const pid of t.pids) {
+    const days = projects.get(pid)?.settings?.effectCheckDays ?? DEFAULT_EFFECT_DAYS;
+    const members = membersOf.get(pid) ?? [];
+    for (const i of resolvedByPid.get(pid) ?? []) {
+      if (!i.resolvedAt) continue;
+      const to = members.some((m) => m.uid === i.reporterId)
+        ? [i.reporterId] : members.filter((m) => m.role === 'admin').map((m) => m.uid);
+      if (!to.includes(t.uid)) continue;
+      if (daysBetween(dateKey(i.resolvedAt.toDate(), t.tz), today) >= days) n++;
+    }
+  }
+  return n;
 }
 
 /** 1人分のまとめを数えて書く。書いたら true（何もない・もう書いてあるなら false） */
-async function writeSummary(t: Target, openByPid: Map<string, DocumentData[]>, now: Date): Promise<boolean> {
+async function writeSummary(
+  t: Target, openByPid: Map<string, DocumentData[]>, now: Date, effectN: number,
+): Promise<boolean> {
   // 形ごとに、入る数が違う（0件の区分は入れない）
   const counts: Record<string, number> = {};
   const add = (k: string, n = 1) => { counts[k] = (counts[k] ?? 0) + n; };
@@ -231,6 +262,8 @@ async function writeSummary(t: Target, openByPid: Map<string, DocumentData[]>, n
       }
     }
   }
+  // 効果確認：確かめる時期になった課題（どの形でも付ける）
+  if (effectN) counts.effect = effectN;
   // 受信箱：7日以上たった、ゴミ箱に入れていないメモ（どの形でも付ける）
   const old = await db.collection(`users/${t.uid}/inbox`)
     .where('createdAt', '<=', Timestamp.fromMillis(nowMs - INBOX_OLD_DAYS * DAY)).get();
@@ -578,20 +611,20 @@ const DAILY_PARTS: Record<'ja' | 'en', Record<string, string>> = {
   ja: { overdue: '期限切れ {{n}}件', today: '今日まで {{n}}件', tomorrow: '明日まで {{n}}件',
     in3: '2〜3日後まで {{n}}件', inboxOld: '受信箱（7日以上）{{n}}件',
     high: '優先度「高」{{n}}件', mid: '「中」{{n}}件', low: '「低」{{n}}件',
-    active: '未完了 {{n}}件（{{p}}人）', overdueAll: '期限切れ {{n}}件（{{p}}人）' },
+    active: '未完了 {{n}}件（{{p}}人）', overdueAll: '期限切れ {{n}}件（{{p}}人）', effect: '効果確認 {{n}}件' },
   en: { overdue: '{{n}} overdue', today: '{{n}} due today', tomorrow: '{{n}} due tomorrow',
     in3: '{{n}} due in 2–3 days', inboxOld: '{{n}} old inbox notes',
     high: '{{n}} high priority', mid: '{{n}} medium', low: '{{n}} low',
-    active: '{{n}} open ({{p}} people)', overdueAll: '{{n}} overdue ({{p}} people)' },
+    active: '{{n}} open ({{p}} people)', overdueAll: '{{n}} overdue ({{p}} people)', effect: '{{n}} effect checks' },
 };
 /**
  * 形ごとの、並べる順番。人数を添える区分は、人数の入っている数の名前も
  * ※ アプリの notification.service.ts の DAILY_KEYS・PEOPLE_OF と同じに保つこと
  */
 const DAILY_KEYS: Record<DailyGroup, string[]> = {
-  due: ['overdue', 'today', 'tomorrow', 'in3', 'inboxOld'],
-  priority: ['high', 'mid', 'low', 'inboxOld'],
-  assignee: ['active', 'overdueAll', 'inboxOld'],
+  due: ['overdue', 'today', 'tomorrow', 'in3', 'effect', 'inboxOld'],
+  priority: ['high', 'mid', 'low', 'effect', 'inboxOld'],
+  assignee: ['active', 'overdueAll', 'effect', 'inboxOld'],
 };
 const PEOPLE_OF: Record<string, string> = { active: 'people', overdueAll: 'overduePeople' };
 const APP_TITLE = { ja: '課題管理', en: 'Issue Tracker' };
@@ -835,6 +868,46 @@ export const imDeleteProject = onCall({ region: 'asia-northeast1' }, async (req)
   return { ok: true };
 });
 
+// ---- 招待 ----
+
+/**
+ * 招待を作る（画面から呼ぶ）。もうメンバーの人・招待済みの人には送らない。
+ * 画面からはメールアドレスで「だれか」を調べられないので、メンバーかどうかはここで確かめる。
+ * Admin はルールを通らないので、ルールと同じ条件もここで確かめる
+ */
+export const imInvite = onCall({ region: 'asia-northeast1' }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'sign-in required');
+  const pid = String(req.data?.pid ?? '');
+  const email = String(req.data?.email ?? '').trim().toLowerCase();
+  const role = String(req.data?.role ?? '');
+  if (!pid || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !['admin', 'member', 'viewer'].includes(role)) {
+    throw new HttpsError('invalid-argument', 'bad-input');
+  }
+  const projectRef = db.doc(`projects/${pid}`);
+  const [project, me] = await Promise.all([projectRef.get(), projectRef.collection('members').doc(uid).get()]);
+  if (!project.exists || project.get('deleting')) throw new HttpsError('not-found', 'project not found');
+  if (me.get('role') !== 'admin') throw new HttpsError('permission-denied', 'admin only');
+  // アーカイブ中と見本のプロジェクトには招待できない（ルールと同じ決まり）
+  if (project.get('archived') || project.get('sample')) throw new HttpsError('failed-precondition', 'not-invitable');
+  // そのアドレスで登録している人が、もうメンバーなら送らない（まだ登録していない人は、メンバーではない）
+  const account = await getAuth().getUserByEmail(email).catch(() => null);
+  if (account && (await projectRef.collection('members').doc(account.uid).get()).exists) {
+    throw new HttpsError('already-exists', 'already-member');
+  }
+  try {
+    // create：同じ招待がもうあれば ALREADY_EXISTS（管理者2人が同時に送っても、1通だけ）
+    await projectRef.collection('invitations').doc(email).create({
+      email, role, projectName: project.get('name') ?? '', invitedBy: uid,
+      invitedByName: me.get('displayName') ?? '', createdAt: FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    if ((e as { code?: number }).code === 6) throw new HttpsError('already-exists', 'already-invited');
+    throw e;
+  }
+  return { ok: true };
+});
+
 /**
  * プロジェクトを中身ごと消す（プロジェクトの削除と、アカウントの削除で使う）。
  * 「消してよいか」の確かめは、呼ぶ側で済ませておくこと
@@ -890,6 +963,7 @@ interface AccountPlan {
   others: { uid: string; role: string }[];
   issues: DocumentReference[];   // 自分が担当の、未完了の課題
   recur: DocumentReference[];    // 自分が担当か、作った人の、定期課題の雛形
+  subs: { ref: DocumentReference; parentAssignee: string }[]; // 自分が担当の、未完了のサブタスク
 }
 
 /**
@@ -911,12 +985,19 @@ export const imDeleteAccount = onCall({ region: 'asia-northeast1' }, async (req)
   const mine = await db.collectionGroup('members').where('uid', '==', uid).get();
   const plans = await Promise.all(mine.docs.map(async (m): Promise<AccountPlan> => {
     const projectRef = m.ref.parent.parent!;
-    const [project, members, assigned, recurring] = await Promise.all([
+    const [project, members, assigned, recurring, withSubs] = await Promise.all([
       projectRef.get(),
       projectRef.collection('members').get(),
       projectRef.collection('issues').where('assigneeId', '==', uid).get(),
       projectRef.collection('recurring').get(),
+      projectRef.collection('issues').where('subtaskAssignees', 'array-contains', uid).get(),
     ]);
+    // 自分が担当の、未完了のサブタスク（終わった課題の中は、記録として残す）
+    const subs = (await Promise.all(withSubs.docs
+      .filter((d) => OPEN.includes(d.get('status')))
+      .map(async (d) => (await d.ref.collection('subtasks').where('assigneeId', '==', uid).get()).docs
+        .filter((s) => s.get('status') !== 'done' && !s.get('splitTo'))
+        .map((s) => ({ ref: s.ref, parentAssignee: d.get('assigneeId') as string }))))).flat();
     const others = members.docs.filter((d) => d.id !== uid).map((d) => ({ uid: d.id, role: d.get('role') as string }));
     const kind = !others.length ? 'purge'
       : m.get('role') === 'admin' && !others.some((o) => o.role === 'admin') ? 'blocked' : 'leave';
@@ -925,6 +1006,7 @@ export const imDeleteAccount = onCall({ region: 'asia-northeast1' }, async (req)
       myName: (m.get('displayName') as string) ?? '', myRole: m.get('role') as string, others,
       issues: assigned.docs.filter((d) => OPEN.includes(d.get('status'))).map((d) => d.ref),
       recur: recurring.docs.filter((d) => d.get('assigneeId') === uid || d.get('createdBy') === uid).map((d) => d.ref),
+      subs,
     };
   }));
 
@@ -951,6 +1033,7 @@ export const imDeleteAccount = onCall({ region: 'asia-northeast1' }, async (req)
       // 読むのが先、書くのが後（課題も雛形も、書く前に全部読む）
       const snaps = p.issues.length ? await tx.getAll(...p.issues) : [];
       const rsnaps = p.recur.length ? await tx.getAll(...p.recur) : [];
+      const ssnaps = p.subs.length ? await tx.getAll(...p.subs.map((s) => s.ref)) : [];
       let moved = 0;
       for (const s of snaps) {
         // ③のあとに、ほかの人が担当を変えた・終わらせたものは触らない
@@ -962,6 +1045,15 @@ export const imDeleteAccount = onCall({ region: 'asia-northeast1' }, async (req)
         });
         moved++;
       }
+
+      // サブタスク：親の課題の担当者へ（その課題も引き継いだなら、引き継いだ人へ）。担当者になれない人には渡さない
+      ssnaps.forEach((s, k) => {
+        if (!s.exists || s.get('assigneeId') !== uid || s.get('status') === 'done' || s.get('splitTo')) return;
+        const parent = p.subs[k].parentAssignee;
+        const dest = parent === uid ? to : parent;
+        if (!dest || !p.others.some((o) => o.uid === dest && o.role !== 'viewer')) return;
+        tx.update(s.ref, { assigneeId: dest, updatedAt: FieldValue.serverTimestamp(), updatedBy: uid });
+      });
 
       // 定期課題の雛形：担当が本人なら引き継ぐ人（いなければ管理者）に、作った人が本人なら管理者に替える
       // （替えないと、次の回で「担当できない」と止まるため）
