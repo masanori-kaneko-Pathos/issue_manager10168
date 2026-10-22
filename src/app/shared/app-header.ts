@@ -21,10 +21,12 @@ import { NoticeActions } from './notice-actions';
 import { IssueFormService } from '../core/issue/issue-form.service';
 import { NavDrawer } from './nav-drawer';
 import { RequestBadge } from '../core/request/request-badge.service';
+import { LogoutDialog } from './logout-dialog';
 
 @Component({
   selector: 'app-header',
-  imports: [RouterLink, TPipe, HelpTip, SearchBox, ProjectNewDialog, InboxPop, Avatar, NoticeActions, NavDrawer],
+  imports: [RouterLink, TPipe, HelpTip, SearchBox, ProjectNewDialog, InboxPop, Avatar, NoticeActions, NavDrawer,
+    LogoutDialog],
   host: {
     '(document:keydown.escape)':
       'open.set(false); addOpen.set(false); bellOpen.set(false); rowMenu.set(null); penOpen.set(false)',
@@ -149,7 +151,8 @@ import { RequestBadge } from '../core/request/request-badge.service';
                 {{ s.key | t }}</a>
             }
             <div class="sep" role="separator"></div>
-            <button type="button" role="menuitem" (click)="logout()">{{ 'common.logout' | t }}</button>
+            <button type="button" role="menuitem" (click)="open.set(false); logoutOpen.set(true)">
+              {{ 'common.logout' | t }}</button>
           </div>
         }
       </div>
@@ -170,6 +173,7 @@ import { RequestBadge } from '../core/request/request-badge.service';
         <app-nav-drawer (close)="navOpen.set(false)" (openProjectDraft)="openProjectDraft($event)" />
       }
     }
+    @if (logoutOpen()) { <app-logout-dialog (cancel)="logoutOpen.set(false)" /> }
   `,
   styles: `
     .app-header { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 8px;
@@ -354,6 +358,8 @@ export class AppHeader {
     : this.ctx().sample ? 'sample.noInvite' : 'menu.inviteNeedAdmin');
 
   open = signal(false);
+  /** ログアウトの確かめの窓 */
+  logoutOpen = signal(false);
   name = computed(() => this.authService.profile()?.displayName || this.authService.user()?.email || '');
   email = computed(() => this.authService.user()?.email ?? '');
   /** 自分のアイコン（設定で入れた写真 → なければ Google の写真 → なければ頭文字） */
