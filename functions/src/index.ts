@@ -932,7 +932,8 @@ export const imDeleteProject = onCall({ region: 'asia-northeast1' }, async (req)
 });
 
 // ---- 招待 ----
-
+/** 1つのプロジェクトで、承諾待ちにしておける招待の数（招待メールを大量に送らせないため） */
+const MAX_PENDING_INVITES = 50;
 /**
  * 招待を作る（画面から呼ぶ）。もうメンバーの人・招待済みの人には送らない。
  * 画面からはメールアドレスで「だれか」を調べられないので、メンバーかどうかはここで確かめる。
@@ -941,6 +942,8 @@ export const imDeleteProject = onCall({ region: 'asia-northeast1' }, async (req)
 export const imInvite = onCall({ region: 'asia-northeast1', secrets: [GMAIL_APP_PASSWORD] }, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'sign-in required');
+  // メールの確認が済んだ人だけ（だれでも作れる捨てアカウントから、知らない人へ招待メールを送らせないため）
+  if (req.auth?.token.email_verified !== true) throw new HttpsError('failed-precondition', 'email-unverified');
   const pid = String(req.data?.pid ?? '');
   const email = String(req.data?.email ?? '').trim().toLowerCase();
   const role = String(req.data?.role ?? '');
@@ -958,6 +961,9 @@ export const imInvite = onCall({ region: 'asia-northeast1', secrets: [GMAIL_APP_
   if (account && (await projectRef.collection('members').doc(account.uid).get()).exists) {
     throw new HttpsError('already-exists', 'already-member');
   }
+  // 承諾待ちは、1つのプロジェクトに MAX_PENDING_INVITES 件まで
+  const pending = (await projectRef.collection('invitations').count().get()).data().count;
+  if (pending >= MAX_PENDING_INVITES) throw new HttpsError('resource-exhausted', 'too-many-invites');
   try {
     // create：同じ招待がもうあれば ALREADY_EXISTS（管理者2人が同時に送っても、1通だけ）
     await projectRef.collection('invitations').doc(email).create({

@@ -143,7 +143,8 @@ export class ProjectService {
         } catch (e) {
             // 関数の理由の文は、前後に飾りが付いて届くことがあるので、「含まれているか」で見る
             const msg = (e as { message?: string }).message ?? '';
-            const reason = ['already-invited', 'already-member'].find((r) => msg.includes(r));
+            const reason = ['already-invited', 'already-member', 'email-unverified', 'too-many-invites']
+                .find((r) => msg.includes(r));
             // 理由の分からない失敗は、元のエラーを残す（あとで調べられるように）
             if (!reason) console.error('招待の関数のエラー', e);
             throw new Error(reason ?? 'invite-failed');

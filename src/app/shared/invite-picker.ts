@@ -18,6 +18,8 @@ export function inviteErrorKey(e: unknown): string {
   if (!(e instanceof Error)) return 'invite.failed';
   if (e.message === 'already-invited') return 'invite.already';
   if (e.message === 'already-member') return 'invite.alreadyMember';
+  if (e.message === 'email-unverified') return 'invite.unverified';
+  if (e.message === 'too-many-invites') return 'invite.tooMany';
   return 'invite.failed';
 }
 
