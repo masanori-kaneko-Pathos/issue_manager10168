@@ -499,7 +499,11 @@ service cloud.firestore {
         || (isMember(pid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['formerMembers'])
         && request.resource.data.formerMembers.diff(resource.data.get('formerMembers', {})).affectedKeys()
-             .hasOnly([request.auth.uid]));
+             .hasOnly([request.auth.uid])
+        // 残せるのは今の自分の表示名だけ。同じ保存で自分のメンバー文書を消すとき（抜けるとき）だけ
+        // （なりすましの名前や、巨大な文字でプロジェクトの文書を埋められないように）
+        && request.resource.data.formerMembers[request.auth.uid] == get(memberPath(pid)).data.displayName
+        && !existsAfter(memberPath(pid)));
       allow delete: if false;
 
       match /members/{uid} {
