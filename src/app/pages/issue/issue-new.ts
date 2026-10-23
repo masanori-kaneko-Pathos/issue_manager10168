@@ -181,7 +181,7 @@ interface IssueDraft {
 
         <div class="field">
           <span><label for="f-done">{{ 'issue.doneCriteria' | t }}</label> <span class="req">{{ 'issueNew.required' | t }}</span> <app-help-tip [keys]="['help.doneCriteria']" /></span>
-          <textarea id="f-done" name="doneCriteria" [(ngModel)]="doneCriteria" rows="2" required></textarea>
+          <textarea id="f-done" name="doneCriteria" [(ngModel)]="doneCriteria" rows="2" maxlength="2000" required></textarea>
         </div>
 
         <button type="button" class="link" (click)="showDetail.set(!showDetail())">
@@ -193,7 +193,7 @@ interface IssueDraft {
             <app-label-picker [labels]="currentLabels()" [(selected)]="labelIds" />
           </div>
           <label class="field">{{ 'issue.description' | t }}
-            <textarea name="description" [(ngModel)]="description" rows="6"></textarea>
+            <textarea name="description" [(ngModel)]="description" rows="6" maxlength="5000"></textarea>
           </label>
           <div class="field">
             <span><label for="f-occurred">{{ 'issue.occurredOn' | t }}</label> <app-help-tip [keys]="['help.occurredOn']" /></span>

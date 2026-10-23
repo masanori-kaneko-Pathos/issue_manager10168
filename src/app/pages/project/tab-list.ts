@@ -278,7 +278,7 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
                   }
                 }
                 @if (a === 'assignee' || a === 'due' || a === 'delete') {
-                  <textarea [(ngModel)]="bulkReason" rows="2" [attr.aria-label]="'edit.reason' | t"
+                  <textarea [(ngModel)]="bulkReason" rows="2" maxlength="1000" [attr.aria-label]="'edit.reason' | t"
                     [placeholder]="(a === 'delete' ? 'delete.reasonHint' : 'edit.reasonHint') | t"></textarea>
                 }
                 @if (skipped() && a !== 'delete') { <p class="help">{{ 'bulk.skipped' | t: { n: '' + skipped() } }}</p> }

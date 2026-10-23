@@ -100,7 +100,7 @@ const FILTER_FROM = 7;
         }
 
         <label class="field">{{ 'handover.reason' | t }}
-          <textarea [(ngModel)]="reason" rows="2" [placeholder]="'handover.reasonHint' | t"></textarea>
+          <textarea [(ngModel)]="reason" rows="2" maxlength="1000" [placeholder]="'handover.reasonHint' | t"></textarea>
         </label>
       } @else {
         <p class="none">{{ 'handover.none' | t }}</p>

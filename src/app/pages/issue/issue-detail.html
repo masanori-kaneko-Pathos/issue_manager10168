@@ -223,7 +223,7 @@
               }
             </div>
             <label class="field">{{ 'priorityEdit.reason' | t }}
-              <textarea [(ngModel)]="prioReason" rows="2" [placeholder]="'priorityEdit.reasonHint' | t"></textarea>
+              <textarea [(ngModel)]="prioReason" rows="2" maxlength="1000" [placeholder]="'priorityEdit.reasonHint' | t"></textarea>
             </label>
             @if (prioConflict(); as c) {
               @let w = who(c.latest);
@@ -360,7 +360,7 @@
                     (picked)="draftAssignee.set($event)" />
                     @if (i.status === 'resolved') { <p class="help">{{ 'field.resolvedAssignee' | t }}</p> }
                   @if (assigneeChanged()) {
-                    <textarea id="e-reason" [(ngModel)]="draftReason" rows="2" [attr.aria-label]="'edit.reason' | t"
+                    <textarea id="e-reason" [(ngModel)]="draftReason" rows="2" maxlength="1000" [attr.aria-label]="'edit.reason' | t"
                       [placeholder]="'edit.reasonHint' | t"></textarea>
                     @if (reasonNeeded() && !draftReason.trim()) { <p class="warn" role="alert">{{ 'field.needReason' | t }}</p> }
                   }
@@ -414,7 +414,7 @@
                   @if (draftDue(); as d) { <p class="help">{{ fmtDate(d) }}（{{ tz() }}）</p> }
                   @if (duePast()) { <p class="warn" role="alert">{{ 'dueDialog.pastWarning' | t }}</p> }
                   @if (dueChanged()) {
-                    <textarea id="e-reason" [(ngModel)]="draftReason" rows="2" [attr.aria-label]="'edit.reason' | t"
+                    <textarea id="e-reason" [(ngModel)]="draftReason" rows="2" maxlength="1000" [attr.aria-label]="'edit.reason' | t"
                       [placeholder]="'edit.reasonHint' | t"></textarea>
                     @if (reasonNeeded() && !draftReason.trim()) { <p class="warn" role="alert">{{ 'field.needReason' | t }}</p> }
                   }
@@ -524,7 +524,7 @@
               <dd>
                 @if (editField() === 'description') {
                   <div class="inline-edit">
-                    <textarea id="e-description" [(ngModel)]="draftText" rows="8"></textarea>
+                    <textarea id="e-description" [(ngModel)]="draftText" rows="8" maxlength="5000"></textarea>
                     @if (fieldConflict()) { <p class="field-conflict" role="alert">{{ conflictText() }}</p> }
                     <div class="row">
                       <button type="button" class="link" (click)="closeField()">{{ 'workflow.cancel' | t }}</button>
@@ -542,7 +542,7 @@
             <dd>
               @if (editField() === 'doneCriteria') {
                 <div class="inline-edit">
-                  <textarea id="e-doneCriteria" [(ngModel)]="draftText" rows="3"></textarea>
+                  <textarea id="e-doneCriteria" [(ngModel)]="draftText" rows="3" maxlength="2000"></textarea>
                   @if (fieldConflict()) { <p class="field-conflict" role="alert">{{ conflictText() }}</p> }
                   <div class="row">
                     <button type="button" class="link" (click)="closeField()">{{ 'workflow.cancel' | t }}</button>

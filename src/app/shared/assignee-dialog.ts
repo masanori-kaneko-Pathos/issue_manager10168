@@ -28,7 +28,7 @@ import { I18nService, TPipe } from '../i18n/i18n';
       </div>
 
       <label class="field">{{ 'edit.reason' | t }}
-        <textarea [(ngModel)]="reason" rows="3" [placeholder]="'edit.reasonHint' | t"></textarea>
+        <textarea [(ngModel)]="reason" rows="3" maxlength="1000" [placeholder]="'edit.reasonHint' | t"></textarea>
       </label>
 
       @if (conflict(); as c) {
