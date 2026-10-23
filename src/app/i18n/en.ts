@@ -218,6 +218,7 @@ export const en: Dict = {
     similar: 'Similar issues exist. If yours is the same, use the existing one instead of creating a new one.',
     similarHelp: 'You can still create this issue. Links open in a new tab.',
     created: 'Created #{{n}}', openCreated: 'Open',
+    required: 'Required',
   },
   status: {
     open: 'Open', in_progress: 'In progress', on_hold: 'On hold',
@@ -785,6 +786,7 @@ export const en: Dict = {
     kinds: { issue: 'Issue', project: 'Project' },
     delete: 'Delete draft',
     deleted: 'Draft deleted.',
+    saved: 'Saved as a draft. Continue from "Drafts" in the + menu.',
   },
   deleteAccount: {
     title: 'Delete account',

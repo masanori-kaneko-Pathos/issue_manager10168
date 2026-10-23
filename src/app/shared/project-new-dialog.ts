@@ -8,6 +8,7 @@ import { SearchService } from '../core/search/search.service';
 import { InvitePicker, Invitee } from './invite-picker';
 import { I18nService, TPipe } from '../i18n/i18n';
 import { InviteConfirm } from './invite-confirm';
+import { InboxService } from '../core/inbox/inbox.service';
 
 /** プロジェクトの作成の下書きにしまう中身 */
 interface ProjectDraft {
@@ -86,10 +87,17 @@ export class ProjectNewDialog implements OnInit {
   private draftTimer: ReturnType<typeof setTimeout> | undefined;
   /** 作成できた・やめた（このあとは、もうしまわない） */
   private done = false;
+  /** この回で何か触ったか（触っていなければ、閉じても「残しました」と知らせない） */
+  private touched = false;
+  /** 閉じたときの「下書きに残しました」を出す係（受信箱の知らせと同じ場所に出る） */
+  private inbox = inject(InboxService);
 
   constructor() {
-    // 閉じるとき（外を押した・Esc も）に、まだしまっていない分をしまう
-    inject(DestroyRef).onDestroy(() => this.flushDraft());
+    // 閉じるとき（外を押した・Esc も）に、まだしまっていない分をしまう。書きかけが残ったら知らせる
+    inject(DestroyRef).onDestroy(() => {
+      this.flushDraft();
+      if (this.touched && !this.done && this.drafts.get(this.id)) this.inbox.showFlash('drafts.saved');
+    });
   }
 
   ngOnInit() {
@@ -116,6 +124,7 @@ export class ProjectNewDialog implements OnInit {
   /** 何か触ったら、少し待ってから下書きにしまう */
   touch() {
     if (this.done) return;
+    this.touched = true;
     clearTimeout(this.draftTimer);
     this.draftTimer = setTimeout(() => this.flushDraft(), 400);
   }

@@ -215,6 +215,7 @@ export const ja = {
     similar: '似た課題があります。同じ内容なら、登録せずにそちらを使ってください。',
     similarHelp: 'このまま登録することもできます。押すと別のタブで開きます。',
     created: '#{{n}} を登録しました', openCreated: '開く',
+    required: '※必須',
   },
   status: {
     open: '未着手', in_progress: '対応中', on_hold: '保留',
@@ -781,6 +782,7 @@ export const ja = {
     kinds: { issue: '課題', project: 'プロジェクト' },
     delete: '下書きを削除',
     deleted: '下書きを削除しました。',
+    saved: '下書きに残しました。＋ の「下書き」から続きを書けます。',
   },
   deleteAccount: {
     title: 'アカウントの削除',

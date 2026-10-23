@@ -116,7 +116,7 @@ import { IssueFormService } from '../../core/issue/issue-form.service';
       @if (full()) {
         <p class="help">{{ 'subtask.max' | t: { n: '' + max } }}</p>
       } @else if (adding()) {
-        <!-- 足すときから、編集と同じ欄を出す（名前で Enter ならすぐ足せる。続けて足せるよう、開いたまま） -->
+        <!-- 足すときから、編集と同じ欄を出す（名前で Enter なら足して開いたまま、続けて足せる。「追加」ボタンは足して閉じる） -->
         <div class="edit add-form">
           <input id="st-add" [(ngModel)]="newTitle" maxlength="200" [placeholder]="'subtask.add' | t"
             [attr.aria-label]="'subtask.name' | t" [disabled]="busy()" (keydown)="onAddKey($event)" />
@@ -132,7 +132,7 @@ import { IssueFormService } from '../../core/issue/issue-form.service';
           <textarea [(ngModel)]="nMemo" rows="2" maxlength="2000" [placeholder]="'subtask.memo' | t"></textarea>
           <div class="actions">
             <button type="button" class="link" (click)="closeAdd()">{{ 'workflow.cancel' | t }}</button>
-            <button type="button" class="primary" [disabled]="busy() || !newTitle.trim()" (click)="add()">
+            <button type="button" class="primary" [disabled]="busy() || !newTitle.trim()" (click)="add(true)">
               {{ 'subtask.addBtn' | t }}</button>
           </div>
         </div>
@@ -360,8 +360,12 @@ export class SubtaskList implements OnInit {
     if (this.adding() && !t.closest('.add-form')) this.leaveAdd();
   }
 
-  /** 足す。並びは一番下。期限は親の期限を超えない（直すときと同じ計算） */
-  add() {
+  /**
+   * 足す。並びは一番下。期限は親の期限を超えない（直すときと同じ計算）。
+   * close：足したあとに欄を閉じるか（「追加」ボタンは閉じる。Enter は続けて足せるよう開いたまま）。
+   * 閉じるのは保存できたときだけ（失敗したら、書いた中身とエラーを見せたまま残す）
+   */
+  add(close = false) {
     const title = this.newTitle.trim();
     if (!title || this.full() || this.busy()) return;
     const order = (this.list().at(-1)?.order ?? 0) + 1;
@@ -369,11 +373,12 @@ export class SubtaskList implements OnInit {
     return this.run(async () => {
       await this.issueService.addSubtask(this.pid(), this.issue(),
         { title, assigneeId, dueAt: this.dueFrom(this.nDate), order, memo: this.nMemo.trim() }, this.myUid, this.tz());
-      // 続けて足せるように、担当者は残し、ほかは空に戻す
+      // 担当者は残し、ほかは空に戻す（閉じても、次に開いたとき空の欄から始まる）
       this.newTitle = '';
       this.nDate = '';
       this.nMemo = '';
-      setTimeout(() => document.getElementById('st-add')?.focus());
+      if (close) this.adding.set(false);
+      else setTimeout(() => document.getElementById('st-add')?.focus());
     });
   }
 

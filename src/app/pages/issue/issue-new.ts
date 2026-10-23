@@ -119,7 +119,7 @@ interface IssueDraft {
           </div>
         }
         <div class="field">
-          <span><label for="f-title">{{ 'issue.title' | t }}</label> <app-help-tip [keys]="['help.title']" /></span>
+          <span><label for="f-title">{{ 'issue.title' | t }}</label> <span class="req">{{ 'issueNew.required' | t }}</span> <app-help-tip [keys]="['help.title']" /></span>
           <input id="f-title" name="title" [(ngModel)]="title" (ngModelChange)="onTitle($event)" maxlength="200"
             required autofocus [placeholder]="'issueNew.titlePlaceholder' | t" />
           @if (similar().length) {
@@ -139,7 +139,7 @@ interface IssueDraft {
         </div>
 
         <fieldset>
-          <legend>{{ 'issue.type' | t }} <app-help-tip [keys]="['help.type']" /></legend>
+          <legend>{{ 'issue.type' | t }} <span class="req">{{ 'issueNew.required' | t }}</span> <app-help-tip [keys]="['help.type']" /></legend>
           <div class="chips">
             @for (t of types; track t) {
               <button type="button" [class.on]="type() === t" [attr.aria-pressed]="type() === t"
@@ -149,7 +149,7 @@ interface IssueDraft {
         </fieldset>
 
         <fieldset>
-          <legend>{{ 'issue.importance' | t }} <app-help-tip [keys]="['help.importance']" /></legend>
+          <legend>{{ 'issue.importance' | t }} <span class="req">{{ 'issueNew.required' | t }}</span> <app-help-tip [keys]="['help.importance']" /></legend>
           <div class="chips">
             @for (l of levels; track l) {
               <button type="button" [class.on]="importance() === l" [attr.aria-pressed]="importance() === l"
@@ -159,7 +159,7 @@ interface IssueDraft {
         </fieldset>
 
         <fieldset>
-          <legend>{{ 'issue.due' | t }} <app-help-tip [keys]="['help.due']" /></legend>
+          <legend>{{ 'issue.due' | t }} <span class="req">{{ 'issueNew.required' | t }}</span> <app-help-tip [keys]="['help.due']" /></legend>
           <div class="chips">
             @for (p of duePresets; track p.key) {
               <button type="button" [class.on]="duePreset() === p.key" [attr.aria-pressed]="duePreset() === p.key"
@@ -174,13 +174,13 @@ interface IssueDraft {
         </fieldset>
 
         <div class="field">
-          <span><label for="f-assignee">{{ 'issue.assignee' | t }}</label></span>
+          <span><label for="f-assignee">{{ 'issue.assignee' | t }}</label> <span class="req">{{ 'issueNew.required' | t }}</span></span>
           <app-member-select selectId="f-assignee" [members]="members()" [value]="assigneeId()"
             (picked)="assigneeId.set($event)" />
         </div>
 
         <div class="field">
-          <span><label for="f-done">{{ 'issue.doneCriteria' | t }}</label> <app-help-tip [keys]="['help.doneCriteria']" /></span>
+          <span><label for="f-done">{{ 'issue.doneCriteria' | t }}</label> <span class="req">{{ 'issueNew.required' | t }}</span> <app-help-tip [keys]="['help.doneCriteria']" /></span>
           <textarea id="f-done" name="doneCriteria" [(ngModel)]="doneCriteria" rows="2" required></textarea>
         </div>
 
@@ -279,7 +279,8 @@ interface IssueDraft {
     legend, .field { font-weight: bold; font-size: 14px; }
     .field { display: flex; flex-direction: column; gap: 4px; }
     /* 欄の見出し（太字）の中に置くので、太さだけ戻す */
-    .help, .warn { font-weight: normal; }
+        /* 必須の印。見出しは太字なので、細く小さく添える */
+    .req { font-size: 12px; font-weight: normal; color: var(--text-muted); white-space: nowrap; }
     input, textarea { font-weight: normal; }
     .chips { margin: 4px 0 8px; }
     .link { align-self: flex-start; }
@@ -474,6 +475,8 @@ export class IssueNew implements OnInit {
     inject(DestroyRef).onDestroy(() => {
       clearTimeout(this.titleTimer);
       this.flushDraft(); // 離れるときは、待たずにしまう
+      // 書きかけを残して閉じたときだけ知らせる（登録した・やめた・何も触っていない・空で消えた、のときは出さない）
+      if (this.touched && !this.submitted && this.drafts.get(this.draftId)) this.inbox.showFlash('drafts.saved');
       // 小さな絵のために作った一時的な URL を返す
       this.pending().forEach((p) => p.url && URL.revokeObjectURL(p.url));
     });
