@@ -722,6 +722,53 @@ service cloud.firestore {
           && get(projectPath(pid)).data.archived == false;
 
         match /events/{eid} {
+          function issuePath() { return /databases/$(database)/documents/projects/$(pid)/issues/$(iid); }
+          function childPath(col, id) {
+            return /databases/$(database)/documents/projects/$(pid)/issues/$(iid)/$(col)/$(id);
+          }
+          // 同じ保存で、その文書ができた・消えた
+          function made(p) { return !exists(p) && existsAfter(p); }
+          function gone(p) { return exists(p) && !existsAfter(p); }
+          // 関連課題：経緯の link は、この課題の側の1枚を指している（名前は「種類_向き_相手のpid_相手のiid」）
+          function linkHappened(l) {
+            let p = childPath('links', l.kind + '_' + l.dir + '_' + l.pid + '_' + l.iid);
+            return (l.action == 'add' && made(p)) || (l.action == 'remove' && gone(p));
+          }
+          function subHappened(s) {
+            let p = childPath('subtasks', s.sid);
+            return s.get('sid', null) is string && (
+              (s.action == 'add' && made(p))
+              || (s.action == 'remove' && gone(p))
+              || (s.action == 'split' && !('splitTo' in get(p).data) && ('splitTo' in getAfter(p).data)));
+          }
+          function fileHappened(f) {
+            let p = childPath('attachments', f.aid);
+            return f.get('aid', null) is string
+              && ((f.action == 'add' && made(p)) || (f.action == 'remove' && gone(p)));
+          }
+          // 経緯が、本当に起きたことと同じ保存で書かれているか
+          // （課題を変えずに偽の経緯だけを書いて、記録やお知らせをごまかせないように）
+          function happened() {
+            let d = request.resource.data;
+            let after = getAfter(issuePath()).data;
+            return (d.type in ['created', 'imported'] && made(issuePath()))
+              || (d.type == 'status' && after.updatedAt == request.time
+                  && get(issuePath()).data.status == d.from && after.status == d.to)
+              || (d.type == 'edit' && after.updatedAt == request.time
+                  && (!('changes' in d) || (
+                    (!('assigneeId' in d.changes) || after.assigneeId == d.changes.assigneeId.to)
+                    && (!('dueAt' in d.changes) || after.dueAt == d.changes.dueAt.to))))
+              || (d.type == 'priority' && after.updatedAt == request.time
+                  && after.priorityOverride == d.get('toPriority', null))
+              // 統合：統合元の課題が、この保存で「統合済み・統合先＝この課題」になった
+              || (d.type == 'merge'
+                  && get(/databases/$(database)/documents/projects/$(pid)/issues/$(d.merged.iid)).data.status != 'merged'
+                  && getAfter(/databases/$(database)/documents/projects/$(pid)/issues/$(d.merged.iid)).data.status == 'merged'
+                  && getAfter(/databases/$(database)/documents/projects/$(pid)/issues/$(d.merged.iid)).data.mergedInto.iid == iid)
+              || (d.type == 'link' && linkHappened(d.link))
+              || (d.type == 'subtask' && subHappened(d.sub))
+              || (d.type == 'attachment' && fileHappened(d.file));
+          }
           // 経緯は、決まった種類と欄だけ。書いた人は本人、時刻は今（過去や先の日付の経緯は作れない）。
           // 種類や欄を足したら、ここにも足すこと（漏れると、課題の保存ごと断られる）
           function validEvent() {
@@ -735,7 +782,7 @@ service cloud.firestore {
               && d.get('reason', '') is string && d.get('reason', '').size() <= 2000;
           }
           allow read: if isMember(pid);
-          allow create: if canWrite(pid) && validEvent();
+          allow create: if canWrite(pid) && validEvent() && happened();
           allow delete: if purgeChildAllowed(pid, iid);
         }
 
