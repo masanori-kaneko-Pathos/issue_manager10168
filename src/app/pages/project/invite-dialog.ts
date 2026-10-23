@@ -6,6 +6,7 @@ import { Project, ProjectWithRole } from '../../core/models';
 import { InvitePicker, Invitee, inviteErrorKey } from '../../shared/invite-picker';
 import { TPipe } from '../../i18n/i18n';
 import { shortName } from '../../core/text';
+import { InviteConfirm } from '../../shared/invite-confirm';
 
 /**
  * 招待の窓。送れなかった人だけを残し、全員送れたら閉じる。
@@ -14,13 +15,17 @@ import { shortName } from '../../core/text';
  */
 @Component({
   selector: 'app-invite-dialog',
-  imports: [FormsModule, TPipe, InvitePicker],
+  imports: [FormsModule, TPipe, InvitePicker, InviteConfirm],
   host: { '(document:keydown.escape)': 'cancel.emit()', '[animate.leave]': "'im-out-dialog'" },
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
     <section class="dialog" role="dialog" aria-modal="true" [attr.aria-label]="'invite.title' | t">
       <h2>{{ 'invite.title' | t }}</h2>
-      @if (true) {
+      @if (confirming() && target(); as p) {
+        <!-- 送る前の確かめ：送ったものは取り消せないので、宛先と役割をもう一度見せる -->
+        <app-invite-confirm [projectName]="p.name" [invitees]="invitees()" [busy]="busy()"
+          (back)="confirming.set(false)" (ok)="doSend()" />
+      } @else {
         @if (loading()) {
           <p class="help">{{ 'common.loading' | t }}</p>
         } @else if (!choices().length) {
@@ -33,16 +38,16 @@ import { shortName } from '../../core/text';
             </select>
           </label>
         }
+        @if (retry()) { <p class="warn" role="status">{{ 'invite.retryNote' | t }}</p> }
+        @if (hasFailed()) { <p class="warn" role="alert">{{ 'invite.someFailed' | t }}</p> }
+        @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
+        <app-invite-picker [(value)]="invitees" [failed]="failed()" />
+        <div class="row">
+          <button type="button" class="link" (click)="cancel.emit()">{{ 'workflow.cancel' | t }}</button>
+          <button type="button" class="primary" [disabled]="busy() || !target()" (click)="askConfirm()">
+            {{ 'invite.submit' | t: { n: '' + invitees().length } }}</button>
+        </div>
       }
-      @if (retry()) { <p class="warn" role="status">{{ 'invite.retryNote' | t }}</p> }
-      @if (hasFailed()) { <p class="warn" role="alert">{{ 'invite.someFailed' | t }}</p> }
-      @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
-      <app-invite-picker [(value)]="invitees" [failed]="failed()" />
-      <div class="row">
-        <button type="button" class="link" (click)="cancel.emit()">{{ 'workflow.cancel' | t }}</button>
-        <button type="button" class="primary" [disabled]="busy() || !target()" (click)="send()">
-          {{ 'invite.submit' | t: { n: '' + invitees().length } }}</button>
-      </div>
     </section>
   `,
   styles: `
@@ -106,11 +111,20 @@ export class InviteDialog implements OnInit {
     return shortName(name);
   }
 
-  async send() {
+  /** 送る前に確かめるか（確かめの画面を出しているか） */
+  confirming = signal(false);
+
+  /** 「招待を送る」：欄の打ちかけを札にしてから、確かめの画面へ（まだ送らない） */
+  askConfirm() {
+    if (!this.target() || !this.picker()?.flush() || !this.invitees().length) return;
+    this.confirming.set(true);
+  }
+
+  /** 確かめの画面の「送る」：ここで初めて送る */
+  async doSend() {
     const project = this.target();
-    if (!project || !this.picker()?.flush()) return;
     const list = this.invitees();
-    if (!list.length) return;
+    if (!project || !list.length) return;
     this.busy.set(true);
     const user = auth.currentUser!;
     const results = await Promise.allSettled(list.map((p) => this.ps.invite(project, p.email, p.role, user)));
@@ -124,6 +138,8 @@ export class InviteDialog implements OnInit {
       }
     });
     this.busy.set(false);
+    // 送れなかった人がいれば、入力の画面に戻して理由の札を見せる
+    this.confirming.set(false);
     if (left.length < list.length) this.sent.emit();
     if (!left.length) {
       this.done.emit();

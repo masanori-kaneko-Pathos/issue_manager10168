@@ -7,6 +7,7 @@ import { ProjectService } from '../core/project/project.service';
 import { SearchService } from '../core/search/search.service';
 import { InvitePicker, Invitee } from './invite-picker';
 import { I18nService, TPipe } from '../i18n/i18n';
+import { InviteConfirm } from './invite-confirm';
 
 /** プロジェクトの作成の下書きにしまう中身 */
 interface ProjectDraft {
@@ -20,13 +21,18 @@ interface ProjectDraft {
 /** プロジェクトの作成（名前だけで作れる。作るときに招待もできる） */
 @Component({
   selector: 'app-project-new-dialog',
-  imports: [FormsModule, TPipe, InvitePicker],
+  imports: [FormsModule, TPipe, InvitePicker, InviteConfirm],
   host: { '(document:keydown.escape)': 'close.emit()', '[animate.leave]': "'im-out-dialog'" },
   template: `
     <div class="backdrop" (click)="close.emit()"></div>
     <section class="dialog narrow" [class.wide]="inviteOpen()" role="dialog" aria-modal="true"
       [attr.aria-label]="'projectNew.title' | t">
       <h2>{{ 'projectNew.title' | t }}</h2>
+      @if (confirming()) {
+        <!-- 招待する人がいるときだけ、作る前に確かめる（送ったものは取り消せないため） -->
+        <app-invite-confirm [projectName]="name.trim()" [invitees]="invitees()" [busy]="busy()"
+          okKey="invite.confirmCreate" (back)="confirming.set(false)" (ok)="create(true)" />
+      } @else {
       <!-- 入力・選択・ボタンの操作は、どれも form まで上がってくるので、ここで1回だけ受けて下書きにしまう -->
       <form (ngSubmit)="create()" (input)="touch()" (change)="touch()" (click)="touch()">
         <label class="field">{{ 'projectNew.name' | t }}
@@ -52,6 +58,7 @@ interface ProjectDraft {
           <button type="submit" class="primary" [disabled]="busy() || !name.trim()">{{ 'projectNew.submit' | t }}</button>
         </div>
       </form>
+      }
     </section>
   `,
   styles: `
@@ -163,11 +170,19 @@ export class ProjectNewDialog implements OnInit {
    * 作ってから、招待を送る。招待は作成と同じ保存にはできない
    * （招待のルールは「書く前の時点で管理者か」を見るので、作成の瞬間はまだ管理者ではない）
    */
-  async create() {
+  /** 作る前に、招待の確かめの画面を出しているか */
+  confirming = signal(false);
+
+  async create(confirmed = false) {
     const name = this.name.trim();
     if (!name) return;
     // 欄に打ちかけのアドレスが残っていたら、札にしてから進む（形の違うものがあれば止まる）
     if (this.inviteOpen() && this.picker() && !this.picker()!.flush()) return;
+    // 招待する人がいれば、作る前に確かめの画面を出す
+    if (!confirmed && this.inviteOpen() && this.invitees().length) {
+      this.confirming.set(true);
+      return;
+    }
     this.busy.set(true);
     this.error.set('');
     try {
@@ -199,6 +214,8 @@ export class ProjectNewDialog implements OnInit {
       }
     } catch (e) {
       console.error(e);
+      // 入力の画面に戻して、エラーを見せる（名前・招待する人はそのまま残っている）
+      this.confirming.set(false);
       this.error.set('common.saveError');
     } finally {
       this.busy.set(false);

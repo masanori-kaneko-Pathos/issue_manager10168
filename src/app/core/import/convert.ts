@@ -287,7 +287,7 @@ import {
   
       // 内容：元の番号を最後に足す（どの課題がどれだったか、あとで分かるように）
       const original = get('number');
-      const description = [get('description'), original ? c.t('importPage.originalNumber', { n: original }) : '']
+      const description = [get('description').slice(0, 4900), original ? c.t('importPage.originalNumber', { n: original }) : '']
         .filter(Boolean).join('\n\n');
   
       // 重複：プロジェクトの課題、またはファイルの前の行と同じタイトル
@@ -296,12 +296,12 @@ import {
   
       const values: ImportValues = {
         title, type, importance, dueAt, assigneeId, reporterId,
-        doneCriteria: get('doneCriteria') || c.t('doneCriteria.' + type),
+        doneCriteria: (get('doneCriteria') || c.t('doneCriteria.' + type)).slice(0, 2000),
         description, labelIds, occurredOn, impact, status, createdAt, resolvedAt, closedAt,
-        cause: get('cause'), countermeasure: get('countermeasure'),
+        cause: get('cause').slice(0, 2000), countermeasure: get('countermeasure').slice(0, 2000),
         causeCategory: CAUSE_WORDS.get(key(get('causeCategory'))) ?? null,
         effect: EFFECT_WORDS.get(key(get('effect'))) ?? null,
-        learning: get('learning'),
+        learning: get('learning').slice(0, 2000),
       };
       return {
         line: idx + 2,

@@ -192,8 +192,8 @@ service cloud.firestore {
     function resolutionOk() {
       let d = request.resource.data;
       return validHours(d, 'actualHours')
-        && d.cause is string && d.cause.size() > 0
-        && d.countermeasure is string && d.countermeasure.size() > 0
+        && d.cause is string && d.cause.size() > 0 && d.cause.size() <= 2000
+        && d.countermeasure is string && d.countermeasure.size() > 0 && d.countermeasure.size() <= 2000
         && d.causeCategory in ['requirements', 'design', 'testing', 'operation', 'communication', 'external', 'other']
         && d.doneCriteriaMet == true
         && d.resolvedAt == request.time
@@ -207,7 +207,7 @@ service cloud.firestore {
     function closeOk() {
       let d = request.resource.data;
       return d.effect in ['yes', 'partial', 'no']
-        && d.learning is string
+        && d.learning is string && d.learning.size() <= 2000
         && d.doneCriteriaMet == true
         && d.closedAt == request.time;
     }
@@ -251,7 +251,8 @@ service cloud.firestore {
         && d.importance in ['high', 'mid', 'low']
         && d.dueAt is timestamp
         && (!('firstDueAt' in d) || d.firstDueAt == d.dueAt)
-        && d.doneCriteria is string && d.doneCriteria.size() > 0
+        && d.doneCriteria is string && d.doneCriteria.size() > 0 && d.doneCriteria.size() <= 2000
+        && d.get('description', '') is string && d.get('description', '').size() <= 5000
         // 担当者は、このプロジェクトの管理者かメンバー
         && get(/databases/$(database)/documents/projects/$(pid)/members/$(d.assigneeId)).data.role in ['admin', 'member']
         // 番号は、採番した値と一致
@@ -315,7 +316,8 @@ service cloud.firestore {
 
     function hasReason() {
       return request.resource.data.statusReason is string
-        && request.resource.data.statusReason.size() > 0;
+        && request.resource.data.statusReason.size() > 0
+        && request.resource.data.statusReason.size() <= 1000;
     }
 
     // 確定した変更の表と同じ決まり
@@ -365,7 +367,8 @@ service cloud.firestore {
         && d.type in ['bug', 'request', 'question', 'task', 'risk']
         && d.importance in ['high', 'mid', 'low']
         && d.dueAt is timestamp
-        && d.doneCriteria is string && d.doneCriteria.size() > 0
+        && d.doneCriteria is string && d.doneCriteria.size() > 0 && d.doneCriteria.size() <= 2000
+        && d.get('description', '') is string && d.get('description', '').size() <= 5000
         // 担当者は、変えたときだけ「担当者になれる人か」を確かめる
         // （抜けた人が担当のまま残った課題も、題名などほかの欄は直せるように。サブタスクのルールと同じ考え方）
         && (!d.diff(resource.data).affectedKeys().hasAny(['assigneeId'])
@@ -720,7 +723,8 @@ service cloud.firestore {
               && d.type in ['created', 'imported', 'status', 'edit', 'priority', 'link', 'merge', 'subtask',
                             'attachment']
               && d.by == request.auth.uid
-              && d.at == request.time;
+              && d.at == request.time
+              && d.get('reason', '') is string && d.get('reason', '').size() <= 2000;
           }
           allow read: if isMember(pid);
           allow create: if canWrite(pid) && validEvent();
@@ -773,6 +777,12 @@ service cloud.firestore {
           }
           // 相手側に置かれる、対の文書の名前（相手から見ると、こちらが「相手」）
           function pairId(kind, dir) { return kind + '_' + dir + '_' + pid + '_' + iid; }
+          // この課題の中身を変えられる人か（管理者か、提起者・担当者）。
+          // 「書いたあと」で見る：再発・切り出しは、新しい課題と同じ保存でつなぐため
+          function editsHere() {
+            let i = getAfter(/databases/$(database)/documents/projects/$(pid)/issues/$(iid)).data;
+            return myRole(pid) == 'admin' || i.reporterId == request.auth.uid || i.assigneeId == request.auth.uid;
+          }
           function validLink() {
             let d = request.resource.data;
             return d.keys().hasOnly(['kind', 'dir', 'pid', 'iid', 'by', 'at'])
@@ -789,7 +799,7 @@ service cloud.firestore {
           allow read: if isMember(pid);
           allow create: if validLink() && (
             // こちらから付ける：この課題のプロジェクトに書ける人。相手側の写しも同じ保存で作ること
-            (request.resource.data.dir == 'out' && canWrite(pid)
+            (request.resource.data.dir == 'out' && canWrite(pid) && editsHere()
               && existsAfter(linkPath(request.resource.data.pid, request.resource.data.iid,
                    pairId(request.resource.data.kind, 'in'))))
             // 相手側の写し：このプロジェクトのメンバーで、対の out が同じ保存でできること
@@ -800,7 +810,7 @@ service cloud.firestore {
           );
           allow delete: if
             // こちらから外す：書ける人。相手側の写しも同じ保存で消すこと
-            (resource.data.dir == 'out' && canWrite(pid)
+            (resource.data.dir == 'out' && canWrite(pid) && editsHere()
               && !existsAfter(linkPath(resource.data.pid, resource.data.iid, pairId(resource.data.kind, 'in'))))
             // 相手側の写し：対の out が消えるなら（相手のプロジェクトを抜けたあとでも外せる）
             || (resource.data.dir == 'in' && signedIn()
@@ -881,8 +891,16 @@ service cloud.firestore {
         // 添付の一覧（ファイル本体は Storage）。課題への添付は管理者・メンバー、コメントへの添付は閲覧者も。
         // 消すのは置いた本人か管理者。ファイル本体は、文書が消えたら関数が消す
         match /attachments/{aid} {
+          function issueData() {
+            return get(/databases/$(database)/documents/projects/$(pid)/issues/$(iid)).data;
+          }
           function issueStatus() {
-            return get(/databases/$(database)/documents/projects/$(pid)/issues/$(iid)).data.status;
+            return issueData().status;
+          }
+          // この課題の中身を変えられる人か（管理者か、提起者・担当者）
+          function editsIssue() {
+            let i = issueData();
+            return myRole(pid) == 'admin' || i.reporterId == request.auth.uid || i.assigneeId == request.auth.uid;
           }
           function validAttachment() {
             let d = request.resource.data;
@@ -901,8 +919,8 @@ service cloud.firestore {
           allow read: if isMember(pid);
           allow create: if validAttachment()
             && get(projectPath(pid)).data.archived == false
-            // 課題へ：書ける人（管理者・メンバー）で、クローズ・統合・削除フォルダの中ではない
-            && ((request.resource.data.get('cid', null) == null && canWrite(pid)
+            // 課題へ：この課題の中身を変えられる人（管理者・提起者・担当者）で、クローズ・統合・削除フォルダの中ではない
+            && ((request.resource.data.get('cid', null) == null && canWrite(pid) && editsIssue()
                   && !(issueStatus() in ['closed', 'merged', 'deleted']))
               // コメントへ：メンバーなら閲覧者も。削除フォルダの中ではない（コメントの決まりと同じ）
               || (request.resource.data.get('cid', null) is string && isMember(pid) && issueStatus() != 'deleted'));

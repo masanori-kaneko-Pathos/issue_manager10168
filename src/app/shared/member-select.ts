@@ -66,7 +66,10 @@ const norm = (s: string) => s.normalize('NFKC').toLowerCase();
     .muted { color: var(--text-subtle); }
     .caret { font-size: 12px; color: var(--text-muted); }
     .panel { margin-top: 4px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface);
-      overflow: hidden; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); animation: im-pop 160ms var(--ease-out); }
+      overflow: hidden; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); }
+    /* 開く動きは、閉じている最中（im-out）には付けない。付けると閉じる動きが始まらず、
+       「終わった」の合図が来ないので、一覧が消えずに押せないまま残る */
+    .panel:not(.im-out) { animation: im-pop 160ms var(--ease-out); }
     .search { display: block; box-sizing: border-box; width: 100%; min-height: 40px; padding: 0 10px; border: none;
       border-bottom: 1px solid var(--border); background: var(--surface); color: var(--text);
       font-size: 16px; font-weight: normal; }

@@ -43,7 +43,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
       }
 
       <label class="field">{{ 'merge.reason' | t }}
-        <textarea [(ngModel)]="reason" rows="2" [placeholder]="'merge.reasonHint' | t"></textarea>
+        <textarea [(ngModel)]="reason" rows="2" maxlength="1000" [placeholder]="'merge.reasonHint' | t"></textarea>
       </label>
       @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
       <div class="end">

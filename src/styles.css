@@ -133,7 +133,10 @@ legend { padding: 0; font-size: 14px; font-weight: bold; }
 .conflict p:last-child { margin-bottom: 0; }
 
 /* 区切りのない長い文字（URL・英数字の続き）が箱からはみ出すときだけ、途中で折り返す */
-    body { overflow-wrap: break-word; }
+body { overflow-wrap: break-word;
+  /* 書体を指定しないと、iPhone の Safari は明朝体になる。端末のゴシック体を順に探す */
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN',
+    'Segoe UI', 'Yu Gothic UI', Meiryo, sans-serif; }
 /* ================================================================
    動き（アニメーション）
    ・開くときだけ動かす（閉じる動きは、CSS だけでは付けられないため）

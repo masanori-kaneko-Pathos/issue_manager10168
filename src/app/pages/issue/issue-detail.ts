@@ -34,7 +34,7 @@ import { CommentBox } from './comment-box';
 import { RequestDialog } from './request-dialog';
 import { DeleteDialog } from './delete-dialog';
 import { RequestService } from '../../core/request/request.service';
-import { commentSegments } from '../../core/issue/comment';
+import { CommentSeg, commentSegments } from '../../core/issue/comment';
 import { AttachmentService } from '../../core/attachment/attachment.service';
 import { AttachmentList } from './attachment-list';
 import { DraftService, fieldPlace } from '../../core/draft/draft.service';
@@ -53,6 +53,10 @@ const LINK_GROUPS = [
 function linkGroupOf(kind: string, dir: string) {
   return kind === 'relates' ? 'relates' : `${kind}_${dir}`;
 }
+
+/** 長い文は、たたんで頭だけ見せる（この行数か文字数を超えたら） */
+const FOLD_LINES = 8;
+const FOLD_CHARS = 600;
 
 /** その場編集で、1つの欄が2つの課題で同じかを比べる（衝突のとき「同じ欄がぶつかったか」を見るため） */
 function sameField(k: keyof IssueEdits, a: Issue, b: Issue): boolean {
@@ -228,7 +232,13 @@ export class IssueDetail implements OnInit {
   linkOpen = signal(false);
   linkError = signal('');
   /** 付けられるのは、管理者とメンバー（アーカイブ中・削除フォルダの中は不可） */
-  canLink = computed(() => this.canCreate() && this.issue()?.status !== 'deleted');
+  /** この課題の中身を変えられる立場か：管理者か、提起者・担当者のメンバー（ルールの editsHere・editsIssue と同じ） */
+  private isEditor(i: Issue | null | undefined) {
+    const r = this.role();
+    return !!i && (r === 'admin' || (r === 'member' && (i.reporterId === this.myUid || i.assigneeId === this.myUid)));
+  }
+  /** 関連課題を付けられるのは、この課題の中身を変えられる人（アーカイブ中・削除フォルダの中は不可） */
+  canLink = computed(() => this.canCreate() && this.isEditor(this.issue()) && this.issue()?.status !== 'deleted');
   linkGroups = computed(() => LINK_GROUPS
     .map((key) => ({ key, rels: this.relations().filter((r) => linkGroupOf(r.kind, r.dir) === key) }))
     .filter((g) => g.rels.length));
@@ -302,7 +312,7 @@ export class IssueDetail implements OnInit {
   /** 足せるか：管理者・メンバー（アーカイブ中は不可）で、クローズ・統合・削除フォルダの中でない */
   canAttach = computed(() => {
     const s = this.issue()?.status;
-    return this.canCreate() && !!s && !['closed', 'merged', 'deleted'].includes(s);
+    return this.canCreate() && this.isEditor(this.issue()) && !!s && !['closed', 'merged', 'deleted'].includes(s);
   });
   // ---- 依頼 ----
   private requests = inject(RequestService);
@@ -939,9 +949,13 @@ export class IssueDetail implements OnInit {
     return this.linked()[`${r.pid}/${r.iid}`];
   }
 
-  /** 外せるのは、こちらから付けたもの。相手から付けられたものは、同じプロジェクトのときだけ */
+  /**
+   * 外せるのは、こちらから付けたもの。相手から付けられたものは、同じプロジェクトで、相手の課題も自分が変えられるときだけ
+   * （外すと、相手の課題の側の1枚も消えるため。ルールと同じ決まり）
+   */
   canUnlink(r: IssueRelation) {
-    return this.canLink() && (r.dir === 'out' || r.pid === this.pid);
+    if (!this.canLink()) return false;
+    return r.dir === 'out' || (r.pid === this.pid && this.isEditor(this.linkedIssue(r)));
   }
 
   async unlink(r: IssueRelation) {
@@ -978,9 +992,53 @@ export class IssueDetail implements OnInit {
   }
 
   /** コメントの本文を、メンションと「#番号」で分ける（メンションした人の名前だけを色付きにする） */
+  /** コメントの分け方の取り置き（コメントの id → 本文と名前の組と、分けた結果） */
+  private segCache = new Map<string, { key: string; segs: CommentSeg[] }>();
+
+  /**
+   * コメントの本文を、メンションと「#番号」で分ける（メンションした人の名前だけを色付きにする）。
+   * 描き直しのたびに分け直さず、本文か名前が変わったときだけ分け直す。
+   * 同じ配列を返すので、画面の側も「変わっていない」と分かり、並べ直さずに済む
+   */
   commentSegs(item: TimelineItem) {
     const names = (item.mentions ?? []).map((u) => this.memberName(u)).filter((n) => n !== '—');
-    return commentSegments(item.body ?? '', names);
+    // たたんでいる間は、頭の部分だけを分ける（全部を並べると、切り替えのたびに画面が重くなるため）
+    const body = this.clip(item.id, item.body);
+    const key = body + '\u0000' + names.join('\u0000');
+    const hit = this.segCache.get(item.id);
+    if (hit?.key === key) return hit.segs;
+    const segs = commentSegments(body, names);
+    this.segCache.set(item.id, { key, segs });
+    return segs;
+  }
+
+  /** 全文を開いている文の名札（経緯の id など） */
+  private openTexts = signal<ReadonlySet<string>>(new Set());
+
+  /** たたむほど長い文か */
+  isLong(text: string | null | undefined) {
+    const t = text ?? '';
+    return t.length > FOLD_CHARS || t.split('\n').length > FOLD_LINES;
+  }
+
+  isOpenText(key: string) {
+    return this.openTexts().has(key);
+  }
+
+  toggleText(key: string) {
+    this.openTexts.update((s) => {
+      const next = new Set(s);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  /** 見せる文：長い文は、開くまで頭の部分だけ */
+  clip(key: string, text: string | null | undefined) {
+    const t = text ?? '';
+    if (!this.isLong(t) || this.isOpenText(key)) return t;
+    return t.split('\n').slice(0, FOLD_LINES).join('\n').slice(0, FOLD_CHARS) + '…';
   }
 
   /** コメントの「#12」を押したとき：その番号の課題を探して移る（見つからなければ知らせる） */

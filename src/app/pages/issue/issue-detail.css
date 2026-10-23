@@ -193,6 +193,9 @@ a.add-link { display: inline-flex; align-items: center; text-decoration: none; }
 /* ウォッチの人数（メニューの行の右に小さく） */
 .watch-n { flex: none; margin-right: 4px; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
 .props .warn.gone { margin: 6px 0 0; font-size: 12px; }
+/* 長い文の「全文を表示／たたむ」 */
+.more-text { display: block; margin-top: 2px; padding: 0; border: none; background: none; color: var(--primary);
+  font: inherit; font-size: 13px; cursor: pointer; }
 /* 帯の題名（スクロールしたら出る）。長い題名は1行で「…」。⋮ は右端のまま */
 .bar app-crumbs { flex: 0 1 auto; min-width: 0; }
 .bar-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

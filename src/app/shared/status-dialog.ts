@@ -24,15 +24,15 @@ import { DraftService, fieldPlace } from '../core/draft/draft.service';
 
       @if (transition().needs === 'reason') {
         <label class="field">{{ 'workflow.reason' | t }}
-          <textarea [(ngModel)]="reason" rows="3" [placeholder]="'workflow.reasonHint.' + transition().key | t"></textarea>
+          <textarea [(ngModel)]="reason" rows="3" maxlength="1000" [placeholder]="'workflow.reasonHint.' + transition().key | t"></textarea>
         </label>
       }
       @if (transition().needs === 'resolve') {
         <label class="field">{{ 'workflow.cause' | t }}
-          <textarea [(ngModel)]="cause" rows="2"></textarea>
+          <textarea [(ngModel)]="cause" rows="2" maxlength="2000"></textarea>
         </label>
         <label class="field">{{ 'workflow.countermeasure' | t }}
-          <textarea [(ngModel)]="countermeasure" rows="2"></textarea>
+          <textarea [(ngModel)]="countermeasure" rows="2" maxlength="2000"></textarea>
         </label>
         <fieldset>
           <legend>{{ 'workflow.causeCategory' | t }}</legend>
@@ -74,7 +74,7 @@ import { DraftService, fieldPlace } from '../core/draft/draft.service';
           @if (effect() === 'no') { <p class="help">{{ 'workflow.closeHintNo' | t }}</p> }
         </fieldset>
         <label class="field">{{ 'workflow.learning' | t }}
-          <textarea [(ngModel)]="learning" rows="2"></textarea>
+          <textarea [(ngModel)]="learning" rows="2" maxlength="2000"></textarea>
         </label>
       }
       @if (transition().needs === 'resolve' || transition().needs === 'close') {

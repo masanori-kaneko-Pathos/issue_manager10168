@@ -901,9 +901,11 @@ export class IssueNew implements OnInit {
   }
 
   pickPreset(key: string, days: number) {
+    const d = endOfDayIn(days, this.tz());
     this.duePreset.set(key);
-    this.dueInput = '';
-    this.dueAt.set(endOfDayIn(days, this.tz()));
+    // 日時の欄にも入れる（ボタンで選んだことが、欄を見ても分かるように）
+    this.dueInput = toLocalInput(d, this.tz());
+    this.dueAt.set(d);
   }
 
   onDueInput(value: string) {

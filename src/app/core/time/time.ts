@@ -1,10 +1,21 @@
+/** 日時の書式の道具の取り置き。作るのが重いので、同じ言語・同じ形なら1回だけ作って使い回す */
+const fmtCache = new Map<string, Intl.DateTimeFormat>();
+function fmt(locale: string, opts: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const key = locale + JSON.stringify(opts);
+  let f = fmtCache.get(key);
+  if (!f) {
+    f = new Intl.DateTimeFormat(locale, opts);
+    fmtCache.set(key, f);
+  }
+  return f;
+}
 const DAY = 24 * 60 * 60 * 1000;
 const HOUR = 60 * 60 * 1000;
 const MINUTE = 60 * 1000;
 
 /** その瞬間における、timeZone の UTC からのずれ（ミリ秒） */
 function offsetMs(date: Date, timeZone: string): number {
-  const parts = new Intl.DateTimeFormat('en-US', {
+  const parts = fmt('en-US', {
     timeZone, hourCycle: 'h23',
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
@@ -24,7 +35,7 @@ export function zonedTime(y: number, mo: number, d: number, h: number, mi: numbe
 
 /** timeZone で、今日から days 日後の 23:59 */
 export function endOfDayIn(days: number, timeZone: string): Date {
-  const parts = new Intl.DateTimeFormat('en-CA', {
+  const parts = fmt('en-CA', {
     timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date()).split('-').map(Number); // en-CA は YYYY-MM-DD
   const base = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] + days));
@@ -38,7 +49,7 @@ export function parseLocalInput(value: string, timeZone: string): Date | null {
 }
 
 export function formatDateTime(date: Date, timeZone: string, lang: 'ja' | 'en'): string {
-  return new Intl.DateTimeFormat(lang === 'ja' ? 'ja-JP' : 'en-US', {
+  return fmt(lang === 'ja' ? 'ja-JP' : 'en-US', {
     timeZone, dateStyle: 'medium', timeStyle: 'short',
   }).format(date);
 }
@@ -57,7 +68,7 @@ export function remainingOf(dueMs: number, nowMs = Date.now()): { key: string; n
 
 /** 瞬間を、timeZone での datetime-local の値（例 2026-10-09T18:00）にする */
 export function toLocalInput(date: Date, timeZone: string): string {
-    const p = new Intl.DateTimeFormat('en-CA', {
+    const p = fmt('en-CA', {
       timeZone, hourCycle: 'h23',
       year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
     }).formatToParts(date);
@@ -80,7 +91,7 @@ export function relativeTime(ms: number, lang: 'ja' | 'en', nowMs = Date.now()):
 
   /** UTCからのずれの表示（例 GMT+9） */
 export function tzOffset(timeZone: string): string {
-  const p = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'shortOffset' }).formatToParts(new Date());
+  const p = fmt('en-US', { timeZone, timeZoneName: 'shortOffset' }).formatToParts(new Date());
   return p.find((x) => x.type === 'timeZoneName')?.value ?? '';
 }
 
@@ -93,7 +104,7 @@ export const COMMON_TIMEZONES = [
 
 /** 瞬間を、timeZone での日付（YYYY-MM-DD）にする。カレンダーのマス分けに使う */
 export function dateKey(date: Date, timeZone: string): string {
-  return new Intl.DateTimeFormat('en-CA', {
+  return fmt('en-CA', {
     timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(date);
 }
@@ -101,7 +112,7 @@ export function dateKey(date: Date, timeZone: string): string {
 export function shortDue(date: Date, timeZone: string, lang: 'ja' | 'en', nowMs = Date.now()): string {
   const locale = lang === 'ja' ? 'ja-JP' : 'en-US';
   const sameYear = dateKey(date, timeZone).slice(0, 4) === dateKey(new Date(nowMs), timeZone).slice(0, 4);
-  const day = new Intl.DateTimeFormat(locale, {
+  const day = fmt(locale, {
     timeZone, month: 'numeric', day: 'numeric', weekday: 'short', ...(sameYear ? {} : { year: 'numeric' }),
   }).format(date);
   const hm = toLocalInput(date, timeZone).slice(11);
