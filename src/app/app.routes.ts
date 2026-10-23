@@ -69,8 +69,9 @@ export const routes: Routes = [
           redirectTo: ({ params }) => inject(Router).createUrlTree(['/inbox'], { queryParams: { m: params['id'] } }) },
         { path: 'notifications', canActivate: [authGuard],
           loadComponent: () => import('./pages/notification/notifications').then((m) => m.Notifications) },
-          { path: 'drafts', canActivate: [authGuard],
-            loadComponent: () => import('./pages/draft/drafts').then((m) => m.Drafts) },  
+          // 下書きのページはやめた（窓にした）。古いリンクは、ホームで下書きの窓を開く
+          { path: 'drafts',
+            redirectTo: () => inject(Router).createUrlTree(['/'], { queryParams: { drafts: '1' } }) },  
           // 設定：左に索引の入れ物。プロフィール・表示と言語・パスワード・イントロダクションは、
           // 同じ部品（settings.ts）を、出す欄（section）だけ変えて使う
           { path: 'settings', canActivate: [authGuard],

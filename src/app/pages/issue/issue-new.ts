@@ -21,6 +21,7 @@ import { ImageViewer, ViewerImage } from '../../shared/image-viewer';
 import { Crumbs, Crumb, HOME } from '../../shared/crumbs';
 import { ISSUE_NEW_EMBED } from '../../core/issue/issue-form.service';
 import { SearchService } from '../../core/search/search.service';
+import { shortName } from '../../core/text';
 
 /** 新しく作ってつなぐときの、つなぎ方 */
 type LinkKind = 'relates' | 'waitsFor' | 'recurrence';
@@ -109,9 +110,10 @@ interface IssueDraft {
         @if (projects().length) {
           <div class="field">
             <span><label for="f-project">{{ 'issueNew.project' | t }}</label></span>
-            <select id="f-project" name="project" [ngModel]="pid()" (ngModelChange)="selectProject($event)">
+            <select id="f-project" name="project" class="project-select" [ngModel]="pid()"
+              (ngModelChange)="selectProject($event)">
               @for (p of projects(); track p.id) {
-                <option [value]="p.id">{{ p.name }}</option>
+                <option [value]="p.id" [title]="p.name">{{ short(p.name) }}</option>
               }
             </select>
           </div>
@@ -292,6 +294,8 @@ interface IssueDraft {
     .similar a { flex: 1; color: var(--text); overflow-wrap: anywhere; }
     .similar .st { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: var(--surface); white-space: nowrap; }
     .similar-help { margin: 0 !important; font-size: 12px !important; color: var(--text-muted); }
+    /* 長い名前でも、欄が画面の外へ伸びないように */
+    .project-select { width: 100%; min-width: 0; max-width: 100%; }
     .hours { display: flex; align-items: center; gap: 6px; font-weight: normal; }
     .hours input { width: 120px; }
     .drop { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 8px; font-weight: normal; }
@@ -906,6 +910,10 @@ export class IssueNew implements OnInit {
     this.dueInput = value;
     this.duePreset.set(null);
     this.dueAt.set(parseLocalInput(value, this.tz()));
+  }
+
+  short(name: string) {
+    return shortName(name);
   }
 
   ready() {

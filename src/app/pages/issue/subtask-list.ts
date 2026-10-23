@@ -12,8 +12,6 @@ import { dateKey, formatDateTime, shortDue, zonedTime } from '../../core/time/ti
 import { enterKey } from '../../core/dom';
 import { MemberSelect } from '../../shared/member-select';
 import { I18nService, TPipe } from '../../i18n/i18n';
-import { ReminderService } from '../../core/reminder/reminder.service';
-import { ReminderHub } from '../../core/reminder/reminder-hub.service';
 import { IssueFormService } from '../../core/issue/issue-form.service';
 
 /**
@@ -86,28 +84,15 @@ import { IssueFormService } from '../../core/issue/issue-form.service';
                 <span>{{ nameOf()(s.assigneeId) }}</span>
                 @if (s.dueAt) { <span [class.late]="late(s)">{{ dueText(s) }}</span> }
                 @if (beyond(s)) { <span class="late">{{ 'subtask.beyondParent' | t }}</span> }
-                @if (reminderOf(s); as r) {
-                  <!-- 自分にだけ見える札。押すと変える・外す -->
-                  <button type="button" class="remind" [class.late]="!r.pending" [title]="'reminder.change' | t"
-                    [attr.aria-label]="'reminder.badge' | t: { when: remindText(r) }" (click)="openReminder(s)">
-                    <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor"
-                      stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5" /><path d="M5 3 2 6M19 3l3 3" /></svg>
-                    {{ remindText(r) }}</button>
-                }
               </span>
             </div>
-            @if (!s.splitTo && (canEdit() || canToggle(s) || canRemindSub(s))) {
+            @if (!s.splitTo && (canEdit() || canToggle(s))) {
               <div class="more-wrap">
                 <button type="button" class="more" [attr.aria-label]="'subtask.menu' | t" [title]="'subtask.menu' | t"
                   [attr.aria-expanded]="menuFor() === s.id" (click)="menuFor.set(menuFor() === s.id ? null : s.id)">⋮</button>
                 @if (menuFor() === s.id) {
                   <div class="backdrop" (click)="menuFor.set(null)"></div>
                   <div class="menu" role="menu" animate.leave="im-out">
-                    @if (canRemindSub(s)) {
-                      <button type="button" role="menuitem" (click)="menuFor.set(null); openReminder(s)">
-                        {{ (reminderOf(s) ? 'reminder.change' : 'reminder.open') | t }}</button>
-                    }
                     @if (canToggle(s) && s.status !== 'done') {
                       <button type="button" role="menuitem" (click)="toggleDoing(s)">
                         {{ (s.status === 'doing' ? 'subtask.toTodo' : 'subtask.toDoing') | t }}</button>
@@ -231,8 +216,6 @@ export class SubtaskList implements OnInit {
   canEdit = input(false);
   /** 自分が担当のサブタスクの □ を押せるか（管理者・メンバーで、親がまだ動いている） */
   canWork = input(false);
-  /** リマインドを置けるか（閲覧者も。詳細画面の canRemind をそのまま受け取る） */
-  canRemind = input(false);
   /** 窓に渡すプロジェクト名 */
   projectName = input('');
 
@@ -242,12 +225,7 @@ export class SubtaskList implements OnInit {
   private i18n = inject(I18nService);
   private readonly myUid = auth.currentUser!.uid;
   private stop: Unsubscribe | null = null;
-  private stopReminders: Unsubscribe | null = null;
-  private reminderService = inject(ReminderService);
   protected issueForm = inject(IssueFormService);
-  /** サブタスクに置いた、自分のリマインド（sid → リマインド） */
-  private reminders = signal(new Map<string, Reminder>());
-  private remindHub = inject(ReminderHub);
   readonly max = MAX_SUBTASKS;
 
   list = signal<Subtask[]>([]);
@@ -280,7 +258,6 @@ export class SubtaskList implements OnInit {
   constructor() {
     inject(DestroyRef).onDestroy(() => {
       this.stop?.();
-      this.stopReminders?.();
     });
   }
 
@@ -291,37 +268,11 @@ export class SubtaskList implements OnInit {
         console.error(e);
         this.error.set('common.loadError');
       });
-    this.stopReminders = this.reminderService.watchSubtasks(this.pid(), this.issue().id,
-      (m) => this.reminders.set(m), (e) => console.error(e));
   }
 
   /** □ を押せるか：全部を触れる人か、自分が担当のサブタスク。切り出したものは押せない */
   canToggle(s: Subtask) {
     return !s.splitTo && (this.canEdit() || (this.canWork() && s.assigneeId === this.myUid));
-  }
-
-  /** このサブタスクにリマインドを置けるか（完了・切り出し済みには置かない） */
-  canRemindSub(s: Subtask) {
-    return this.canRemind() && s.status !== 'done' && !s.splitTo;
-  }
-
-  /** 札に出すリマインド：完了していないものだけ */
-  reminderOf(s: Subtask) {
-    const r = this.reminders().get(s.id);
-    return r && !r.doneAt ? r : null;
-  }
-
-  /** リマインドの窓を、このサブタスクの変更の画面で開く */
-  openReminder(s: Subtask) {
-    const i = this.issue();
-    this.remindHub.openFor({
-      pid: this.pid(), iid: i.id, number: i.number, title: i.title, projectName: this.projectName(),
-      sid: s.id, subTitle: s.title,
-    });
-  }
-
-  remindText(r: Reminder) {
-    return formatDateTime(r.at.toDate(), this.tz(), this.i18n.lang());
   }
 
   toggleDone(s: Subtask) {

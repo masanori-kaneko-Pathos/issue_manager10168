@@ -12,6 +12,7 @@ import { ProjectWithRole, Reminder } from '../core/models';
 import { ReminderHub, reminderTitle } from '../core/reminder/reminder-hub.service';
 import { shortDue } from '../core/time/time';
 import { I18nService, TPipe } from '../i18n/i18n';
+import { DraftsWindow } from '../core/draft/drafts-window.service';
 
 type Sec = 'inbox' | 'reminders' | 'drafts' | 'projects';
 
@@ -40,6 +41,44 @@ type Sec = 'inbox' | 'reminders' | 'drafts' | 'projects';
           stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7" /><path d="M5 10v10h14V10" /></svg>
         {{ 'crumbs.home' | t }}</a>
       <div class="sep" role="separator"></div>
+<!-- プロジェクト（並びはプロジェクトのページで決めたもの。依頼があれば名前の左に赤い丸） -->
+      <div class="sec-row">
+        <button type="button" class="sec" [attr.aria-expanded]="isOpen('projects')" (click)="toggle('projects')">
+          <span class="tri" [class.shut]="!isOpen('projects')" aria-hidden="true">▾</span>
+          <span class="grow">{{ 'projects.title' | t }}</span>
+          @if (badge.total()) { <span class="req-dot" role="img" [attr.aria-label]="'nav.hasRequests' | t"></span> }
+        </button>
+        @if (isOpen('projects')) { <a routerLink="/projects" class="all" (click)="close.emit()">{{ 'nav.seeAll' | t }}</a> }
+        @if (activeCount()) { <span class="n">{{ activeCount() }}</span> }
+      </div>
+      <div class="fold-body" [class.open]="isOpen('projects')" [attr.inert]="isOpen('projects') ? null : ''">
+        <div class="sub">
+          @if (loading()) {
+            <p class="small">{{ 'common.loading' | t }}</p>
+          } @else {
+            @for (p of shown(); track p.id) {
+              <a class="item" [routerLink]="['/p', p.id]" [title]="p.name" (click)="close.emit()">
+                <span class="mark">
+                  @if (badge.counts()[p.id]) {
+                    <span class="req-dot" role="img" [attr.aria-label]="'request.waiting' | t"></span>
+                  } @else if (pins().has(p.id)) {
+                    <svg class="pin" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" fill="currentColor"
+                      stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+                      <path d="M9 3h6l-1 6 3 3H7l3-3z" /><path d="M12 15v6" /></svg>
+                  }
+                </span>
+                <span class="grow pname">{{ p.name }}</span>
+                <span class="role">{{ 'roles.' + p.role | t }}</span></a>
+            } @empty {
+              <p class="small">{{ 'projects.empty' | t }}</p>
+            }
+            @if (activeCount() > shown().length) {
+              <a routerLink="/projects" class="item more" (click)="close.emit()">
+                <span class="mark"></span>{{ 'nav.more' | t: { n: '' + (activeCount() - shown().length) } }}</a>
+            }
+          }
+        </div>
+      </div>
 
       <!-- 受信箱 -->
       <div class="sec-row">
@@ -107,7 +146,9 @@ type Sec = 'inbox' | 'reminders' | 'drafts' | 'projects';
             <span class="tri" [class.shut]="!isOpen('drafts')" aria-hidden="true">▾</span>
             <span class="grow">{{ 'drafts.title' | t }}</span>
           </button>
-          @if (isOpen('drafts')) { <a routerLink="/drafts" class="all" (click)="close.emit()">{{ 'nav.seeAll' | t }}</a> }
+          @if (isOpen('drafts')) {
+            <button type="button" class="all" (click)="openDrafts()">{{ 'nav.seeAll' | t }}</button>
+          }
           <span class="n">{{ drafts.count() }}</span>
         </div>
         <div class="fold-body" [class.open]="isOpen('drafts')" [attr.inert]="isOpen('drafts') ? null : ''">
@@ -120,51 +161,12 @@ type Sec = 'inbox' | 'reminders' | 'drafts' | 'projects';
                 <span class="role">{{ 'drafts.kinds.' + d.kind | t }}</span></button>
             }
             @if (drafts.count() > draftList().length) {
-              <a routerLink="/drafts" class="item more" (click)="close.emit()">
-                <span class="mark"></span>{{ 'nav.more' | t: { n: '' + (drafts.count() - draftList().length) } }}</a>
+              <button type="button" class="item more" (click)="openDrafts()">
+                <span class="mark"></span>{{ 'nav.more' | t: { n: '' + (drafts.count() - draftList().length) } }}</button>
             }
           </div>
         </div>
       }
-
-      <!-- プロジェクト（並びはプロジェクトのページで決めたもの。依頼があれば名前の左に赤い丸） -->
-      <div class="sec-row">
-        <button type="button" class="sec" [attr.aria-expanded]="isOpen('projects')" (click)="toggle('projects')">
-          <span class="tri" [class.shut]="!isOpen('projects')" aria-hidden="true">▾</span>
-          <span class="grow">{{ 'projects.title' | t }}</span>
-          @if (badge.total()) { <span class="req-dot" role="img" [attr.aria-label]="'nav.hasRequests' | t"></span> }
-        </button>
-        @if (isOpen('projects')) { <a routerLink="/projects" class="all" (click)="close.emit()">{{ 'nav.seeAll' | t }}</a> }
-        @if (activeCount()) { <span class="n">{{ activeCount() }}</span> }
-      </div>
-      <div class="fold-body" [class.open]="isOpen('projects')" [attr.inert]="isOpen('projects') ? null : ''">
-        <div class="sub">
-          @if (loading()) {
-            <p class="small">{{ 'common.loading' | t }}</p>
-          } @else {
-            @for (p of shown(); track p.id) {
-              <a class="item" [routerLink]="['/p', p.id]" [title]="p.name" (click)="close.emit()">
-                <span class="mark">
-                  @if (badge.counts()[p.id]) {
-                    <span class="req-dot" role="img" [attr.aria-label]="'request.waiting' | t"></span>
-                  } @else if (pins().has(p.id)) {
-                    <svg class="pin" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" fill="currentColor"
-                      stroke="currentColor" stroke-width="2" stroke-linejoin="round">
-                      <path d="M9 3h6l-1 6 3 3H7l3-3z" /><path d="M12 15v6" /></svg>
-                  }
-                </span>
-                <span class="grow pname">{{ p.name }}</span>
-                <span class="role">{{ 'roles.' + p.role | t }}</span></a>
-            } @empty {
-              <p class="small">{{ 'projects.empty' | t }}</p>
-            }
-            @if (activeCount() > shown().length) {
-              <a routerLink="/projects" class="item more" (click)="close.emit()">
-                <span class="mark"></span>{{ 'nav.more' | t: { n: '' + (activeCount() - shown().length) } }}</a>
-            }
-          }
-        </div>
-      </div>
     </nav>
   `,
   styles: `
@@ -241,19 +243,20 @@ export class NavDrawer implements OnInit {
   private authService = inject(AuthService);
   private ps = inject(ProjectService);
   protected remind = inject(ReminderHub);
+  private draftsWin = inject(DraftsWindow);
   private i18n = inject(I18nService);
 
   private projects = signal<ProjectWithRole[]>([]);
   loading = signal(true);
 
-  /** 開いている見出し（端末ごとに覚える。最初はプロジェクトだけ開く） */
+  /** 開いている見出し（端末ごとに覚える。最初は全部たたむ） */
   private readonly openKey = `issuemanager.navOpen.${auth.currentUser!.uid}`;
   private opened = signal<Set<Sec>>((() => {
     try {
       const v = localStorage.getItem(this.openKey);
-      return new Set<Sec>(v ? (JSON.parse(v) as Sec[]) : ['projects']);
+      return new Set<Sec>(v ? (JSON.parse(v) as Sec[]) : []);
     } catch {
-      return new Set<Sec>(['projects']);
+      return new Set<Sec>();
     }
   })());
 
@@ -297,6 +300,12 @@ export class NavDrawer implements OnInit {
   /** 狭い引き出しに合わせて、短い時刻で */
   when(r: Reminder) {
     return shortDue(r.at.toDate(), this.authService.profile()?.timeZone ?? 'Asia/Tokyo', this.i18n.lang(), Date.now());
+  }
+
+  /** 引き出しを閉じて、下書きの窓を開く */
+  openDrafts() {
+    this.close.emit();
+    this.draftsWin.open.set(true);
   }
 
   /** 引き出しを閉じて、一覧の窓を開く */

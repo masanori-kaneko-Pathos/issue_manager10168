@@ -113,6 +113,10 @@ legend { padding: 0; font-size: 14px; font-weight: bold; }
 /* 中でスクロールする箱は、flex の中では 0 まで縮められてしまう。窓の中では、どれも縮ませない（引き継ぎの窓で学んだこと） */
 .dialog > * { flex: none; }
 .dialog h2 { margin: 0; font-size: 18px; }
+/* 窓の中のスクロールバー：角の丸みの分だけ上下を空ける（バーが角まで伸びて、角が四角く見えないように） */
+.dialog::-webkit-scrollbar { width: 10px; }
+.dialog::-webkit-scrollbar-track { margin-block: 12px; background: transparent; }
+.dialog::-webkit-scrollbar-thumb { border: 2px solid var(--surface); border-radius: 5px; background: var(--border-strong); }
 @media (max-width: 600px) {
   .dialog, .dialog.narrow { width: 100%; height: 100%; max-height: none; border-radius: 0; }
 }

@@ -20,10 +20,6 @@
                 <span class="watch-n" [title]="watcherNames()">{{ 'watch.count' | t: { n: '' + watchCount() } }}</span>
                 <app-help-tip align="right" [keys]="['watch.help']" />
               </div>
-              @if (canRemind()) {
-                <button type="button" role="menuitem" (click)="menuOpen.set(false); openReminder()">
-                  {{ (activeReminder() ? 'reminder.change' : 'reminder.open') | t }}</button>
-              }
               <div class="sep" role="separator"></div>
             }
             @if (isActive(i) && !workaroundOn() && canEditWorkaround() && i.status !== 'deleted' && !projectArchived()) {
@@ -212,15 +208,6 @@
           <span class="stale" [title]="'stale.title' | t: { n: '' + staleDays() }">{{ 'stale.label' | t }}</span>
         }
         @if (workaroundOn()) { <span class="wa">{{ 'workaround.label' | t }}</span> }
-        @if (activeReminder(); as rm) {
-          <!-- 自分にだけ見える札（完了したものは出さない。届いたものは赤）。押すと変える・外す -->
-          <button type="button" class="pill remind" [class.late]="!rm.pending" [title]="'reminder.change' | t"
-            [attr.aria-label]="'reminder.badge' | t: { when: remindLabel() }" (click)="openReminder()">
-            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor"
-              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5" /><path d="M5 3 2 6M19 3l3 3" /></svg>
-            {{ remindLabel() }}</button>
-        }        
       </div>
         @if (prioPanel()) {
           <section class="panel">
@@ -572,8 +559,7 @@
               <dt>{{ 'subtask.title' | t }} <app-help-tip [keys]="['subtask.help']" /></dt>
               <dd>
                 <app-subtask-list [pid]="pid" [issue]="i" [members]="assignable()" [nameOf]="nameFn"
-                  [canEdit]="canEditSubtasks()" [canWork]="canWork()" [canRemind]="canRemind()"
-                  [projectName]="projectName()" />
+                [canEdit]="canEditSubtasks()" [canWork]="canWork()" />
               </dd>
             }
             <!-- 原因・対策：まだ書いていなければ、ほかの欄と同じ「押して書く」。押すと窓 -->

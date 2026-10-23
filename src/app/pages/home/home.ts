@@ -189,6 +189,7 @@ function daysBetweenKeys(from: string, to: string) {
                   <a class="ititle" [routerLink]="['/p', i.projectId, 'i', i.id]">
                     <span class="num">#{{ i.number }}</span> {{ i.title }}</a>
                   <span class="iproj">{{ projectName(i.projectId) }}</span>
+                  @if (onBehalf(i)) { <span class="behalf">{{ 'today.onBehalf' | t }}</span> }
                   <span class="idue">{{ 'today.resolvedAgo' | t: { n: '' + resolvedDays(i) } }}</span>
                 </li>
               }
@@ -338,6 +339,9 @@ function daysBetweenKeys(from: string, to: string) {
       font-size: 12px; color: var(--text-muted); }
     .idue { flex: none; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
     .idue.overdue { color: var(--danger-text); font-weight: bold; }
+    /* 提起者が抜けた課題を、管理者が代わりに確かめる印 */
+    .behalf { flex: none; font-size: 11px; padding: 1px 6px; border-radius: 10px; white-space: nowrap;
+      background: var(--warning-bg); color: var(--warning-text); }
     /* リスト｜かんばん｜カレンダー：プロジェクトのタブと同じ見た目 */
     .views { position: relative; display: inline-flex; gap: 2px; margin-right: auto; border-bottom: 1px solid var(--border); }
     /* 下の線（1px）の上に重ねる */
@@ -413,6 +417,11 @@ export class Projects implements OnInit {
   private mineByProject = signal<Record<string, (Issue & { projectId: string })[]>>({});
   /** プロジェクトごとの、自分が提起した解決済みの課題（効果確認のため） */
   private reportedByProject = signal<Record<string, (Issue & { projectId: string })[]>>({});
+  /**
+   * 自分が管理者のプロジェクトの、提起者がもうメンバーにいない解決済みの課題（管理者が代わりに効果を確かめる）。
+   * 関数の毎日のまとめと同じ決まり
+   */
+  private orphanByProject = signal<Record<string, (Issue & { projectId: string })[]>>({});
   private stopInvitations: Unsubscribe | null = null;
   private requests = inject(RequestService);
   /** 管理者のプロジェクトごとの、対応待ちの依頼の見張り（pid → やめる関数） */
@@ -544,7 +553,7 @@ export class Projects implements OnInit {
    */
   effectDue = computed(() => {
     const today = dateKey(new Date(this.clock.now()), this.tz());
-    return Object.values(this.reportedByProject()).flat()
+    return [...Object.values(this.reportedByProject()).flat(), ...Object.values(this.orphanByProject()).flat()]
       .filter((i) => {
         if (i.status !== 'resolved' || !i.resolvedAt || this.archivedIds().has(i.projectId)) return false;
         const days = this.projects().find((p) => p.id === i.projectId)?.settings?.effectCheckDays
@@ -553,6 +562,11 @@ export class Projects implements OnInit {
       })
       .sort((a, b) => a.resolvedAt!.toMillis() - b.resolvedAt!.toMillis());
   });
+
+  /** 提起者の代わりに確かめる課題か（自分が提起したものでなければ、提起者が抜けた課題） */
+  onBehalf(i: Issue) {
+    return i.reporterId !== auth.currentUser!.uid;
+  }
 
   /** 解決してから何日か（自分の暦で） */
   resolvedDays(i: Issue) {
@@ -798,9 +812,32 @@ export class Projects implements OnInit {
           if (e.code === 'permission-denied') this.load();
         },
       );
+      // 管理者のプロジェクトだけ：解決済みの課題とメンバーを見張り、提起者がもういない課題を引き受ける
+      let stopOrphans = () => {};
+      if (this.projects().find((p) => p.id === pid)?.role === 'admin') {
+        let resolved: (Issue & { projectId: string })[] = [];
+        let memberIds: Set<string> | null = null;
+        // 両方が1回ずつ届いてから入れる（メンバーが届く前に「だれもいない」とみなさないように）
+        const emit = () => {
+          if (!memberIds) return;
+          const ids = memberIds;
+          this.orphanByProject.update((m) => ({ ...m, [pid]: resolved.filter((i) => !ids.has(i.reporterId)) }));
+        };
+        const stopResolved = this.issueService.watchResolvedIn(pid,
+          (list) => { resolved = list; emit(); },
+          (e) => console.error('解決済みの課題の見張りに失敗', pid, e));
+        const stopMembers = this.projectService.watchMembers(pid,
+          (ms) => { memberIds = new Set(ms.map((x) => x.uid)); emit(); },
+          (e) => console.error('メンバーの見張りに失敗', pid, e));
+        stopOrphans = () => {
+          stopResolved();
+          stopMembers();
+        };
+      }
       this.mineStops.set(pid, () => {
         stopMine();
         stopReported();
+        stopOrphans();
       });
     }
   }
@@ -834,6 +871,10 @@ export class Projects implements OnInit {
       return rest;
     });
     this.reportedByProject.update((m) => {
+      const { [pid]: _removed, ...rest } = m;
+      return rest;
+    });
+    this.orphanByProject.update((m) => {
       const { [pid]: _removed, ...rest } = m;
       return rest;
     });

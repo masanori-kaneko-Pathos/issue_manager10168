@@ -434,12 +434,24 @@ export class IssueService {
     }
     // issue は、モーダルを開いた時点（かんばんならつかんだ時点）の課題
     const rule = STATUS_NOTICE[t.key];
+    // 解決したとき、提起者がもうメンバーにいなければ、確認の依頼は管理者へ（仕様メモ【9】「不在の場合は管理者」）。
+    // トランザクションの中では検索できないので、先に読む（中で、今もメンバーかを1人ずつ確かめ直す）
+    let admins: string[] = [];
+    if (rule?.type === 'resolved') {
+      const reporter = await getDoc(doc(db, 'projects', pid, 'members', issue.reporterId));
+      if (!reporter.exists()) {
+        const s = await getDocs(query(collection(db, 'projects', pid, 'members'), where('role', '==', 'admin')));
+        admins = s.docs.map((d) => d.id);
+      }
+    }
     await runTransaction(db, async (tx) => {
       await assertUnchanged(tx, ref, issue);
       const notes = rule
         ? await this.prepareNotices(tx, pid, issue, [
           // 決まった相手を先に（同じ人には、こちらの1通だけになる）
           { to: rule.to === 'assignee' ? issue.assigneeId : issue.reporterId, type: rule.type, detail: p.reason },
+          // 提起者がいないときの代わり（ウォッチより先に並べて、管理者には「確認をお願いします」の1通にする）
+          ...admins.map((to): NoticeWant => ({ to, type: rule.type, detail: p.reason })),
           // ウォッチしている人にも（赤U）。解決の確認依頼は提起者だけなので、ほかの人には「解決済みにしました」
           ...watchersOf(issue).map((to): NoticeWant => ({
             to, type: rule.type === 'resolved' ? 'watchResolved' : rule.type, detail: p.reason,
@@ -1033,6 +1045,22 @@ export class IssueService {
     return onSnapshot(
       query(collection(db, 'projects', pid, 'issues'), where('reporterId', '==', uid)),
       (s) => onData(s.docs.map((d) => ({ ...toIssue(d), projectId: pid })).filter((i) => i.status === 'resolved')),
+      onError,
+    );
+  }
+
+  /**
+   * 1つのプロジェクトの、解決済みの課題を見張る（ホームの「効果確認」で、提起者がもういない課題を
+   * 管理者が引き受けるため。管理者のプロジェクトだけで使う）
+   */
+  watchResolvedIn(
+    pid: string,
+    onData: (issues: (Issue & { projectId: string })[]) => void,
+    onError: (e: FirestoreError) => void,
+  ): Unsubscribe {
+    return onSnapshot(
+      query(collection(db, 'projects', pid, 'issues'), where('status', '==', 'resolved')),
+      (s) => onData(s.docs.map((d) => ({ ...toIssue(d), projectId: pid }))),
       onError,
     );
   }

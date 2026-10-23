@@ -138,12 +138,15 @@ export class NotificationService {
     }
     return this.i18n.t('notify.types.' + n.type, {
       name: n.byName, n: String(n.issueNumber ?? ''), title: n.issueTitle, project: n.projectName,
+      role: n.role ? this.i18n.t('roles.' + n.role) : '',
     });
   }
 
   /** 押したときの行き先（プッシュの pushUrl と同じ決まり） */
   target(n: AppNotification): { commands: unknown[]; extras: NavigationExtras } {
     if (n.type === 'daily') return { commands: ['/'], extras: { fragment: 'today' } };
+    // 招待：まだメンバーではないので、ホームの「届いている招待」へ
+    if (n.type === 'invited') return { commands: ['/'], extras: {} };
     // 自由入力のリマインド：課題がないので、今の画面のまま一覧の窓を開く（窓の側が ?reminders=1 を見て開き、印を消す）
     if (n.type === 'reminder' && !n.iid) {
       return { commands: [], extras: { queryParams: { reminders: '1' }, queryParamsHandling: 'merge' } };

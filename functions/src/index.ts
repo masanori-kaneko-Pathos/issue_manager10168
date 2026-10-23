@@ -500,9 +500,11 @@ async function issueReminderNotice(uid: string, d: DocumentData): Promise<Remind
   return {
     type: d.sid ? 'subtaskReminder' : 'reminder',
     pid: d.pid, projectName: project.get('name') ?? d.projectName ?? '', iid: d.iid, issueNumber: n,
-    // 1行目：課題は課題名、サブタスクはサブタスク名。2行目（detail）：課題は「#12」、サブタスクは「#12 課題名」
+    // 1行目：課題は課題名、サブタスクはサブタスク名。
+    // 2行目（detail）：課題は「#12」、サブタスクは「#12 課題名」。メモがあれば「 · メモ」を続ける
     issueTitle: (d.sid ? String(sub?.title ?? d.subTitle ?? '') : issueTitle).slice(0, 200),
-    detail: (d.sid ? `#${n} ${issueTitle}` : `#${n}`).slice(0, 200),
+    detail: [d.sid ? `#${n} ${issueTitle}` : `#${n}`, String(d.note ?? '').trim()]
+      .filter(Boolean).join(' · ').slice(0, 200),
   };
 }
 
@@ -510,7 +512,8 @@ async function issueReminderNotice(uid: string, d: DocumentData): Promise<Remind
 function freeReminderNotice(d: DocumentData): ReminderNotice {
   return {
     type: 'reminder', pid: '', projectName: '', iid: null, issueNumber: null,
-    issueTitle: String(d.title ?? '').slice(0, 200), detail: '',
+    // 2行目（ベルの小さい文字・メールの本文）にメモの頭を出す
+    issueTitle: String(d.title ?? '').slice(0, 200), detail: String(d.note ?? '').slice(0, 200),
   };
 }
 
@@ -606,6 +609,7 @@ const PUSH_TEXT: Record<'ja' | 'en', Record<string, string>> = {
     subtaskReminder: 'リマインド：{{title}}',
     recurring: '定期課題から #{{n}}「{{title}}」ができました',
     recurringStopped: '定期課題「{{title}}」を止めました。担当者か作った人が、もう担当できないためです',
+    invited: '{{name}} さんから、「{{project}}」に{{role}}として招待されました',
   },
   en: {
     assigned: '{{name}} assigned you to #{{n}} "{{title}}"',
@@ -633,6 +637,7 @@ const PUSH_TEXT: Record<'ja' | 'en', Record<string, string>> = {
     subtaskReminder: 'Reminder: {{title}}',
     recurring: 'A recurring issue created #{{n}} "{{title}}"',
     recurringStopped: 'The recurring issue "{{title}}" was paused because its assignee or creator can no longer be assigned',
+    invited: '{{name}} invited you to "{{project}}" as {{role}}',
   },
 };
 const DAILY_PARTS: Record<'ja' | 'en', Record<string, string>> = {
@@ -656,6 +661,11 @@ const DAILY_KEYS: Record<DailyGroup, string[]> = {
 };
 const PEOPLE_OF: Record<string, string> = { active: 'people', overdueAll: 'overduePeople' };
 const APP_TITLE = { ja: '課題管理', en: 'Issue Tracker' };
+/** 招待の文面に入れる役割（アプリの ja.ts・en.ts の roles と同じ言葉） */
+const ROLE_TEXT: Record<'ja' | 'en', Record<string, string>> = {
+  ja: { admin: '管理者', member: 'メンバー', viewer: '閲覧者' },
+  en: { admin: 'Admin', member: 'Member', viewer: 'Viewer' },
+};
 
 // ---- メール ----
 
@@ -672,7 +682,7 @@ const APP_URL = 'https://kensyu10168.web.app';
  */
 const EMAIL_GROUP_OF: Record<string, string> = {
   daily: 'daily',
-  assigned: 'assign', handover: 'assign', subtaskAssigned: 'assign', recurring: 'assign',
+  assigned: 'assign', handover: 'assign', subtaskAssigned: 'assign', recurring: 'assign', invited: 'assign',
   comment: 'comment', mention: 'comment',
   dueChanged: 'status', resolved: 'status', sentBack: 'status', closed: 'status', rejected: 'status',
   restored: 'status', watchResolved: 'status', merged: 'status', unblocked: 'status', effectCheck: 'status',
@@ -731,6 +741,27 @@ ${detail ? `<p style="margin:0 0 12px;white-space:pre-wrap;color:#444">${esc(det
   logger.info('mail sent', { uid, type: n.type });
 }
 
+/**
+ * まだ登録していない人への招待のメール（設定がまだないので、いつも送る）。
+ * どちらの言語の人か分からないので、日本語と英語を両方書く。宛先のアドレスはログに書かない
+ */
+async function sendInviteMail(to: string, inviter: string, project: string, role: string) {
+  const ja = `${inviter} さんから、「${project}」に${ROLE_TEXT.ja[role] ?? ''}として招待されました。`;
+  const jaHow = `このメールアドレス（${to}）でアカウントを作ると、ホームに招待が出て、参加できます。`;
+  const en = `${inviter} invited you to "${project}" as ${ROLE_TEXT.en[role] ?? ''}.`;
+  const enHow = `Create an account with this email address (${to}), and the invitation will appear on your Home page.`;
+  const subject = `[${APP_TITLE.ja}] 「${project}」への招待 / Invitation to "${project}"`.slice(0, 150);
+  const text = [ja, jaHow, '—', en, enHow, APP_URL].join('\n\n');
+  const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#222">
+<p style="margin:0 0 8px;font-size:16px">${esc(ja)}</p>
+<p style="margin:0 0 16px">${esc(jaHow)}</p>
+<p style="margin:0 0 8px;font-size:16px">${esc(en)}</p>
+<p style="margin:0 0 20px">${esc(enHow)}</p>
+<p style="margin:0"><a href="${esc(APP_URL)}" style="display:inline-block;padding:10px 18px;background:#1a73e8;color:#fff;border-radius:6px;text-decoration:none">${MAIL_TEXT.ja.open} / ${MAIL_TEXT.en.open}</a></p>
+</div>`;
+  await mailer().sendMail({ from: { name: APP_TITLE.ja, address: MAIL_FROM }, to, subject, text, html });
+}
+
 /** 端末ごとにプッシュを送る（今までの処理を、そのまま切り出したもの） */
 async function sendPush(uid: string, devices: FirebaseFirestore.QueryDocumentSnapshot[], data: Record<string, string>) {
   await Promise.all(devices.map(async (d) => {
@@ -766,12 +797,14 @@ function pushBody(n: DocumentData, lang: 'ja' | 'en'): string {
   }
   return fill(PUSH_TEXT[lang][n.type] ?? '', {
     name: n.byName ?? '', n: String(n.issueNumber ?? ''), title: n.issueTitle ?? '', project: n.projectName ?? '',
+    role: ROLE_TEXT[lang][n.role] ?? '',
   });
 }
 
 /** 押したときに開く画面（アプリのヘッダーの openNotice と同じ行き先） */
 function pushUrl(uid: string, n: DocumentData): string {
   if (n.type === 'daily') return '/#today';
+  if (n.type === 'invited') return '/';
   if (n.type === 'projectDeleted') return '/';
   if (n.type === 'recurringStopped') return `/p/${n.pid}/recurring`;
   // 自由入力のリマインド：課題がないので、どの画面でもリマインドの一覧の窓を開く
@@ -905,7 +938,7 @@ export const imDeleteProject = onCall({ region: 'asia-northeast1' }, async (req)
  * 画面からはメールアドレスで「だれか」を調べられないので、メンバーかどうかはここで確かめる。
  * Admin はルールを通らないので、ルールと同じ条件もここで確かめる
  */
-export const imInvite = onCall({ region: 'asia-northeast1' }, async (req) => {
+export const imInvite = onCall({ region: 'asia-northeast1', secrets: [GMAIL_APP_PASSWORD] }, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'sign-in required');
   const pid = String(req.data?.pid ?? '');
@@ -934,6 +967,22 @@ export const imInvite = onCall({ region: 'asia-northeast1' }, async (req) => {
   } catch (e) {
     if ((e as { code?: number }).code === 6) throw new HttpsError('already-exists', 'already-invited');
     throw e;
+  }
+  // 招待されたことを知らせる。失敗しても招待は作ってあるので、止めずに記録だけ（登録すれば、ホームに招待が出る）
+  const inviterName = String(me.get('displayName') ?? '');
+  const projectName = String(project.get('name') ?? '');
+  if (account) {
+    // 登録している人：お知らせを書く（プッシュと、本人がオンにしていればメールは、imOnNotification が送る）
+    await db.collection(`users/${account.uid}/notifications`).add({
+      type: 'invited', pid, projectName, iid: null, issueNumber: null, issueTitle: '', role,
+      by: uid, byName: inviterName, detail: '', at: FieldValue.serverTimestamp(), read: false,
+      expireAt: Timestamp.fromMillis(Date.now() + NOTIFY_KEEP_DAYS * DAY),
+    }).catch((e) => logger.error('invite notice failed', { pid, error: String(e) }));
+  } else {
+    // まだ登録していない人：招待のメールを直接送る
+    await sendInviteMail(email, inviterName, projectName, role)
+      .then(() => logger.info('invite mail sent', { pid }))
+      .catch((e) => logger.error('invite mail failed', { pid, error: String(e) }));
   }
   return { ok: true };
 });

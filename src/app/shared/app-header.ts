@@ -22,11 +22,15 @@ import { IssueFormService } from '../core/issue/issue-form.service';
 import { NavDrawer } from './nav-drawer';
 import { RequestBadge } from '../core/request/request-badge.service';
 import { LogoutDialog } from './logout-dialog';
+import { InviteDialog } from '../pages/project/invite-dialog';
+import { ReminderHub } from '../core/reminder/reminder-hub.service';
+import { InviteWindow } from '../core/project/invite-window.service';
+import { DraftsWindow } from '../core/draft/drafts-window.service';
 
 @Component({
   selector: 'app-header',
-  imports: [RouterLink, TPipe, HelpTip, SearchBox, ProjectNewDialog, InboxPop, Avatar, NoticeActions, NavDrawer,
-    LogoutDialog],
+  imports: [RouterLink, TPipe, SearchBox, ProjectNewDialog, InboxPop, Avatar, NoticeActions, NavDrawer,
+    LogoutDialog, InviteDialog],
   host: {
     '(document:keydown.escape)':
       'open.set(false); addOpen.set(false); bellOpen.set(false); rowMenu.set(null); penOpen.set(false)',
@@ -60,17 +64,12 @@ import { LogoutDialog } from './logout-dialog';
               {{ 'menu.newIssue' | t }}</button>
             <!-- 下書きは、1件以上あるときだけ出す -->
             @if (drafts.count()) {
-              <a routerLink="/drafts" role="menuitem" (click)="addOpen.set(false)">
-                {{ 'drafts.menu' | t: { n: '' + drafts.count() } }}</a>
+              <button type="button" role="menuitem" (click)="addOpen.set(false); draftsWin.open.set(true)">
+                {{ 'drafts.menu' | t: { n: '' + drafts.count() } }}</button>
             }
             <button type="button" role="menuitem" (click)="newProject()">{{ 'menu.newProject' | t }}</button>
-            <div class="item-row">
-              <button type="button" role="menuitem" [disabled]="!canInvite()" (click)="invite()">
-                {{ 'menu.invite' | t }}</button>
-              @if (!canInvite()) {
-                <app-help-tip kind="denied" align="right" [keys]="[inviteDenied()]" />
-              }
-            </div>
+            <button type="button" role="menuitem" (click)="newReminder()">{{ 'menu.newReminder' | t }}</button>
+            <button type="button" role="menuitem" (click)="invite()">{{ 'menu.invite' | t }}</button>
           </div>
         }
       </div>
@@ -181,6 +180,13 @@ import { LogoutDialog } from './logout-dialog';
       }
     }
     @if (logoutOpen()) { <app-logout-dialog (cancel)="logoutOpen.set(false)" /> }
+    <!-- 招待の窓はここに1つ（ヘッダーの ＋ からも、メンバーのタブからも、InviteWindow に頼んで開く） -->
+    @if (inviteWin.state(); as s) {
+      @defer (on immediate) {
+        <app-invite-dialog [pid]="s.pid" [initial]="s.initial" [retry]="s.retry"
+          (sent)="inviteWin.sent()" (done)="inviteWin.close()" (cancel)="inviteWin.close()" />
+      }
+    }
   `,
   styles: `
     .app-header { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 8px;
@@ -362,11 +368,10 @@ export class AppHeader {
   }
 
   addOpen = signal(false);
-  /** メニューを開いたときにいたプロジェクトと、そこでの自分のロール */
-  ctx = signal<{ pid: string | null; role: Role | null; sample: boolean }>({ pid: null, role: null, sample: false });
-  canInvite = computed(() => !!this.ctx().pid && this.ctx().role === 'admin' && !this.ctx().sample);
-  inviteDenied = computed(() => !this.ctx().pid ? 'menu.inviteNeedProject'
-    : this.ctx().sample ? 'sample.noInvite' : 'menu.inviteNeedAdmin');
+  /** 招待の窓（どのプロジェクトに招待するかは、窓の中で選ぶ） */
+  protected inviteWin = inject(InviteWindow);
+  private remindHub = inject(ReminderHub);
+  protected draftsWin = inject(DraftsWindow);
 
   open = signal(false);
   /** ログアウトの確かめの窓 */
@@ -395,8 +400,7 @@ export class AppHeader {
     this.open.set(!this.open());
   }
 
-  /** 開くときに、今いるプロジェクトでの自分のロールを確かめる */
-  async toggleAdd() {
+  toggleAdd() {
     if (this.addOpen()) {
       this.addOpen.set(false);
       return;
@@ -404,22 +408,6 @@ export class AppHeader {
     this.open.set(false);
     this.penOpen.set(false);
     this.bellOpen.set(false);
-    const pid = this.currentPid();
-    let role: Role | null = null;
-    let sample = false;
-    if (pid) {
-      try {
-        const [r, p] = await Promise.all([
-          this.projectService.myRole(pid, auth.currentUser!.uid),
-          this.projectService.get(pid),
-        ]);
-        role = r;
-        sample = !!p?.sample;
-      } catch {
-        role = null;
-      }
-    }
-    this.ctx.set({ pid, role, sample });
     this.addOpen.set(true);
   }
 
@@ -434,10 +422,16 @@ export class AppHeader {
     this.projectNewOpen.set(true);
   }
 
+  /** その場で招待の窓を開く（ページへは移らない。今いるプロジェクトを最初に選んでおく） */
   invite() {
-    const pid = this.ctx().pid;
     this.addOpen.set(false);
-    if (pid) this.router.navigate(['/p', pid, 'members'], { fragment: 'invite' });
+    this.inviteWin.open(this.currentPid());
+  }
+
+  /** リマインドの窓を、新しく作る画面で開く */
+  newReminder() {
+    this.addOpen.set(false);
+    this.remindHub.openNew();
   }
 
   /** 「/」で検索欄へ。文字を打っている途中や、ほかのキーと一緒に押したときは何もしない */

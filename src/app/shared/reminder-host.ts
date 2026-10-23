@@ -66,8 +66,7 @@ import { I18nService, TPipe } from '../i18n/i18n';
               (done)="v.fromList ? hub.openList() : hub.close()" />
           } @else if (v.kind === 'new') {
             <!-- 課題を選んだら、その課題の変更の画面へ（終わったら一覧へ戻る） -->
-            <app-reminder-new (back)="hub.openList()" (cancel)="hub.openList()" (done)="hub.openList()"
-              (pick)="hub.openFor($event, true)" />
+            <app-reminder-new (back)="hub.openList()" (cancel)="hub.openList()" (done)="hub.openList()" />
           }
         </section>
       </div>
@@ -86,6 +85,7 @@ import { I18nService, TPipe } from '../i18n/i18n';
         </button>
         <button type="button" class="main" (click)="hub.openEdit(r.id)">
           <span class="title">{{ titleOf(r) }}</span>
+          @if (r.note) { <span class="note">{{ r.note }}</span> }
           <span class="meta">
             <span class="when" [title]="state === 'late' ? ('reminder.fired' | t) : ''">{{ when(r) }}</span>
             @if (contextOf(r); as c) { <span class="ctx">{{ c }}</span> }
@@ -116,6 +116,7 @@ import { I18nService, TPipe } from '../i18n/i18n';
     .main:hover { background: var(--surface-alt); }
     .title { overflow-wrap: anywhere; }
     .done .title { color: var(--text-muted); text-decoration: line-through; }
+    .note { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .meta { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12px; color: var(--text-muted); }
     /* 届いたもの：時刻を赤く（期限切れと同じ見た目） */
     .late .when { color: var(--danger-text); font-weight: bold; }

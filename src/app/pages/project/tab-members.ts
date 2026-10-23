@@ -1,10 +1,8 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { auth } from '../../core/firebase';
 import { Invitee } from '../../shared/invite-picker';
-import { InviteDialog } from './invite-dialog';
+import { InviteWindow } from '../../core/project/invite-window.service';
 import { Invitation, Member, Role } from '../../core/models';
 import { AuthService } from '../../core/auth/auth.service';
 import { HelpTip } from '../../shared/help-tip';
@@ -16,7 +14,7 @@ import { Avatar } from '../../shared/avatar';
 
 @Component({
   selector: 'app-tab-members',
-  imports: [TPipe, HelpTip, HandoverDialog, InviteDialog, Avatar],
+  imports: [TPipe, HelpTip, HandoverDialog, Avatar],
   host: { '(document:keydown.escape)': 'menuFor.set(null)' },
   template: `
     <section>
@@ -87,10 +85,6 @@ import { Avatar } from '../../shared/avatar';
         (done)="dialog.set(null)" (cancel)="dialog.set(null)" />
     }
 
-    @if (inviteOpen(); as d) {
-      <app-invite-dialog [initial]="d.list" [retry]="d.retry" (sent)="reloadInvitations()"
-        (done)="inviteOpen.set(null)" (cancel)="inviteOpen.set(null)" />
-    }
     @if (ctx.role() === 'admin') {
       <section>
         @if (invitations().length) {
@@ -153,7 +147,7 @@ import { Avatar } from '../../shared/avatar';
 export class ProjectMembers {
   protected ctx = inject(ProjectContext);
   private ps = inject(ProjectService);
-  private route = inject(ActivatedRoute);
+  private inviteWin = inject(InviteWindow);
 
   /** 役割のメニュー（権限の強い順） */
   readonly roleOrder: Role[] = ['admin', 'member', 'viewer'];
@@ -167,8 +161,6 @@ export class ProjectMembers {
   roleError = signal('');
   /** 見本のプロジェクトか（招待できない） */
   isSample = computed(() => !!this.ctx.project()?.sample);
-  /** 開いている招待のモーダル（retry＝作成のときに送れなかった人を、もう一度送る） */
-  inviteOpen = signal<{ list: Invitee[]; retry: boolean } | null>(null);
   /** 開いている引き継ぎのモーダル */
   dialog = signal<{ mode: HandoverMode; member: Member; role: Role | null } | null>(null);
   private tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
@@ -232,17 +224,20 @@ export class ProjectMembers {
     const { inviteFailed, ...rest } = (history.state ?? {}) as Record<string, unknown>;
     if (inviteFailed !== undefined) {
       history.replaceState(rest, '');
-      this.inviteOpen.set({ list: inviteFailed as Invitee[], retry: true });
+      this.inviteWin.open(this.ctx.pid(), inviteFailed as Invitee[], true);
     }
-    // ヘッダーの「メンバーを招待」から来たら、招待を開く
-    this.route.fragment.pipe(takeUntilDestroyed()).subscribe((f) => {
-      if (f === 'invite' && !this.inviteOpen() && !this.isSample()) this.openInvite();
-    });
   }
 
+  /** 招待の窓を、このプロジェクトを選んだ状態で開く（窓はヘッダーにある1つ） */
   openInvite() {
-    this.inviteOpen.set({ list: [], retry: false });
+    this.inviteWin.open(this.ctx.pid());
   }
+
+  /** 窓で1人でも送れたら、招待中の一覧を読み直す（最初の読み込みは、下の loadInvitationsWhenAdmin） */
+  private reloadOnSent = effect(() => {
+    if (this.inviteWin.sentCount() === 0 || this.ctx.role() !== 'admin') return;
+    untracked(() => this.reloadInvitations());
+  });
 
   async reloadInvitations() {
     try {

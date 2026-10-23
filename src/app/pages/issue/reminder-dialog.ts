@@ -6,6 +6,7 @@ import { ReminderService, ReminderTarget } from '../../core/reminder/reminder.se
 import { DAILY_TIME_STEP, DEFAULT_DAILY_TIME, Reminder } from '../../core/models';
 import { dateKey, formatDateTime, zonedTime } from '../../core/time/time';
 import { I18nService, TPipe } from '../../i18n/i18n';
+import { ChipMenu } from '../../shared/chip-menu';
 
 const MIN = 60 * 1000;
 const STEP = DAILY_TIME_STEP * MIN;
@@ -23,31 +24,41 @@ function hmIn(d: Date, tz: string) {
  */
 @Component({
   selector: 'app-reminder-dialog',
-  imports: [FormsModule, RouterLink, TPipe],
+  imports: [FormsModule, RouterLink, TPipe, ChipMenu],
   template: `
-    @if (showBack()) {
-      <div class="head">
-        <button type="button" class="back" (click)="back.emit()">‹ {{ 'reminder.title' | t }}</button>
-      </div>
-    }
-
-    @if (target(); as tg) {
-      <!-- 課題の題名を押すと詳細へ（移ると窓は閉じる） -->
-      <div class="target">
-        <a [routerLink]="['/p', tg.pid, 'i', tg.iid]">{{ tg.sid ? tg.subTitle : '#' + tg.number + ' ' + tg.title }}</a>
-        @if (tg.sid) { <span class="of">#{{ tg.number }} {{ tg.title }}</span> }
-        @if (tg.projectName) { <span class="of">{{ tg.projectName }}</span> }
-      </div>
-      <p class="help">{{ 'reminder.help' | t }}</p>
-    } @else {
-      <label class="field">{{ 'reminder.freeTitle' | t }}
-        <input id="rm-title" [ngModel]="title()" (ngModelChange)="title.set($event)" maxlength="200"
-          [placeholder]="'reminder.freePlaceholder' | t" />
-      </label>
-      <p class="help">{{ 'reminder.freeHelp' | t }}</p>
-    }
-    @if (current(); as r) {
-      <p class="now" [class.late]="!r.pending && !r.doneAt">{{ 'reminder.current' | t: { when: fmt(r.at.toDate()) } }}</p>
+    <!-- compact（新しく作る画面の中）のときは、上の段をその画面が持つので、ここでは時刻の欄から出す -->
+    @if (!compact()) {
+      @if (showBack()) {
+        <div class="head">
+          <button type="button" class="back" (click)="back.emit()">‹ {{ 'reminder.title' | t }}</button>
+        </div>
+      }
+      @if (target(); as tg) {
+        <!-- 課題の題名を押すと詳細へ（移ると窓は閉じる） -->
+        <div class="target">
+          <a [routerLink]="['/p', tg.pid, 'i', tg.iid]">{{ tg.sid ? tg.subTitle : '#' + tg.number + ' ' + tg.title }}</a>
+          @if (tg.sid) { <span class="of">#{{ tg.number }} {{ tg.title }}</span> }
+          @if (tg.projectName) { <span class="of">{{ tg.projectName }}</span> }
+        </div>
+        <label class="field">{{ 'reminder.note' | t }}
+          <textarea [ngModel]="note()" (ngModelChange)="note.set($event)" rows="2" maxlength="1000"
+            [placeholder]="'reminder.notePlaceholder' | t"></textarea>
+        </label>
+        <p class="help">{{ 'reminder.help' | t }}</p>
+      } @else {
+        <label class="field">{{ 'reminder.freeTitle' | t }}
+          <input id="rm-title" [ngModel]="title()" (ngModelChange)="title.set($event)" maxlength="200"
+            [placeholder]="'reminder.freePlaceholder' | t" />
+        </label>
+        <label class="field">{{ 'reminder.note' | t }}
+          <textarea [ngModel]="note()" (ngModelChange)="note.set($event)" rows="2" maxlength="1000"
+            [placeholder]="'reminder.notePlaceholder' | t"></textarea>
+        </label>
+        <p class="help">{{ 'reminder.freeHelp' | t }}</p>
+      }
+      @if (current(); as r) {
+        <p class="now" [class.late]="!r.pending && !r.doneAt">{{ 'reminder.current' | t: { when: fmt(r.at.toDate()) } }}</p>
+      }
     }
 
     <div class="presets">
@@ -61,13 +72,11 @@ function hmIn(d: Date, tz: string) {
     <div class="custom">
       <input type="date" [ngModel]="day()" (ngModelChange)="day.set($event); touched.set(true)" [min]="todayKey()"
         [attr.aria-label]="'reminder.day' | t" />
-      <select [attr.aria-label]="'reminder.hour' | t" (change)="hour.set(+$any($event.target).value); touched.set(true)">
-        @for (h of hourList; track h) { <option [value]="h" [selected]="hour() === h">{{ h }}</option> }
-      </select>
-      <span aria-hidden="true">:</span>
-      <select [attr.aria-label]="'reminder.minute' | t" (change)="minute.set(+$any($event.target).value); touched.set(true)">
-        @for (m of minuteList; track m) { <option [value]="m" [selected]="minute() === m">{{ pad(m) }}</option> }
-      </select>
+      <!-- 通知設定の「届く時刻」と同じチップのプルダウン（見た目をアプリでそろえる） -->
+      <app-chip-menu [label]="'reminder.hour' | t" [options]="hourMenu" [value]="hour()"
+        (picked)="hour.set(+$event); touched.set(true)" />
+      <app-chip-menu [label]="'reminder.minute' | t" [options]="minuteMenu" [value]="minute()"
+        (picked)="minute.set(+$event); touched.set(true)" />
     </div>
 
     @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
@@ -77,7 +86,8 @@ function hmIn(d: Date, tz: string) {
       }
       <span class="spacer"></span>
       <button type="button" class="link" (click)="cancel.emit()">{{ 'workflow.cancel' | t }}</button>
-      <button type="button" class="primary" [disabled]="busy() || !picked() || (!target() && !title().trim())"
+      <button type="button" class="primary"
+        [disabled]="busy() || !picked() || (needTarget() && !target()) || (!target() && !freeTitle().trim())"
         (click)="save()">{{ 'reminder.set' | t }}</button>
     </div>
   `,
@@ -98,7 +108,7 @@ function hmIn(d: Date, tz: string) {
     .presets button.on { border-color: var(--primary); background: var(--primary-bg); }
     .when { font-size: 12px; color: var(--text-muted); }
     .custom { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-    .custom input, .custom select { padding: 0 8px; }
+    .custom input { padding: 0 8px; }
     .spacer { flex: 1; }
   `,
 })
@@ -112,18 +122,30 @@ export class ReminderDialog implements OnInit {
   cancel = output<void>();
   /** 「‹ リマインド」を出すか（新しく作る画面の中では、その画面が出すので出さない） */
   showBack = input(true);
+  /** 課題から選ぶ画面の中で使うとき：課題を選ぶまでは、題名の欄の代わりに案内を出し、設定できないようにする */
+  needTarget = input(false);
+  /** 新しく作る画面の中で使うとき：時刻の欄とボタンだけを出す（上の段は、その画面が持つ） */
+  compact = input(false);
+  /** compact のときの自由入力の題名（上の段の欄に打ったもの） */
+  extTitle = input('');
+  /** compact のときの自由入力のメモ */
+  extNote = input('');
 
   private reminders = inject(ReminderService);
   private authService = inject(AuthService);
   private i18n = inject(I18nService);
 
-  readonly hourList = Array.from({ length: 24 }, (_, i) => i);
-  readonly minuteList = Array.from({ length: 60 / DAILY_TIME_STEP }, (_, i) => i * DAILY_TIME_STEP);
+  /** チップのプルダウンの中身（通知設定の「届く時刻」と同じ：時は 0〜23、分は 00・10…50） */
+  readonly hourMenu = Array.from({ length: 24 }, (_, i) => ({ value: i, label: String(i) }));
+  readonly minuteMenu = Array.from({ length: 60 / DAILY_TIME_STEP }, (_, i) =>
+    ({ value: i * DAILY_TIME_STEP, label: String(i * DAILY_TIME_STEP).padStart(2, '0') }));
   private tz = computed(() => this.authService.profile()?.timeZone ?? 'Asia/Tokyo');
   todayKey = computed(() => dateKey(new Date(), this.tz()));
 
   /** 自由入力の題名 */
   title = signal('');
+  /** 自由入力のメモ */
+  note = signal('');
   /** 選んでいる日付・時・分（自分のタイムゾーン） */
   day = signal('');
   hour = signal(0);
@@ -132,6 +154,11 @@ export class ReminderDialog implements OnInit {
   touched = signal(false);
   busy = signal(false);
   error = signal('');
+
+  /** 自由入力の題名（compact なら上の段の欄、そうでなければ自分の欄） */
+  freeTitle = computed(() => (this.compact() ? this.extTitle() : this.title()));
+
+  freeNote = computed(() => (this.compact() ? this.extNote() : this.note()));
 
   /** 選んでいる日時（日付が空なら null） */
   picked = computed(() => {
@@ -164,7 +191,10 @@ export class ReminderDialog implements OnInit {
     // 今の設定があればその時刻（届いたものでも、そのまま見せる）、なければ「1時間後」
     this.fill(cur?.at.toDate() ?? this.presets()[0].at);
     this.title.set(cur && !this.target() ? cur.title : '');
-    if (!this.target() && !cur) setTimeout(() => document.getElementById('rm-title')?.focus());
+    this.note.set(cur?.note ?? '');
+    if (!this.target() && !cur && !this.needTarget() && !this.compact()) {
+      setTimeout(() => document.getElementById('rm-title')?.focus());
+    }
   }
 
   /** 日時を、下の日付・時・分に入れる（分は10分刻みに切り下げる） */
@@ -194,7 +224,9 @@ export class ReminderDialog implements OnInit {
     const at = this.picked();
     const t = this.target();
     const cur = this.current();
-    const title = this.title().trim();
+    const title = this.freeTitle().trim();
+
+
     if (!at || (!t && !title)) return;
     // 時刻を変えたとき（新しく作るときも）だけ、過ぎた時刻を止める。題名だけの直しは、届いたものでもできる
     const timeChanged = this.touched() || !cur;
@@ -205,12 +237,14 @@ export class ReminderDialog implements OnInit {
     this.busy.set(true);
     this.error.set('');
     try {
-      if (t) {
-        if (timeChanged) await this.reminders.set(t, at);
-      } else if (cur) {
-        await this.reminders.updateFree(cur.id, title, timeChanged ? at : null);
+      const note = this.freeNote().trim();
+      if (cur) {
+        // 今あるものを直す（時刻を変えたら予定に戻る。変えていなければ、題名・メモだけ）。課題の題名は写しなので直さない
+        await this.reminders.update(cur.id, t ? { note } : { title, note }, timeChanged ? at : null);
+      } else if (t) {
+        await this.reminders.addIssue(t, note, at);
       } else {
-        await this.reminders.addFree(title, at);
+        await this.reminders.addFree(title, note, at);
       }
       this.done.emit();
     } catch (e) {

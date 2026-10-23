@@ -120,7 +120,7 @@ export type NotificationType =
   'assigned' | 'comment' | 'dueChanged' | 'resolved' | 'sentBack' | 'closed' | 'rejected' | 'restored' | 'joined'
   | 'handover' | 'daily' | 'effectCheck' | 'unblocked' | 'merged' | 'projectDeleted' | 'subtaskAssigned'
   | 'mention' | 'watchResolved' | 'request' | 'requestDone' | 'requestDeclined' | 'reminder' | 'subtaskReminder'
-  | 'recurring' | 'recurringStopped';
+  | 'recurring' | 'recurringStopped' | 'invited';
 
 /**
  * 画面内の通知（users/{uid}/notifications）。本人だけが読める。
@@ -145,6 +145,8 @@ export interface AppNotification {
   counts?: Record<string, number>;
   /** 朝のまとめの形（送った時点の形）。古いお知らせには無い（＝期限別） */
   group?: DailyGroup;
+  /** 招待（invited）のときの、招待された役割。関数だけが書く */
+  role?: Role;
 }
 
 export const DEFAULT_SETTINGS: ProjectSettings = {
@@ -253,7 +255,7 @@ export interface TimelineItem {
   id: string;
   kind: 'event' | 'comment';
   type?: 'created' | 'imported' | 'status' | 'edit' | 'priority' | 'link' | 'merge' | 'subtask' | 'attachment'
-    | 'recurring';
+  | 'recurring';
   /** 課題に添付した・消した（type が attachment のときだけ。コメントへの添付は残さない＝コメントそのものが残るため） */
   file?: { action: 'add' | 'remove'; name: string };
   /** サブタスクを足した・消した・切り出した（type が subtask のときだけ。状態の切り替えは残さない） */
@@ -371,6 +373,7 @@ export interface Reminder {
   iid?: string;          // 課題・サブタスクのときだけ
   number?: number;       // 写し（課題・サブタスクのときだけ）
   title: string;         // 課題・サブタスクは課題名の写し、自由入力は本文（200字まで）
+  note?: string;         // 自由入力のメモ（任意・1000字まで）
   projectName?: string;  // 写し（課題・サブタスクのときだけ）
   sid?: string;          // サブタスクのときだけ
   subTitle?: string;     // サブタスク名の写し（サブタスクのときだけ）
@@ -383,8 +386,8 @@ export interface Reminder {
 }
 /** 完了にしたリマインドを残す日数 */
 export const REMINDER_KEEP_DAYS = 30;
-/** 自由入力のリマインドの数（ルールでは数えられないので、画面で止める） */
-export const MAX_FREE_REMINDERS = 100;
+/** リマインドの数（完了済みも、自動で消えるまでは数える。ルールでは数えられないので、画面で止める） */
+export const MAX_REMINDERS = 100;
 
 /** 保存した絞り込み（users/{uid}/filters）。query は URL の ? より後ろの文字列 */
 export interface SavedFilter {

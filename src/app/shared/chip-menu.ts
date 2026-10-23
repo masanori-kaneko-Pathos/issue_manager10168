@@ -17,7 +17,7 @@ export interface ChipOption { value: string | number; label: string; }
     </div>
     @if (open()) {
       <div class="backdrop" (click)="open.set(false)"></div>
-      <div class="menu" role="menu" animate.leave="im-out">
+      <div class="menu" role="menu" [class.up]="up()" [style.max-height.px]="maxH()" animate.leave="im-out">
         @for (o of options(); track o.value) {
           <button type="button" role="menuitemradio" [attr.aria-checked]="o.value === value()"
             [class.on]="o.value === value()" (click)="choose(o.value)">
@@ -31,7 +31,7 @@ export interface ChipOption { value: string | number; label: string; }
     .backdrop { position: fixed; inset: 0; z-index: 51; }
     /* 長い一覧（届く時刻の「時」は24個）は、中でスクロールする */
     .menu { position: absolute; left: 0; top: calc(100% + 4px); z-index: 52; min-width: 160px;
-      max-height: min(320px, 60vh); overflow-y: auto;
+      max-height: 320px; overflow-y: auto;
       display: flex; flex-direction: column; padding: 6px 0; border-radius: 10px;
       background: var(--surface); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2); }
     .menu button { flex: none; display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 16px; border: none;
@@ -39,6 +39,8 @@ export interface ChipOption { value: string | number; label: string; }
     .menu button:hover { background: var(--surface-alt); }
     .menu button.on { font-weight: bold; color: var(--primary); }
     .tick { width: 14px; }
+    /* 下に空きがないときは、チップの上へ開く */
+    .menu.up { top: auto; bottom: calc(100% + 4px); }
   `,
 })
 export class ChipMenu {
@@ -50,14 +52,32 @@ export class ChipMenu {
   picked = output<string | number>();
 
   open = signal(false);
+  /** 上へ開くか（下に空きがないとき） */
+  up = signal(false);
+  /** 一覧の高さ（開く向きの空きに合わせる） */
+  maxH = signal(320);
   private el = inject(ElementRef<HTMLElement>);
 
-  /** 開け閉め。開いたら、選んでいる行が見えるところまで一覧をスクロールする（長い一覧で、どれを選んでいるか分かるように） */
+  /**
+   * 開け閉め。開くときは、下と上のどちらに空きがあるかを測って向きと高さを決める
+   * （窓の中なら窓の縁まで、ページなら画面の縁まで。窓の中で下に開くと、窓ごと伸びてスクロールになるため）。
+   * 開いたら、選んでいる行が見えるところまで一覧をスクロールする
+   */
   toggle() {
-    this.open.set(!this.open());
     if (this.open()) {
-      setTimeout(() => this.el.nativeElement.querySelector('.menu .on')?.scrollIntoView({ block: 'nearest' }));
+      this.open.set(false);
+      return;
     }
+    const host = this.el.nativeElement as HTMLElement;
+    const r = host.getBoundingClientRect();
+    const box = host.closest('.dialog')?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
+    const below = box.bottom - r.bottom - 12;
+    const above = r.top - box.top - 12;
+    const up = below < 200 && above > below;
+    this.up.set(up);
+    this.maxH.set(Math.max(120, Math.min(320, up ? above : below)));
+    this.open.set(true);
+    setTimeout(() => host.querySelector('.menu .on')?.scrollIntoView({ block: 'nearest' }));
   }  
   current = computed(() => this.options().find((o) => o.value === this.value())?.label ?? '');
 
