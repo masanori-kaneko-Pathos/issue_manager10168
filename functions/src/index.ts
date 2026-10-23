@@ -994,6 +994,29 @@ export const imInvite = onCall({ region: 'asia-northeast1', secrets: [GMAIL_APP_
 });
 
 /**
+ * 招待が消えたら（取り消し・辞退・承諾・プロジェクトの削除）、その招待のお知らせも消す。
+ * 取り消した招待のお知らせが残ると、押してもホームに招待はなく、プロジェクトの名前だけが相手の手元に残るため。
+ * 招待メールは、送ったら取り消せない（送る前の確かめの画面で防ぐ）
+ */
+export const imOnInvitationDeleted = onDocumentDeleted(
+  { document: 'projects/{pid}/invitations/{email}', database: 'issuemanager', region: 'asia-northeast1' },
+  async (event) => {
+    const { pid, email } = event.params;
+    // 招待の文書の名前は、小文字にそろえたメールアドレス
+    const account = await getAuth().getUserByEmail(email).catch(() => null);
+    if (!account) return; // まだ登録していない人には、お知らせは届いていない（メールだけ）
+    // 同じ欄の「==」だけの組み合わせなので、複合の索引は要らない
+    const notes = await db.collection(`users/${account.uid}/notifications`)
+      .where('type', '==', 'invited').where('pid', '==', pid).get();
+    if (notes.empty) return;
+    const batch = db.batch();
+    notes.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+    logger.info('invite notices removed', { pid, n: notes.size });
+  },
+);
+
+/**
  * プロジェクトを中身ごと消す（プロジェクトの削除と、アカウントの削除で使う）。
  * 「消してよいか」の確かめは、呼ぶ側で済ませておくこと
  */
