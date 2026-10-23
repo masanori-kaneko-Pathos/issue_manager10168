@@ -40,7 +40,7 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
 
 @Component({
   selector: 'app-tab-list',
-  imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, PriorityMark, BulkBar, 
+  imports: [FormsModule, RouterLink, TPipe, HelpTip, LabelChip, PriorityMark, BulkBar,
     MemberSelect, PeopleFilter, SavedFilters, RecurMark],
   host: { '(document:keydown.escape)': 'showFilters.set(false)' },
   template: `
@@ -111,6 +111,11 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
           @if (showFilters()) {
             <div class="backdrop" (click)="showFilters.set(false)"></div>
             <div class="panel" role="dialog" [attr.aria-label]="'list.filters' | t" animate.leave="im-out">
+              <div class="panel-head">
+                <button type="button" class="link" (click)="clearFilters()">{{ 'list.clear' | t }}</button>
+                <button type="button" class="panel-close" [attr.aria-label]="'list.close' | t"
+                  (click)="showFilters.set(false)">✕</button>
+              </div>
               <p class="label">{{ 'list.status' | t }}</p>
               <div class="chips">
                 <button type="button" [class.on]="scope() === 'open'" (click)="setScope('open')">{{ 'list.scopeOpen' | t }}</button>
@@ -147,10 +152,6 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
                 <button type="button" [class.on]="staleOnly()" (click)="toggleStale()">{{ 'stale.filter' | t }}</button>
               </div>
 
-              <div class="footer">
-                <button type="button" class="link" (click)="clearFilters()">{{ 'list.clear' | t }}</button>
-                <button type="button" class="close" (click)="showFilters.set(false)">{{ 'list.close' | t }}</button>
-              </div>
             </div>
           }
         </div>
@@ -372,8 +373,12 @@ const DEFAULT_DIR: Record<SortKey, Dir> = {
     .subs { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
     .subs.all { color: var(--success-text); font-weight: bold; }
     .recur { display: inline-flex; color: var(--text-muted); }
+    .panel-head {  display: flex;  justify-content: space-between;  align-items: center;  margin-bottom: 0.25rem;}
+    .panel-close { background: none; border: none; color: inherit; font-size: 1.1rem; line-height: 1;
+      padding: 0.25rem 0.5rem; border-radius: 6px; cursor: pointer; opacity: 0.7; }
+    .panel-close:hover { opacity: 1; background: rgba(128, 128, 128, 0.15); }
       `,
-})
+ })
 export class TabList implements OnInit {
   protected ctx = inject(ProjectContext);
   /** 値は入れ物の共有の置き場から直接読む（読むだけなので asReadonly） */

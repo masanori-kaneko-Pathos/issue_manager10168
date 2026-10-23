@@ -13,6 +13,8 @@ import { TPipe } from '../../i18n/i18n';
   template: `
     <div class="backdrop" (click)="busy() || cancel.emit()"></div>
     <section class="dialog narrow" role="dialog" aria-modal="true" [attr.aria-label]="'deleteProject.title' | t">
+          <button type="button" class="dialog-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t"
+        [disabled]="busy()" (click)="cancel.emit()">✕</button>
       <h2>{{ 'deleteProject.title' | t }}</h2>
       <p class="warn">{{ 'deleteProject.warn' | t }}</p>
       @if (others() === null) {

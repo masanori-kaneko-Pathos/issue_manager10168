@@ -11,6 +11,7 @@ import { TPipe } from '../i18n/i18n';
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
     <section class="dialog narrow" role="dialog" aria-modal="true" [attr.aria-label]="'logout.title' | t">
+    <button type="button" class="dialog-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t" (click)="(click)="cancel.emit()"">✕</button>
       <h2>{{ 'logout.title' | t }}</h2>
       <p class="help">{{ 'logout.help' | t }}</p>
       <div class="row">

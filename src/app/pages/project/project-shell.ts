@@ -50,8 +50,13 @@ import { Crumbs, HOME } from '../../shared/crumbs';
               <a role="menuitem" [routerLink]="['/p', ctx.pid(), 'trash']" (click)="menuOpen.set(false)">
                 {{ 'trash.title' | t }}</a>
               @if (ctx.role() !== 'viewer') {
-                <a role="menuitem" [routerLink]="['/p', ctx.pid(), 'requests']" (click)="menuOpen.set(false)">
-                  {{ 'request.menu' | t: { n: '' + ctx.myRequests().length } }}</a>
+                <a role="menuitem" [routerLink]="['/p', ctx.pid(), 'requests']" (click)="menuOpen.set(false)"
+                  [class.waiting]="ctx.role() === 'admin' && ctx.myRequests().length">
+                  {{ 'request.menu' | t: { n: '' + ctx.myRequests().length } }}
+                  @if (ctx.role() === 'admin' && ctx.myRequests().length) {
+                    <span class="item-dot" aria-hidden="true"></span>
+                  }
+                </a>
               }
               @if (ctx.role() !== 'viewer' && !ctx.project()!.archived) {
                 <a role="menuitem" [routerLink]="['/p', ctx.pid(), 'import']" (click)="menuOpen.set(false)">
@@ -203,6 +208,8 @@ import { Crumbs, HOME } from '../../shared/crumbs';
     .sample p { flex: 1; min-width: 60%; margin: 0; font-size: 14px; }
     .sample-end { min-height: 40px; padding: 0 16px; border: none; border-radius: 8px; background: var(--primary);
       color: var(--on-primary); cursor: pointer; }
+    .menu a.waiting { display: flex; align-items: center; gap: 8px; font-weight: bold; }
+    .item-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
   `,
 })
 export class ProjectHome {

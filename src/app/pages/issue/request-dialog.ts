@@ -17,6 +17,7 @@ import { DraftService, fieldPlace } from '../../core/draft/draft.service';
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
     <section class="dialog" role="dialog" aria-modal="true" [attr.aria-label]="'request.title.' + kind() | t">
+    <button type="button" class="dialog-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t" (click)="(click)="cancel.emit()"">✕</button>
       <h2>{{ 'request.title.' + kind() | t }}</h2>
       <p class="sub">#{{ issue().number }} {{ issue().title }}</p>
       <p class="help">{{ 'request.note' | t }}</p>

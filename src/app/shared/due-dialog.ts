@@ -15,6 +15,7 @@ import { I18nService, TPipe } from '../i18n/i18n';
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
     <section class="dialog narrow" role="dialog" aria-modal="true">
+    <button type="button" class="dialog-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t" (click)="(click)="cancel.emit()"">✕</button>
       <p class="sub">#{{ issue().number }} {{ issue().title }}</p>
       <h2>{{ 'dueDialog.title' | t }}</h2>
 

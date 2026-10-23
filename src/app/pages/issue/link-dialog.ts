@@ -15,6 +15,7 @@ import { I18nService, TPipe } from '../../i18n/i18n';
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
     <section class="dialog" role="dialog" aria-modal="true">
+    <button type="button" class="dialog-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t" (click)="(click)="cancel.emit()"">✕</button>
       <h2>{{ 'links.dialogTitle' | t }}</h2>
       <div class="chips" role="group">
         @for (k of kinds; track k) {

@@ -33,10 +33,12 @@ export function inviteErrorKey(e: unknown): string {
   template: `
     <div class="target" role="group" [attr.aria-label]="'invite.target' | t">
       <span class="target-label">{{ 'invite.target' | t }}</span>
-      @for (r of roles; track r) {
-        <button type="button" [class.on]="target() === r" [attr.aria-pressed]="target() === r"
-          (click)="target.set(r)">{{ 'roles.' + r | t }}</button>
-      }
+      <div class="chips">
+        @for (r of roles; track r) {
+          <button type="button" [class.on]="target() === r" [attr.aria-pressed]="target() === r"
+            (click)="target.set(r)">{{ 'roles.' + r | t }}</button>
+        }
+      </div>
     </div>
     <label class="field">{{ 'invite.email' | t }}
       <span class="email-row">
@@ -96,9 +98,6 @@ export function inviteErrorKey(e: unknown): string {
     .field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: bold; }
     .target { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
     .target-label { font-size: 14px; font-weight: bold; margin-right: 4px; }
-    .target button { min-height: 36px; padding: 0 14px; border: 1px solid var(--border-strong);
-      background: var(--surface); border-radius: 18px; font-size: 13px; cursor: pointer; }
-    .target button.on { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
     .col-mv { margin-left: auto; }
     .email-row { display: flex; gap: 8px; }
     .email-row input { flex: 1; min-width: 0; min-height: 44px; padding: 0 12px; font-size: 16px; font-weight: normal; }

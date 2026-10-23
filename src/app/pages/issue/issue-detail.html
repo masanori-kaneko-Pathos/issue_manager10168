@@ -654,6 +654,8 @@
               <div class="modal" (keydown.escape)="causePanel.set(false)" animate.leave="im-out-dialog">
               <div class="backdrop" (click)="causePanel.set(false)"></div>
               <section class="dialog narrow" role="dialog" aria-modal="true">
+                <button type="button" class="dialog-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t"
+                  (click)="causePanel.set(false)">✕</button>
                 <h2>{{ 'causeEdit.title' | t }}</h2>
                 <p class="help">{{ 'causeEdit.help' | t }}</p>
                 <label class="field">{{ 'workflow.cause' | t }}
@@ -698,6 +700,8 @@
               <div class="modal" (keydown.escape)="waPanel.set(false)" animate.leave="im-out-dialog">
               <div class="backdrop" (click)="waPanel.set(false)"></div>
               <section class="dialog narrow" role="dialog" aria-modal="true">
+                <button type="button" class="dialog-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t"
+                  (click)="waPanel.set(false)">✕</button>
                 <h2>{{ 'workaround.title' | t }}</h2>
                 <p class="help">{{ 'workaround.help' | t }}</p>
                 <textarea [ngModel]="waText" (ngModelChange)="waText = $event; stashWa()" rows="3" maxlength="2000"

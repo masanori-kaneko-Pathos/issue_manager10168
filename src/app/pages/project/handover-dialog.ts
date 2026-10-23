@@ -36,6 +36,7 @@ const FILTER_FROM = 7;
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
     <section class="dialog" role="dialog" aria-modal="true">
+    <button type="button" class="dialog-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t" (click)="(click)="cancel.emit()"">✕</button>
       <h2>{{ 'handover.title.' + mode() | t: { name: target().displayName, role: i18n.t('roles.' + (role() ?? 'viewer')) } }}</h2>
       <p class="help">{{ 'handover.note.' + mode() | t }}</p>
       @if (subtaskIssues(); as n) {
@@ -57,19 +58,13 @@ const FILTER_FROM = 7;
               (click)="pen.set(m.uid)">
               {{ m.displayName }}{{ m.uid === myUid ? ('issueNew.you' | t) : '' }}</button>
           }
-          @if (onlyHandover()) {
-            <button type="button" role="radio" class="pen keep" [class.on]="pen() === KEEP" [attr.aria-checked]="pen() === KEEP"
-              (click)="pen.set(KEEP)">{{ 'handover.keep' | t }}</button>
-          }
         </div>
         <p class="help">{{ 'handover.penHelp' | t }}</p>
 
         @if (issues().length) {
           @if (pen(); as p) {
-            @if (p !== KEEP || onlyHandover()) {
-              <button type="button" class="link fill" (click)="fillAll()">
-                {{ 'handover.fillAll' | t: { name: penName(p) } }}</button>
-            }
+            <button type="button" class="link fill" (click)="fillAll()">
+              {{ 'handover.fillAll' | t: { name: penName(p) } }}</button>
           }
           <p class="label">{{ 'handover.issues' | t: { n: '' + issues().length } }}</p>
           <ul class="issues" [class.armed]="!!pen()">
@@ -247,8 +242,9 @@ export class HandoverDialog {
     return top ?? (ok.has(this.myUid) ? this.myUid : this.sortedSuccessors()[0]?.uid ?? null);
   });  
 
+  /** 行き先。担当の引き継ぎだけのときは、塗っていない行は「渡さない」（外す・閲覧者にするときは「まだ決めていない」） */
   destOf(id: string): string | null {
-    return this.dest()[id] ?? null;
+    return this.dest()[id] ?? (this.onlyHandover() ? KEEP : null);
   }
 
   penName(p: string) {
@@ -269,15 +265,41 @@ export class HandoverDialog {
       .join(this.i18n.lang() === 'ja' ? '・' : ', ');
   });
 
+  /** マウスで押して塗った行。直後のクリックで二度塗り（戻す）にならないように、1回だけ見送る */
+  private strokeId: string | null = null;
+  /** なぞりの向き：true なら消す（最初に押した行が、もう同じペンで塗ってあったとき） */
+  private erasing = false;
+
+  /** 塗る・消すの本体（なぞりからも、1回押しからも呼ぶ）。消すと塗っていない状態に戻る（destOf が読み替える） */
+  private stroke(id: string) {
+    const p = this.pen();
+    if (!p) return;
+    const now = this.dest()[id];
+    if (this.erasing) {
+      if (now === p) this.dest.update((m) => {
+        const n = { ...m };
+        delete n[id];
+        return n;
+      });
+      return;
+    }
+    if (now !== p) this.dest.update((m) => ({ ...m, [id]: p }));
+  }
+
   /**
-   * 1行を今のペンで塗る。同じ行を同じペンで2回塗っても変わらない（押した瞬間とクリックの両方で呼ばれてよい）。
-   * 「渡さない」は、担当の引き継ぎだけのときと、雛形の行にだけ効く（外す・閲覧者にするときの課題は、必ずだれかへ）
+   * 1行を押した（指・キーボード・マウスのクリック）。
+   * もう同じ人で塗ってあれば、塗る前に戻す。マウスで押した直後のクリックは、down で済んでいるので見送る
    */
   paint(id: string) {
-    const p = this.pen();
-    if (!p || this.dest()[id] === p) return;
-    if (p === KEEP && !this.onlyHandover() && !id.startsWith(R)) return;
-    this.dest.update((m) => ({ ...m, [id]: p }));
+    if (this.strokeId === id) {
+      this.strokeId = null;
+      return;
+    }
+    this.strokeId = null;
+    if (!this.pen()) return;
+    this.erasing = this.dest()[id] === this.pen();
+    this.stroke(id);
+    this.erasing = false;
   }
 
   /** 課題を全部、今のペンで塗る（雛形は塗らない：次の回からも渡すかは、1つずつ決めてもらう） */
@@ -292,14 +314,18 @@ export class HandoverDialog {
    * 指は除く（一覧をスクロールしようとしただけで塗られてしまうため。指は「押す」で1件ずつ）
    */
   down(id: string, e: PointerEvent) {
-    if (e.pointerType !== 'mouse' || e.button !== 0 || !this.pen()) return;
+    const p = this.pen();
+    if (e.pointerType !== 'mouse' || e.button !== 0 || !p) return;
     this.painting = true;
-    this.paint(id);
+    // 最初の行で向きを決める（塗ってある行から始めたら、なぞった先も消す）
+    this.erasing = this.dest()[id] === p;
+    this.stroke(id);
+    this.strokeId = id;
   }
 
   /** なぞっている最中に、別の行に入った */
   enter(id: string) {
-    if (this.painting) this.paint(id);
+    if (this.painting) this.stroke(id);
   }
 
   /** 実際に渡す課題（課題id → 人）。雛形・渡さない・まだ決めていないものは入れない */

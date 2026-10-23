@@ -15,6 +15,7 @@ import { AuthService } from '../../core/auth/auth.service';
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
     <section class="dialog narrow" role="dialog" aria-modal="true" [attr.aria-label]="'archive.title' | t">
+    <button type="button" class="dialog-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t" (click)="(click)="cancel.emit()"">✕</button>
       <h2>{{ 'archive.title' | t }}</h2>
       <p class="help">{{ 'archive.note' | t }}</p>
       <fieldset>

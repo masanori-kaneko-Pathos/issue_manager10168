@@ -20,7 +20,7 @@ import { TPipe } from '../i18n/i18n';
       <div class="layer" animate.leave="im-out-dialog">
         <div class="backdrop" (click)="form.close()"></div>
         <section class="dialog" role="dialog" aria-modal="true" [attr.aria-label]="'issueNew.title' | t">
-          <button type="button" class="x" [attr.aria-label]="'workflow.cancel' | t" [title]="'workflow.cancel' | t"
+          <button type="button" class="dialog-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t"
             (click)="form.close()">✕</button>
           @defer (on immediate) {
             <app-issue-new />

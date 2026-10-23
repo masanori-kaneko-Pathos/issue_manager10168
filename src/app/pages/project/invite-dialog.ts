@@ -7,6 +7,7 @@ import { InvitePicker, Invitee, inviteErrorKey } from '../../shared/invite-picke
 import { TPipe } from '../../i18n/i18n';
 import { shortName } from '../../core/text';
 import { InviteConfirm } from '../../shared/invite-confirm';
+import { HelpTip } from '../../shared/help-tip';
 
 /**
  * 招待の窓。送れなかった人だけを残し、全員送れたら閉じる。
@@ -15,11 +16,12 @@ import { InviteConfirm } from '../../shared/invite-confirm';
  */
 @Component({
   selector: 'app-invite-dialog',
-  imports: [FormsModule, TPipe, InvitePicker, InviteConfirm],
+  imports: [FormsModule, TPipe, InvitePicker, InviteConfirm, HelpTip],
   host: { '(document:keydown.escape)': 'cancel.emit()', '[animate.leave]': "'im-out-dialog'" },
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
     <section class="dialog" role="dialog" aria-modal="true" [attr.aria-label]="'invite.title' | t">
+    <button type="button" class="dialog-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t" (click)="(click)="cancel.emit()"">✕</button>
       <h2>{{ 'invite.title' | t }}</h2>
       @if (confirming() && target(); as p) {
         <!-- 送る前の確かめ：送ったものは取り消せないので、宛先と役割をもう一度見せる -->
@@ -31,12 +33,14 @@ import { InviteConfirm } from '../../shared/invite-confirm';
         } @else if (!choices().length) {
           <p class="warn">{{ 'invite.noProject' | t }}</p>
         } @else {
-          <label class="field">{{ 'issueNew.project' | t }}
-            <select [ngModel]="chosen()" (ngModelChange)="chosen.set($event)">
+          <div class="field">
+            <span class="field-head">{{ 'issueNew.project' | t }}
+              <app-help-tip [keys]="['invite.whichProjects']" /></span>
+            <select [ngModel]="chosen()" (ngModelChange)="chosen.set($event)" [attr.aria-label]="'issueNew.project' | t">
               @if (!chosen()) { <option value="" disabled>{{ 'invite.pickProject' | t }}</option> }
               @for (p of choices(); track p.id) { <option [value]="p.id" [title]="p.name">{{ short(p.name) }}</option> }
             </select>
-          </label>
+          </div>
         }
         @if (retry()) { <p class="warn" role="status">{{ 'invite.retryNote' | t }}</p> }
         @if (hasFailed()) { <p class="warn" role="alert">{{ 'invite.someFailed' | t }}</p> }
@@ -56,6 +60,7 @@ import { InviteConfirm } from '../../shared/invite-confirm';
     /* 3列の表が入るように広い窓 */
     .dialog { width: min(720px, calc(100% - 32px)); }
     .field select { width: 100%; max-width: 100%; }
+    .field-head { display: inline-flex; align-items: center; gap: 4px; }
     @media (max-width: 600px) { .dialog { width: 100%; } }
   `,
 })

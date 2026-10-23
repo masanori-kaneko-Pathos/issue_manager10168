@@ -24,7 +24,12 @@ import { I18nService, TPipe } from '../i18n/i18n';
     @if (hub.view(); as v) {
       <div class="layer" animate.leave="im-out-dialog">
         <div class="backdrop" (click)="hub.close()"></div>
-        <section class="dialog narrow" role="dialog" aria-modal="true" [attr.aria-label]="'reminder.title' | t">
+        <section class="dialog narrow" [class.rm-fixed]="v.kind !== 'edit'" role="dialog" aria-modal="true"
+          [attr.aria-label]="'reminder.title' | t">
+          @if (v.kind !== 'list') {
+            <button type="button" class="dialog-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t"
+              (click)="hub.close()">✕</button>
+          }
           @if (v.kind === 'list') {
             <div class="head">
               <h2>{{ 'reminder.title' | t }}</h2>
@@ -34,6 +39,7 @@ import { I18nService, TPipe } from '../i18n/i18n';
                 (click)="hub.close()">✕</button>
             </div>
 
+            <div class="scroll">
             @if (!hub.count()) { <p class="empty">{{ 'reminder.empty' | t }}</p> }
             @if (hub.count()) {
               <ul class="rlist">
@@ -58,6 +64,7 @@ import { I18nService, TPipe } from '../i18n/i18n';
                 </ul>
               </div>
             }
+            </div>
             @if (error()) { <p class="error" role="alert">{{ error() | t }}</p> }
           } @else if (v.kind === 'edit') {
             <!-- 一覧から開いたら、終わったら一覧へ。外（課題の ⋮ など）から開いたら、終わったら閉じる -->
@@ -97,6 +104,13 @@ import { I18nService, TPipe } from '../i18n/i18n';
   styles: `
     .layer { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; }
     .backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); }
+    /* 一覧と新しく作る画面は、同じ大きさに固定（行き来しても窓が伸び縮みしない）。低い画面では画面に収める */
+    .dialog.rm-fixed { --rm-h: 540px; height: min(var(--rm-h), calc(100dvh - 32px));
+      display: flex; flex-direction: column; overflow-y: auto; }
+    /* 一覧：見出しは残して、その下だけスクロール */
+    /* 横は止める。行の背景が左右に 4px はみ出すので、その分だけ箱を広げて内側に余白を取る（見た目の幅は変わらない） */
+    .scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column;
+      margin: 0 -4px; padding: 0 4px; }
     .head { display: flex; align-items: center; gap: 4px; }
     .head h2 { flex: 1; }
     .icon-btn { flex: none; width: 36px; height: 36px; border: none; border-radius: 50%; background: none;

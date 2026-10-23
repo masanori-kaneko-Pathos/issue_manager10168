@@ -201,3 +201,13 @@ body { overflow-wrap: break-word;
       /* 窓：部品の外側ごとふわっと消え、中の窓は少し縮む */
       .im-out-dialog { animation: im-fade-out 160ms var(--ease-out) forwards; pointer-events: none; }
       .im-out-dialog .dialog { animation: im-dialog-out 160ms var(--ease-out) forwards; }
+
+/* 窓の右上の ✕（外を押した・Esc と同じ。書きかけは残して閉じる）。
+   窓の中がスクロールしても上に貼りつく。場所は取らない（下の余白を負にして、見出しが今までの位置に来る） */
+   .dialog-x { position: sticky; top: 10px; z-index: 1; align-self: flex-end;
+    width: var(--tap); height: var(--tap); margin: -6px -6px calc(-1 * var(--tap) - 6px) 0;
+    border: none; border-radius: 50%; background: var(--surface); color: var(--text-muted);
+    font-size: 18px; line-height: 1; cursor: pointer; }
+  .dialog-x:hover { background: var(--surface-alt); color: var(--text); }
+  .dialog-x:disabled { color: var(--text-disabled); background: var(--surface); cursor: default; } 
+  .dialog-x + *, .dialog:has(> .dialog-x) > h2 { padding-right: var(--tap); }
