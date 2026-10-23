@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import {
-  FirestoreError, QueryDocumentSnapshot, Transaction, Unsubscribe, collection, doc, onSnapshot, query,
+  FirestoreError, QueryDocumentSnapshot, Transaction, Unsubscribe, collection, doc, getDocs, onSnapshot, query,
   runTransaction, serverTimestamp, updateDoc, where,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
@@ -98,6 +98,21 @@ export class RequestService {
   /** 見送る（管理者）。一言は任意。依頼した人に知らせる */
   decline(pid: string, req: IssueRequest, note: string) {
     return this.handle(pid, req, 'declined', note);
+  }
+
+  /**
+   * 課題 iid が統合されたあと、その課題に向いた対応待ちの依頼を片づける（管理者）。
+   * その課題についての依頼（削除・統合・再開）と、ほかの課題からその課題へ統合する依頼。
+   * 統合済みの課題には、もうどれも行えないので、対応済みにして、依頼した人に知らせる。
+   * 1件の失敗で、ほかを止めない（もう対応済みのものは、handle の中で何もしない）
+   */
+  async settleMerged(pid: string, iid: string) {
+    const [own, toward] = await Promise.all([
+      getDocs(query(this.col(pid), where('iid', '==', iid), where('status', '==', 'open'))),
+      getDocs(query(this.col(pid), where('targetIid', '==', iid), where('status', '==', 'open'))),
+    ]);
+    const list = [...own.docs, ...toward.docs].map(toRequest);
+    await Promise.allSettled(list.map((r) => this.markDone(pid, r)));
   }
 
   /** 対応済み・見送りの共通。もう対応されていたら（ほかの管理者が先に）、何もしない */

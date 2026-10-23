@@ -389,9 +389,13 @@ export class IssueDetail implements OnInit {
     }
   }
 
-  onMergeDone() {
+  async onMergeDone() {
     this.mergeOpen.set(false);
-    this.finishHandling('merge');
+    await this.finishHandling('merge');
+    // この課題に向いた、残りの依頼も片づける（両方向に統合を頼まれていた、統合の前に削除を頼まれていた、など）。
+    // 統合そのものは済んでいるので、失敗しても止めない
+    await this.requests.settleMerged(this.pid, this.iid)
+      .catch((e) => console.warn('残りの依頼を片づけられませんでした', e));
   }
 
   async toggleWatch() {
