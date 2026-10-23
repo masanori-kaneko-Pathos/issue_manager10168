@@ -4,7 +4,6 @@ import {
   runTransaction, serverTimestamp, updateDoc, where,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
-import { AuthService } from '../auth/auth.service';
 import { NotificationService } from '../notification/notification.service';
 import { Issue, IssueRequest, NotificationType, RequestKind } from '../models';
 
@@ -15,7 +14,6 @@ const toRequest = (d: QueryDocumentSnapshot): IssueRequest =>
 @Injectable({ providedIn: 'root' })
 export class RequestService {
   private notifications = inject(NotificationService);
-  private authService = inject(AuthService);
 
   private col(pid: string) {
     return collection(db, 'projects', pid, 'requests');
@@ -43,7 +41,11 @@ export class RequestService {
       .filter((n): n is NonNullable<typeof n> => n !== null);
   }
 
-  /** 依頼を出す（メンバー）。管理者全員に知らせる（依頼と同じ封筒で） */
+  /**
+   * 依頼を出す（メンバー）。管理者全員に知らせる（依頼と同じ封筒で）。
+   * 番号・題名・名前の写しは、書く直前の課題と自分のメンバー文書から取る
+   * （ルールが「今の値と同じか」を確かめるため。画面が持っている課題は、ほかの人が直した直後だと古いことがある）
+   */
   async create(
     pid: string, issue: Issue, kind: RequestKind, reason: string,
     target: { iid: string; number: number } | null, adminIds: string[],
@@ -51,12 +53,19 @@ export class RequestService {
     const uid = auth.currentUser!.uid;
     const ref = doc(this.col(pid));
     await runTransaction(db, async (tx) => {
-      const notes = await this.notices(tx, pid, { iid: issue.id, number: issue.number, title: issue.title },
-        adminIds, 'request', reason);
+      // 読むのが先、書くのが後（notices の中でも読むので、その前に）
+      const [cur, me] = await Promise.all([
+        tx.get(doc(db, 'projects', pid, 'issues', issue.id)),
+        tx.get(doc(db, 'projects', pid, 'members', uid)),
+      ]);
+      const i = cur.data();
+      if (!i) throw new Error('issue-gone');
+      const about = { iid: issue.id, number: i['number'] as number, title: i['title'] as string };
+      const notes = await this.notices(tx, pid, about, adminIds, 'request', reason);
       tx.set(ref, {
-        kind, iid: issue.id, number: issue.number, title: issue.title.slice(0, 200),
+        kind, iid: issue.id, number: about.number, title: about.title,
         targetIid: target?.iid ?? null, targetNumber: target?.number ?? null,
-        reason, by: uid, byName: this.authService.myName().slice(0, 100), at: serverTimestamp(), status: 'open',
+        reason, by: uid, byName: (me.data()?.['displayName'] ?? '') as string, at: serverTimestamp(), status: 'open',
       });
       notes.forEach((n) => tx.set(n.ref, n.data));
     });

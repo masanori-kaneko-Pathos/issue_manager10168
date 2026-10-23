@@ -634,18 +634,23 @@ service cloud.firestore {
       match /requests/{rid} {
         function validRequest() {
           let d = request.resource.data;
+          // 依頼する課題（無ければ get で止まる＝今までの exists と同じ役目も果たす）
+          let issue = get(/databases/$(database)/documents/projects/$(pid)/issues/$(d.iid)).data;
           return d.keys().hasOnly(['kind', 'iid', 'number', 'title', 'targetIid', 'targetNumber',
                    'reason', 'by', 'byName', 'at', 'status'])
             && d.kind in ['delete', 'merge', 'reopen']
             && d.iid is string
-            && exists(/databases/$(database)/documents/projects/$(pid)/issues/$(d.iid))
-            && d.number is int
-            && d.title is string && d.title.size() <= 200
-            // 統合のときだけ、統合先が要る
-            && (d.kind != 'merge' || (d.targetIid is string && d.targetNumber is int))
+            // 番号と題名は、その課題の今の値の写し（偽の番号・題名で、管理者を惑わせないように）
+            && d.number == issue.number
+            && d.title == issue.title
+            // 統合のときだけ、統合先が要る。統合先の番号も、その課題の今の値の写し
+            && (d.kind != 'merge'
+                || (d.targetIid is string && d.targetIid != d.iid
+                    && d.targetNumber == get(/databases/$(database)/documents/projects/$(pid)/issues/$(d.targetIid)).data.number))
             && d.reason is string && d.reason.size() > 0 && d.reason.size() <= 1000
             && d.by == request.auth.uid
-            && d.byName is string && d.byName.size() <= 100
+            // 名前は、依頼する人のメンバー文書の名前の写し（ほかの人になりすませないように）
+            && d.byName == get(memberPath(pid)).data.displayName
             && d.at == request.time
             && d.status == 'open';
         }
