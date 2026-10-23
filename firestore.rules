@@ -251,6 +251,9 @@ service cloud.firestore {
         && d.importance in ['high', 'mid', 'low']
         && d.dueAt is timestamp
         && (!('firstDueAt' in d) || d.firstDueAt == d.dueAt)
+        // 開始日は登録日時と同じ（仕様メモ「開始日の初期値は登録日」。ふだんの登録も取り込みも、画面はそう書いている）。
+        // 登録日時のほうは、ふだんの登録・取り込みのルールで締めてあるので、開始日も同じ範囲に収まる
+        && d.startAt == d.createdAt
         && d.doneCriteria is string && d.doneCriteria.size() > 0 && d.doneCriteria.size() <= 2000
         && d.get('description', '') is string && d.get('description', '').size() <= 5000
         // 担当者は、このプロジェクトの管理者かメンバー
