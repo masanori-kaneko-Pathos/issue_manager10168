@@ -19,7 +19,7 @@ import { I18nService, TPipe } from '../i18n/i18n';
 @Component({
   selector: 'app-reminder-host',
   imports: [NgTemplateOutlet, TPipe, ReminderDialog, ReminderNew],
-  host: { '(document:keydown.escape)': 'onEsc()' },
+  host: { '(document:keydown.escape)': 'onEsc($event)' },
   template: `
     @if (hub.view(); as v) {
       <div class="layer" animate.leave="im-out-dialog">
@@ -195,7 +195,10 @@ export class ReminderHost {
     }
   }
 
-  onEsc() {
-    if (this.hub.view()) this.hub.close();
+  /** 窓を閉じたら印を付ける（後ろの引き出しが、同じ Esc で閉じないように） */
+  onEsc(e: Event) {
+    if (!this.hub.view()) return;
+    e.preventDefault();
+    this.hub.close();
   }
 }

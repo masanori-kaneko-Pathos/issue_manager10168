@@ -21,7 +21,7 @@ import { MemberSelect } from '../../shared/member-select';
     <div class="backdrop" (click)="cancel.emit()"></div>
     <section class="dialog" role="dialog" aria-modal="true"
       [attr.aria-label]="(template() ? 'recurring.dialogEdit' : 'recurring.dialogNew') | t">
-      <button type="button" class="dialog-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t" (click)="(click)="cancel.emit()"">✕</button>
+      <button type="button" class="dialog-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t" (click)="cancel.emit()">✕</button>
       <h2>{{ (template() ? 'recurring.dialogEdit' : 'recurring.dialogNew') | t }}</h2>
 
       <label class="field">{{ 'issue.title' | t }}

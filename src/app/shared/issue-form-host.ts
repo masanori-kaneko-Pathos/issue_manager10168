@@ -14,7 +14,7 @@ import { TPipe } from '../i18n/i18n';
   selector: 'app-issue-form-host',
   imports: [IssueNew, RouterLink, TPipe],
   providers: [{ provide: ISSUE_NEW_EMBED, useExisting: forwardRef(() => IssueFormHost) }],
-  host: { '(document:keydown.escape)': 'onEsc()' },
+  host: { '(document:keydown.escape)': 'onEsc($event)' },
   template: `
     @for (c of shown(); track c.key) {
       <div class="layer" animate.leave="im-out-dialog">
@@ -42,9 +42,10 @@ import { TPipe } from '../i18n/i18n';
     .backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); }
     .dialog { width: min(680px, calc(100% - 32px)); padding: 0; }
     app-issue-new { display: block; }
-    .x { position: absolute; top: 8px; right: 8px; z-index: 1; width: 36px; height: 36px; border: none;
-      border-radius: 50%; background: none; color: var(--text-muted); font-size: 18px; cursor: pointer; }
-    .x:hover { background: var(--surface-alt); color: var(--text); }
+    /* この窓は余白 0 なので、✕ の位置を合わせ直す（右上から 10px。下の余白は、高さ＋上の 10px＋窓の間 12px を打ち消す） */
+    .dialog-x { margin: 10px 10px calc(-1 * var(--tap) - 22px) 0; }
+    /* 登録の画面まるごとを狭めない（見出しの余白は、登録の画面の側が前から取っている） */
+    app-issue-new { display: block; padding-right: 0; }
     .loading { padding: 24px; }
     .made { position: fixed; left: 24px; bottom: 24px; z-index: 90; display: flex; align-items: center; gap: 12px;
       padding: 10px 16px; border-radius: 10px; background: var(--text); color: var(--bg); font-size: 14px;
@@ -77,7 +78,10 @@ export class IssueFormHost implements IssueNewEmbed {
   close() {
     this.form.close();
   }
-  onEsc() {
-    if (this.form.current()) this.form.close();
+  /** 窓を閉じたら印を付ける（後ろの引き出しが、同じ Esc で閉じないように） */
+  onEsc(e: Event) {
+    if (!this.form.current()) return;
+    e.preventDefault();
+    this.form.close();
   }
 }

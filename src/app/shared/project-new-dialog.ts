@@ -28,7 +28,7 @@ interface ProjectDraft {
     <div class="backdrop" (click)="close.emit()"></div>
     <section class="dialog narrow" [class.wide]="inviteOpen()" role="dialog" aria-modal="true"
       [attr.aria-label]="'projectNew.title' | t">
-    <button type="button" class="dialog-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t" (click)="(click)="cancel.emit()"">✕</button>
+    <button type="button" class="dialog-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t" (click)="close.emit()">✕</button>
       <h2>{{ 'projectNew.title' | t }}</h2>
       @if (confirming()) {
         <!-- 招待する人がいるときだけ、作る前に確かめる（送ったものは取り消せないため） -->

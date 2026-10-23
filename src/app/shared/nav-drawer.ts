@@ -13,6 +13,7 @@ import { ReminderHub, reminderTitle } from '../core/reminder/reminder-hub.servic
 import { shortDue } from '../core/time/time';
 import { I18nService, TPipe } from '../i18n/i18n';
 import { DraftsWindow } from '../core/draft/drafts-window.service';
+import { ReminderService } from '../core/reminder/reminder.service';
 
 type Sec = 'inbox' | 'reminders' | 'drafts' | 'projects';
 
@@ -24,7 +25,7 @@ type Sec = 'inbox' | 'reminders' | 'drafts' | 'projects';
 @Component({
   selector: 'app-nav-drawer',
   imports: [RouterLink, TPipe],
-  host: { '(document:keydown.escape)': 'close.emit()', '[animate.leave]': "'im-out-drawer'" },
+  host: { '(document:keydown.escape)': 'onEsc($event)', '[animate.leave]': "'im-out-drawer'" },
   template: `
     <div class="backdrop" (click)="close.emit()"></div>
     <nav class="drawer" role="dialog" aria-modal="true" [attr.aria-label]="'nav.title' | t">
@@ -125,10 +126,15 @@ type Sec = 'inbox' | 'reminders' | 'drafts' | 'projects';
       <div class="fold-body" [class.open]="isOpen('reminders')" [attr.inert]="isOpen('reminders') ? null : ''">
         <div class="sub">
           @for (r of reminderList(); track r.id) {
-            <button type="button" class="item" [title]="titleOf(r)" (click)="openReminder(r.id)">
-              <span class="mark"></span>
-              <span class="grow pname">{{ titleOf(r) }}</span>
-              <span class="r-when" [class.late]="!r.pending">{{ when(r) }}</span></button>
+            <!-- 左の ○ で完了。ほかの所を押すと変更の画面 -->
+            <div class="item r-row">
+              <button type="button" class="r-check" [disabled]="busyId() === r.id"
+                [attr.aria-label]="'reminder.markDone' | t: { title: titleOf(r) }"
+                [title]="'reminder.markDone' | t: { title: titleOf(r) }" (click)="markDone(r)"></button>
+              <button type="button" class="r-main" [title]="titleOf(r)" (click)="openReminder(r.id)">
+                <span class="grow pname">{{ titleOf(r) }}</span>
+                <span class="r-when" [class.late]="!r.pending">{{ when(r) }}</span></button>
+            </div>
           } @empty {
             <p class="small">{{ 'reminder.none' | t }}</p>
           }
@@ -170,7 +176,8 @@ type Sec = 'inbox' | 'reminders' | 'drafts' | 'projects';
     </nav>
   `,
   styles: `
-    :host { position: fixed; inset: 0; z-index: 100; }
+    /* リマインド・下書きの窓（100）を、引き出しの上に開くため、少し下げる */
+    :host { position: fixed; inset: 0; z-index: 90; }
     .backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); }
     /* 左からすっと出る（閉じるときはすぐ消える） */
     @keyframes drawer-in { from { translate: -100% 0; } }
@@ -228,6 +235,16 @@ type Sec = 'inbox' | 'reminders' | 'drafts' | 'projects';
     /* リマインドの時刻。届いたものは赤 */
     .r-when { flex: none; font-size: 11px; color: var(--text-muted); white-space: nowrap; }
     .r-when.late { color: var(--danger-text); font-weight: bold; }
+    /* リマインドの行：○（押せる所は 28px、見える丸は 16px）＋ 本体 */
+    .r-row { gap: 4px; padding-left: 4px; }
+    .r-check { flex: none; display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px; padding: 0; border: none; background: none; cursor: pointer; }
+    .r-check::before { content: ''; box-sizing: border-box; width: 16px; height: 16px;
+      border: 2px solid var(--border-strong); border-radius: 50%; background: var(--surface); }
+    .r-check:hover:not(:disabled)::before { border-color: var(--primary); }
+    .r-check:disabled { cursor: default; opacity: 0.5; }
+    .r-main { flex: 1; min-width: 0; align-self: stretch; display: flex; align-items: center; gap: 8px;
+      padding: 0; border: none; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
     .sep { height: 1px; margin: 8px 4px; background: var(--border); }
     .small { margin: 4px 12px; font-size: 13px; color: var(--text-muted); }
   `,
@@ -302,27 +319,48 @@ export class NavDrawer implements OnInit {
     return shortDue(r.at.toDate(), this.authService.profile()?.timeZone ?? 'Asia/Tokyo', this.i18n.lang(), Date.now());
   }
 
-  /** 引き出しを閉じて、下書きの窓を開く */
+  /** 下書きの窓を開く（引き出しは後ろに残す。窓を閉じたら、引き出しに戻れる） */
   openDrafts() {
-    this.close.emit();
     this.draftsWin.open.set(true);
   }
 
-  /** 引き出しを閉じて、一覧の窓を開く */
+  /** リマインドの一覧の窓を開く（引き出しは後ろに残す） */
   openReminders() {
-    this.close.emit();
     this.remind.openList();
   }
 
-  /** 引き出しを閉じて、そのリマインドの変更の画面を開く（終わったら一覧へ） */
+  /** そのリマインドの変更の画面を開く（引き出しは後ろに残す） */
   openReminder(id: string) {
-    this.close.emit();
     this.remind.openEdit(id);
   }
 
-  /** 続きを書く：課題は登録の窓、プロジェクトはヘッダーに作成の窓を開いてもらう */
-  openDraft(d: Draft) {
+  /**
+   * Esc：手前に窓（.dialog）があれば、そちらが閉じる。引き出しは閉じない。
+   * 窓が先に閉じても、閉じる動きの間は .dialog が残るので、聞く順番がどちらでも止まる
+   */
+  onEsc(e: Event) {
+    if (e.defaultPrevented || document.querySelector('.dialog')) return;
     this.close.emit();
+  }
+
+  private reminders = inject(ReminderService);
+  /** 完了にしている途中のリマインド（二度押し止め） */
+  busyId = signal<string | null>(null);
+
+  /** 引き出しから完了にする。間違えても、一覧の「完了済み」から戻せる */
+  async markDone(r: Reminder) {
+    this.busyId.set(r.id);
+    try {
+      await this.reminders.setDone(r, true);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      this.busyId.set(null);
+    }
+  }
+
+  /** 続きを書く：課題は登録の窓、プロジェクトはヘッダーに作成の窓を開いてもらう（どちらも引き出しは後ろに残す） */
+  openDraft(d: Draft) {
     if (d.kind === 'issue') this.issueForm.open(d.pid, { draft: d.id });
     else this.openProjectDraft.emit(d.id);
   }

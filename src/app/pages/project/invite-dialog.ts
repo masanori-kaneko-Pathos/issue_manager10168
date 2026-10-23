@@ -21,7 +21,7 @@ import { HelpTip } from '../../shared/help-tip';
   template: `
     <div class="backdrop" (click)="cancel.emit()"></div>
     <section class="dialog" role="dialog" aria-modal="true" [attr.aria-label]="'invite.title' | t">
-    <button type="button" class="dialog-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t" (click)="(click)="cancel.emit()"">✕</button>
+    <button type="button" class="dialog-x" [attr.aria-label]="'undo.close' | t" [title]="'undo.close' | t" (click)="cancel.emit()">✕</button>
       <h2>{{ 'invite.title' | t }}</h2>
       @if (confirming() && target(); as p) {
         <!-- 送る前の確かめ：送ったものは取り消せないので、宛先と役割をもう一度見せる -->

@@ -20,7 +20,7 @@ import { ProjectNewDialog } from './project-new-dialog';
 @Component({
   selector: 'app-drafts-host',
   imports: [TPipe, ProjectNewDialog],
-  host: { '(document:keydown.escape)': 'onEsc()' },
+  host: { '(document:keydown.escape)': 'onEsc($event)' },
   template: `
     @if (win.open()) {
       <div class="layer" animate.leave="im-out-dialog">
@@ -150,7 +150,10 @@ export class DraftsHost {
     this.undo.offer('drafts.deleted', {}, async () => this.drafts.save(d));
   }
 
-  onEsc() {
-    if (this.win.open()) this.win.open.set(false);
+  /** 窓を閉じたら印を付ける（後ろの引き出しが、同じ Esc で閉じないように） */
+  onEsc(e: Event) {
+    if (!this.win.open()) return;
+    e.preventDefault();
+    this.win.open.set(false);
   }
 }
