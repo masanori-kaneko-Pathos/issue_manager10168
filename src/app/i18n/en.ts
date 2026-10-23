@@ -872,12 +872,21 @@ export const en: Dict = {
     members: 'Members ({{n}})',
     toMembers: 'Go to the Members tab',
     activity: 'Recent activity',
-    activityHelp: 'The latest 20 changes to issues in the last 30 days.',
+    activityHelp: 'The latest 20 changes to issues and members in the last 30 days.',
     noActivity: 'No activity yet.',
     act: {
       comment: '{{name}} commented',
       priority: '{{name}} changed the priority',
       other: '{{name}} updated an issue',
+    },
+    member: {
+      join: '{{target}} joined ({{role}})',
+      leave: '{{target}} left',
+      remove: '{{name}} removed {{target}}',
+      role: "{{name}} changed {{target}}'s role: {{from}} → {{role}}",
+      account: '{{target}} deleted their account and left',
+      archive: '{{name}} archived the project ({{kind}})',
+      unarchive: '{{name}} unarchived the project',
     },
   },
   intro: {

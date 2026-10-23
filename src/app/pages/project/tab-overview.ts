@@ -69,10 +69,15 @@ const DAY = 24 * 60 * 60 * 1000;
               @for (a of acts(); track a.id) {
                 <li>
                   <div class="act-top">
-                    <a class="act-issue" [routerLink]="['/p', ctx.pid(), 'i', a.iid]">#{{ a.number }} {{ a.title }}</a>
+                    @if (a.kind === 'member') {
+                      <!-- メンバーの出入り・アーカイブは、課題がないので押す先はない。文を1行で出す -->
+                      <span class="act-member">{{ actText(a) }}</span>
+                    } @else {
+                      <a class="act-issue" [routerLink]="['/p', ctx.pid(), 'i', a.iid]">#{{ a.number }} {{ a.title }}</a>
+                    }
                     <span class="act-when" [title]="full(a)">{{ ago(a) }}</span>
                   </div>
-                  <span class="act-text">{{ actText(a) }}</span>
+                  @if (a.kind !== 'member') { <span class="act-text">{{ actText(a) }}</span> }
                   @if (a.body) { <span class="act-body">{{ a.body }}</span> }
                 </li>
               }
@@ -150,6 +155,7 @@ const DAY = 24 * 60 * 60 * 1000;
     .act-issue:hover { color: var(--primary); text-decoration: underline; }
     .act-when { flex: none; font-size: 11px; color: var(--text-subtle); }
     .act-text { font-size: 13px; color: var(--text-secondary); }
+    .act-member { flex: 1; min-width: 0; font-size: 13px; color: var(--text-secondary); overflow-wrap: anywhere; }
     .act-body { font-size: 12px; color: var(--text-muted); padding-left: 8px; border-left: 2px solid var(--border-strong);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .nm { flex: 1; min-width: 0; overflow-wrap: anywhere; }
@@ -225,6 +231,7 @@ export class TabOverview {
   actText(a: Activity) {
     const name = this.ctx.nameOf(a.by);
     const t = (k: string, p: Record<string, string> = {}) => this.i18n.t(k, { name, ...p });
+    if (a.kind === 'member') return this.memberText(a, t);
     if (a.kind === 'comment') return t('overview.act.comment');
     const field = (f: string) => this.i18n.t('issue.' + ({ assigneeId: 'assignee', dueAt: 'due' }[f] ?? f));
     switch (a.type) {
@@ -250,6 +257,18 @@ export class TabOverview {
       }
       default: return t('overview.act.other');
     }
+  }
+
+  /** メンバーの出入り・役割・アーカイブの文。名前は写した時点のもの（なければ今の名簿から引く） */
+  private memberText(a: Activity, t: (k: string, p?: Record<string, string>) => string) {
+    const m = a.member;
+    if (!m) return '';
+    const role = (r?: string) => (r ? this.i18n.t('roles.' + r) : '');
+    return t('overview.member.' + m.type, {
+      target: m.name || (m.target ? this.ctx.nameOf(m.target) : ''),
+      role: role(m.role), from: role(m.prevRole),
+      kind: m.archiveKind ? this.i18n.t('archive.kinds.' + m.archiveKind) : '',
+    });
   }
 
   /** 直し始める：書きかけ → 今の説明 → 空なら雛形（【目的】【期間】【決まりごと】）の順 */

@@ -868,12 +868,21 @@ export const ja = {
     members: 'メンバー（{{n}}人）',
     toMembers: 'メンバーのタブへ',
     activity: '直近の経緯',
-    activityHelp: 'この30日の、課題の動きの新しい20件です。',
+    activityHelp: 'この30日の、課題とメンバーの動きの新しい20件です。',
     noActivity: 'まだ動きはありません。',
     act: {
       comment: '{{name}} さんがコメント',
       priority: '{{name}} さんが優先度を変更',
       other: '{{name}} さんが更新',
+    },
+    member: {
+      join: '{{target}} さんが参加しました（{{role}}）',
+      leave: '{{target}} さんが抜けました',
+      remove: '{{name}} さんが {{target}} さんを外しました',
+      role: '{{name}} さんが {{target}} さんの役割を「{{from}}」→「{{role}}」に変えました',
+      account: '{{target}} さんがアカウントを削除して抜けました',
+      archive: '{{name}} さんがプロジェクトをアーカイブしました（{{kind}}）',
+      unarchive: '{{name}} さんがアーカイブを解除しました',
     },
   },
   intro: {

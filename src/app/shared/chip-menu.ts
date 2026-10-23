@@ -9,7 +9,12 @@ export interface ChipOption { value: string | number; label: string; }
  */
 @Component({
   selector: 'app-chip-menu',
-  host: { '(document:keydown.escape)': 'open.set(false)' },
+  host: {
+    // フォーカスがほかの所にあるときの Esc（document まで上がってきたもの）でも閉じる
+    '(document:keydown.escape)': 'open.set(false)',
+    // 一覧の中の Esc は、document に上がる前にここで受ける（開いているときは止めて、窓まで閉じないように）
+    '(keydown.escape)': 'onEsc($event)',
+  },
   template: `
     <div class="chips">
       <button type="button" aria-haspopup="menu" [attr.aria-expanded]="open()" [class.on]="active()"
@@ -77,7 +82,21 @@ export class ChipMenu {
     this.up.set(up);
     this.maxH.set(Math.max(120, Math.min(320, up ? above : below)));
     this.open.set(true);
-    setTimeout(() => host.querySelector('.menu .on')?.scrollIntoView({ block: 'nearest' }));
+    // 選んでいる行（なければ先頭）が見えるところまでスクロールし、フォーカスを移す
+    // （Mac の Safari はボタンを押してもフォーカスが移らず、Esc が一覧を通らずに document へ行くため）
+    setTimeout(() => {
+      const row = host.querySelector<HTMLElement>('.menu .on') ?? host.querySelector<HTMLElement>('.menu button');
+      row?.scrollIntoView({ block: 'nearest' });
+      row?.focus({ preventScroll: true });
+    });
+  }
+
+  /** 開いているときの Esc：一覧だけ閉じて、ここで止める（窓まで閉じない）。フォーカスはチップに戻す */
+  onEsc(e: Event) {
+    if (!this.open()) return; // 閉じているときは止めない（窓の Esc として、そのまま上へ）
+    e.stopPropagation();
+    this.open.set(false);
+    (this.el.nativeElement as HTMLElement).querySelector<HTMLElement>('.chips button')?.focus();
   }  
   current = computed(() => this.options().find((o) => o.value === this.value())?.label ?? '');
 

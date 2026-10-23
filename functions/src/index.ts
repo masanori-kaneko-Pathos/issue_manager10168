@@ -1275,6 +1275,47 @@ export const imOnCommentCreated = onDocumentCreated(
   },
 );
 
+/** 帳面に写す管理ログの種類（引き継ぎ・インポートは、課題ごとの経緯にもう出るので写さない） */
+const MEMBER_LOG_TYPES = ['join', 'leave', 'remove', 'role', 'account', 'archive', 'unarchive'];
+
+/**
+ * 管理ログが1つ増えたら、メンバーの出入り・役割・アーカイブを、帳面（概要の「直近の経緯」）に写す。
+ * 名前は写した時点のもの（抜けた人は formerMembers、いる人はメンバー文書から）。
+ * 管理ログは管理者しか読めないが、帳面はメンバー全員が読む。写すのは「だれが・何をしたか」だけ（理由は写さない）
+ */
+export const imOnAdminLog = onDocumentCreated(
+  { document: 'projects/{pid}/adminLogs/{lid}', database: 'issuemanager', region: 'asia-northeast1' },
+  async (event) => {
+    const d = event.data?.data();
+    if (!d || !MEMBER_LOG_TYPES.includes(d.type)) return;
+    const { pid, lid } = event.params;
+    const projectRef = db.doc(`projects/${pid}`);
+    const project = await projectRef.get();
+    if (!project.exists || project.get('deleting')) return;
+    const archiving = d.type === 'archive' || d.type === 'unarchive';
+    const target = archiving ? '' : String(d.target ?? '');
+    let name = '';
+    if (target) {
+      const m = await projectRef.collection('members').doc(target).get();
+      name = String(m.get('displayName') ?? project.get('formerMembers')?.[target] ?? '');
+    }
+    const member: DocumentData = { type: d.type, target, name };
+    if ((d.type === 'join' || d.type === 'role') && d.to) member.role = d.to;
+    if (!archiving && d.type !== 'join' && d.from) member.prevRole = d.from;
+    if (d.type === 'archive' && project.get('archiveKind')) member.archiveKind = project.get('archiveKind');
+    try {
+      // 名札（管理ログの id）＋ create：関数が2回動いても、2行にならない
+      await projectRef.collection('activity').doc('a_' + lid).create({
+        kind: 'member', iid: '', number: null, title: '', member,
+        by: String(d.by ?? ''), at: d.at ?? FieldValue.serverTimestamp(),
+        expireAt: Timestamp.fromMillis(Date.now() + ACTIVITY_KEEP_DAYS * DAY),
+      });
+    } catch (e) {
+      if ((e as { code?: number }).code !== 6) throw e;
+    }
+  },
+);
+
 // ---- 添付 ----
 
 /**
@@ -1319,19 +1360,44 @@ const mirrorDb = getFirestore(); // (default)。ここだけは、わざとデ�
 /** 最初のまとめての写しが済んだかの印（中身を変えたら、数を上げると、もう一度まとめて写す） */
 const MIRROR_VERSION = 1;
 
-/** メンバーが増えた・役割が変わった・抜けたら、写しを直す */
+/**
+ * 新しくメンバーになった人の「参加」を、管理ログに書く（仕様メモ「メンバーの追加は管理ログに記録」）。
+ * プロジェクトを作った瞬間の作成者は除く（参加ではなく作成のため）。
+ * 名札（uid と参加した時刻）＋ create：関数が2回動いても、2行にならない
+ */
+async function logJoin(pid: string, uid: string, m: DocumentData) {
+  const project = await db.doc(`projects/${pid}`).get();
+  if (!project.exists || project.get('deleting')) return;
+  const created = project.get('createdAt') as Timestamp | undefined;
+  const joined = m.joinedAt as Timestamp | undefined;
+  if (uid === project.get('createdBy') && created && joined
+    && Math.abs(joined.toMillis() - created.toMillis()) < 60 * 1000) return;
+  try {
+    await db.doc(`projects/${pid}/adminLogs/join_${uid}_${joined?.toMillis() ?? 0}`).create({
+      type: 'join', by: uid, target: uid, from: null, to: m.role ?? null, moved: 0,
+      at: FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    if ((e as { code?: number }).code !== 6) throw e; // ALREADY_EXISTS：もう書いてある
+  }
+}
+
+/** メンバーが増えた・役割が変わった・抜けたら、写しを直す。新しく増えたときは、管理ログに「参加」も書く */
 export const imMirrorMember = onDocumentWritten(
   { document: 'projects/{pid}/members/{uid}', database: 'issuemanager', region: 'asia-northeast1' },
   async (event) => {
     const { pid, uid } = event.params;
+    const before = event.data?.before.data();
     const after = event.data?.after.data();
     const ref = mirrorDb.doc(`imProjects/${pid}/members/${uid}`);
     if (!after) {
       await ref.delete(); // 外れた・抜けた
       return;
     }
+    // 新しく増えた瞬間だけ「参加」を書く。失敗しても、添付のための写しは止めない
+    if (!before) await logJoin(pid, uid, after).catch((e) => logger.error('join log failed', { pid, uid, error: String(e) }));
     // 役割が変わったときだけ書く（表示名などの変更では書かない）
-    if (event.data?.before.data()?.role === after.role) return;
+    if (before?.role === after.role) return;
     await ref.set({ role: after.role });
   },
 );

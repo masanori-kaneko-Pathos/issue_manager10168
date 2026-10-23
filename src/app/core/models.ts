@@ -84,10 +84,10 @@ export interface InboxMemo {
 
 /** 管理ログ（今は書くだけ。見る画面は後日） */
 export interface AdminLog {
-  type: 'role' | 'remove' | 'leave' | 'handover' | 'import' | 'archive' | 'unarchive' | 'account';
+  type: 'role' | 'remove' | 'leave' | 'handover' | 'import' | 'archive' | 'unarchive' | 'account' | 'join';
   by: string;           // 操作した人
   target: string;       // 対象の人
-  from: Role;           // 操作する前の役割
+  from: Role | null;    // 操作する前の役割（参加のときは null。参加は関数が書く）
   to: Role | null;      // 役割を変えたときの、変えた先
   moved: number;        // 引き継いだ課題の数
   at: Timestamp;
@@ -457,7 +457,16 @@ export const RECUR_DUE_DAYS = [0, 1, 3, 7];
  */
 export interface Activity {
   id: string;
-  kind: 'event' | 'comment';
+  /** member：メンバーの出入り・役割・アーカイブ（管理ログから関数が写す。課題はないので iid は ''） */
+  kind: 'event' | 'comment' | 'member';
+  member?: {
+    type: 'join' | 'leave' | 'remove' | 'role' | 'account' | 'archive' | 'unarchive';
+    target: string;          // 対象の人（アーカイブは ''）
+    name: string;            // 写したときの対象の人の名前
+    role?: Role;             // 参加した役割・変えた先の役割
+    prevRole?: Role;         // 前の役割
+    archiveKind?: ArchiveKind;
+  };
   iid: string;
   number: number | null;   // 写したときの課題の番号
   title: string;           // 写したときの課題の題名
