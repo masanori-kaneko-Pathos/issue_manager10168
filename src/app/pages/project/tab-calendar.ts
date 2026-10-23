@@ -455,7 +455,8 @@ export class ProjectCalendar implements OnInit {
 
   onDrop(e: CdkDragDrop<string, string, Issue>) {
     this.dragging.set(null);
-    if (e.previousContainer === e.container) return;
+    // 指がマスの上にないところで離したら、何もしない（CDK は「最後に入ったマス」に落としたことにしてしまうため）
+    if (e.previousContainer === e.container || !e.isPointerOverContainer) return;
     // 並びは変えない。モーダルで保存できたら読み直す。やめたら元の日のまま
     this.pending.set({ issue: e.item.data, date: e.container.data });
   }
