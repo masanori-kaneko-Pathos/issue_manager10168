@@ -215,6 +215,31 @@ export class ProjectService {
         return updateDoc(doc(db, 'projects', pid), { labels });
     }
 
+  /**
+   * ラベルの変更を、最新の一覧に重ねて保存する（管理者2人が同時に触っても、相手の変更を消さないように）。
+   * before＝開いたときの一覧、after＝画面で直したあとの一覧。そこから「足した・直した・消した」だけを取り出し、
+   * 保存する直前の一覧に当てはめる。読んでから書くので、トランザクション。保存した一覧を返す
+   */
+  async mergeLabels(pid: string, before: Label[], after: Label[]): Promise<Label[]> {
+    const ref = doc(db, 'projects', pid);
+    return runTransaction(db, async (tx) => {
+      const latest = ((await tx.get(ref)).data()?.['labels'] ?? []) as Label[];
+      const was = new Map(before.map((l) => [l.id, l]));
+      const now = new Set(after.map((l) => l.id));
+      const removed = new Set(before.filter((l) => !now.has(l.id)).map((l) => l.id));
+      const changed = new Map(after
+        .filter((l) => was.has(l.id) && (l.name !== was.get(l.id)!.name || l.color !== was.get(l.id)!.color))
+        .map((l) => [l.id, l]));
+      const kept = latest.filter((l) => !removed.has(l.id)).map((l) => changed.get(l.id) ?? l);
+      // 足したもの：ほかの人が同じ名前をもう足していたら、2つにしない
+      const names = new Set(kept.map((l) => l.name.trim().toLowerCase()));
+      const added = after.filter((l) => !was.has(l.id) && !names.has(l.name.trim().toLowerCase()));
+      const merged = [...kept, ...added];
+      tx.update(ref, { labels: merged });
+      return merged;
+    });
+  }
+
     /** 通知時刻・日数・件数の設定を保存する（管理者のみ。形と範囲はルールで確認） */
     updateSettings(pid: string, settings: ProjectSettings) {
         return updateDoc(doc(db, 'projects', pid), { settings });

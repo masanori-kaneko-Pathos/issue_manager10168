@@ -337,10 +337,12 @@ export class ProjectSettings implements OnInit {
         this.search.invalidate();
       }
       if (this.labelsDirty()) {
-        await this.ps.updateLabels(this.ctx.pid(), list);
-        this.ctx.setLabels(list);
-        this.saved.set(list);
-        this.labels.set(list);
+        // 開いたときの一覧から変えたところだけを、最新の一覧に重ねる（ほかの管理者の変更を消さないように）。
+        // 画面も、重ねたあとの一覧に合わせる
+        const merged = await this.ps.mergeLabels(this.ctx.pid(), this.saved(), list);
+        this.ctx.setLabels(merged);
+        this.saved.set(merged);
+        this.labels.set(merged);
       }
       if (this.settingsDirty()) {
         // 開いたときから変えた数の欄だけを書く
