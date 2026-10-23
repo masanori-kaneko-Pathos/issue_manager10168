@@ -112,7 +112,7 @@ export class AttachmentService {
       // 経緯に残すのは、課題への添付だけ（プロジェクトには経緯がない。コメントはコメント自体が残る）
       if (iid && !opts.cid) {
         batch.set(doc(collection(db, 'projects', pid, 'issues', iid, 'events')), {
-          type: 'attachment', file: { action: 'add', name }, by: uid, tz, at: serverTimestamp(),
+          type: 'attachment', file: { action: 'add', name, aid: ref.id }, by: uid, tz, at: serverTimestamp(),
         });
       }
       await batch.commit();
@@ -128,7 +128,7 @@ export class AttachmentService {
     batch.delete(doc(this.col(pid, iid), a.id));
     if (iid && !a.cid) {
       batch.set(doc(collection(db, 'projects', pid, 'issues', iid, 'events')), {
-        type: 'attachment', file: { action: 'remove', name: a.name }, by: uid, tz, at: serverTimestamp(),
+        type: 'attachment', file: { action: 'remove', name: a.name, aid: a.id }, by: uid, tz, at: serverTimestamp(),
       });
     }
     await batch.commit();

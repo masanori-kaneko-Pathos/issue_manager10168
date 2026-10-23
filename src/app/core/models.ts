@@ -257,9 +257,9 @@ export interface TimelineItem {
   type?: 'created' | 'imported' | 'status' | 'edit' | 'priority' | 'link' | 'merge' | 'subtask' | 'attachment'
   | 'recurring';
   /** 課題に添付した・消した（type が attachment のときだけ。コメントへの添付は残さない＝コメントそのものが残るため） */
-  file?: { action: 'add' | 'remove'; name: string };
+  file?: { action: 'add' | 'remove'; name: string; aid?: string };
   /** サブタスクを足した・消した・切り出した（type が subtask のときだけ。状態の切り替えは残さない） */
-  sub?: { action: 'add' | 'remove' | 'split'; title: string; number?: number };
+  sub?: { action: 'add' | 'remove' | 'split'; title: string; number?: number; sid?: string };
   /** 統合先の経緯に残す「どの課題を統合したか」（type が merge のときだけ） */
   merged?: { iid: string; number: number };
   /** 関連課題を付けた・外した（type が link のときだけ） */

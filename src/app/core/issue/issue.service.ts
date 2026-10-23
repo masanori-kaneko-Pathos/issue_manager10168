@@ -274,7 +274,7 @@ export class IssueService {
         tx.set(doc(parentRef, 'links', relationId('relates', 'in', pid, issueRef.id)),
           { kind: 'relates', dir: 'in', pid, iid: issueRef.id, by: uid, at: serverTimestamp() });
         tx.set(doc(collection(parentRef, 'events')), {
-          type: 'subtask', sub: { action: 'split', title: subTitle, number }, by: uid, tz, at: serverTimestamp(),
+          type: 'subtask', sub: { action: 'split', title: subTitle, number, sid: split.id }, by: uid, tz, at: serverTimestamp(),
         });
       }
       if (memoId) tx.delete(doc(db, 'users', uid, 'inbox', memoId));
@@ -910,7 +910,7 @@ export class IssueService {
         createdBy: uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), updatedBy: uid,
       });
       tx.set(doc(collection(issueRef, 'events')), {
-        type: 'subtask', sub: { action: 'add', title: v.title }, by: uid, tz, at: serverTimestamp(),
+        type: 'subtask', sub: { action: 'add', title: v.title, sid: ref.id }, by: uid, tz, at: serverTimestamp(),
       });
       notes.forEach((n) => tx.set(n.ref, n.data));
     });
@@ -952,7 +952,7 @@ export class IssueService {
     const batch = writeBatch(db);
     batch.delete(doc(this.subtaskCol(pid, iid), sub.id));
     batch.set(doc(collection(issueRef, 'events')), {
-      type: 'subtask', sub: { action: 'remove', title: sub.title }, by: uid, tz, at: serverTimestamp(),
+      type: 'subtask', sub: { action: 'remove', title: sub.title, sid: sub.id }, by: uid, tz, at: serverTimestamp(),
     });
     await batch.commit();
   }
