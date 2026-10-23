@@ -812,28 +812,41 @@ export class Projects implements OnInit {
           if (e.code === 'permission-denied') this.load();
         },
       );
-      // 管理者のプロジェクトだけ：解決済みの課題とメンバーを見張り、提起者がもういない課題を引き受ける
-      let stopOrphans = () => {};
-      if (this.projects().find((p) => p.id === pid)?.role === 'admin') {
-        let resolved: (Issue & { projectId: string })[] = [];
-        let memberIds: Set<string> | null = null;
-        // 両方が1回ずつ届いてから入れる（メンバーが届く前に「だれもいない」とみなさないように）
-        const emit = () => {
-          if (!memberIds) return;
-          const ids = memberIds;
-          this.orphanByProject.update((m) => ({ ...m, [pid]: resolved.filter((i) => !ids.has(i.reporterId)) }));
-        };
-        const stopResolved = this.issueService.watchResolvedIn(pid,
-          (list) => { resolved = list; emit(); },
-          (e) => console.error('解決済みの課題の見張りに失敗', pid, e));
-        const stopMembers = this.projectService.watchMembers(pid,
-          (ms) => { memberIds = new Set(ms.map((x) => x.uid)); emit(); },
-          (e) => console.error('メンバーの見張りに失敗', pid, e));
-        stopOrphans = () => {
-          stopResolved();
-          stopMembers();
-        };
-      }
+      // 提起者がもういない解決済みの課題を、管理者の間だけ引き受ける（効果確認の「提起者の代わり」）。
+      // メンバーはいつも見張り、自分の役割もそこから読む（開いている間に管理者になった・外れた、にも追いつくため）。
+      // 解決済みの課題の見張りは、管理者の間だけ張る（メンバーが届いてから始まるので、
+      // メンバーが届く前に「だれもいない」とみなすことはない）
+      let resolved: (Issue & { projectId: string })[] = [];
+      let memberIds: Set<string> | null = null;
+      let stopResolved: (() => void) | null = null;
+      const emit = () => {
+        const ids = memberIds;
+        this.orphanByProject.update((m) => ({
+          ...m, [pid]: ids && stopResolved ? resolved.filter((i) => !ids.has(i.reporterId)) : [],
+        }));
+      };
+      const stopMembers = this.projectService.watchMembers(pid,
+        (ms) => {
+          memberIds = new Set(ms.map((x) => x.uid));
+          const admin = ms.find((x) => x.uid === uid)?.role === 'admin';
+          if (admin && !stopResolved) {
+            // 管理者になった（開いたときから管理者のときも、ここを通る）
+            stopResolved = this.issueService.watchResolvedIn(pid,
+              (list) => { resolved = list; emit(); },
+              (e) => console.error('解決済みの課題の見張りに失敗', pid, e));
+          } else if (!admin && stopResolved) {
+            // 管理者から外れた：見張りをやめて、引き受けていた課題を出さない
+            stopResolved();
+            stopResolved = null;
+            resolved = [];
+          }
+          emit();
+        },
+        (e) => console.error('メンバーの見張りに失敗', pid, e));
+      const stopOrphans = () => {
+        stopMembers();
+        stopResolved?.();
+      };
       this.mineStops.set(pid, () => {
         stopMine();
         stopReported();
