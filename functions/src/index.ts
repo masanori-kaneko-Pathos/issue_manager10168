@@ -569,12 +569,129 @@ export const imHourly = onSchedule(
     const now = new Date();
     // 添付のための写しが、まだ一度もまとめて作られていなければ作る（2回目からは印を見て何もしない）
     await backfillMirror().catch((e) => logger.error('mirror backfill failed', { error: String(e) }));
+    // 今ある添付の鍵を、最初に1回だけまとめて外す（2回目からは印を見て何もしない）
+    await stripTokensOnce().catch((e) => logger.error('strip tokens failed', { error: String(e) }));
     // どれかが失敗しても、ほかは動かす。定期課題を先に作る（できた課題を、毎朝のまとめに数えるため）
     await sendRecurring(now).catch((e) => logger.error('recurring failed', { error: String(e) }));
     await sendMorningSummaries(now).catch((e) => logger.error('morning summaries failed', { error: String(e) }));
     await sendReminders(now).catch((e) => logger.error('reminders failed', { error: String(e) }));
   },
 );
+
+// ---- お知らせ（出来事から関数が作る。画面からは書かせない） ----
+
+interface NoticeAbout { pid: string; iid: string | null; issueNumber: number | null; issueTitle: string; }
+interface NoticeWant { to: string | null | undefined; type: string; detail?: string; }
+
+/** 実際にウォッチしている人（アプリの models.ts の watchersOf と同じ決まり） */
+function watchersOf(i: DocumentData): string[] {
+  const muted = new Set<string>(i.muted ?? []);
+  return [...new Set<string>([i.reporterId, i.assigneeId, ...(i.watchers ?? [])])].filter((u) => !!u && !muted.has(u));
+}
+
+/**
+ * 出来事から、お知らせを書く。宛先は今もメンバーの人だけ・した本人は除く・同じ人には先に並べた1通だけ
+ * （画面の prepareNotices と同じ決まり）。送った人の名前は、メンバー文書（抜けた人は formerMembers）から入れる。
+ * アーカイブ中・削除の最中のプロジェクトには書かない。
+ * 名札（source と宛先）＋ create：関数が2回動いても、2通にならない
+ */
+async function notifyFrom(source: string, about: NoticeAbout, by: string, wants: NoticeWant[]) {
+  const seen = new Set<string>([by]);
+  const list = wants.filter((w) => {
+    if (!w.to || seen.has(w.to)) return false;
+    seen.add(w.to);
+    return true;
+  });
+  if (!list.length) return;
+  const projectRef = db.doc(`projects/${about.pid}`);
+  const [project, actor, ...members] = await db.getAll(projectRef, projectRef.collection('members').doc(by || '_'),
+    ...list.map((w) => projectRef.collection('members').doc(w.to!)));
+  if (!project.exists || project.get('deleting') || project.get('archived')) return;
+  const byName = String(actor.get('displayName') ?? project.get('formerMembers')?.[by] ?? '').slice(0, 100);
+  const expireAt = Timestamp.fromMillis(Date.now() + NOTIFY_KEEP_DAYS * DAY);
+  await Promise.all(list.map(async (w, k) => {
+    if (!members[k].exists) return;
+    try {
+      await db.doc(`users/${w.to}/notifications/${source}-${w.to}`).create({
+        type: w.type, pid: about.pid, projectName: String(project.get('name') ?? ''), iid: about.iid,
+        issueNumber: about.issueNumber, issueTitle: about.issueTitle.slice(0, 200), by, byName,
+        detail: String(w.detail ?? '').slice(0, 200), at: FieldValue.serverTimestamp(), read: false, expireAt,
+      });
+    } catch (e) {
+      if ((e as { code?: number }).code !== 6) logger.error('notice failed', { source, to: w.to, error: String(e) });
+    }
+  }));
+}
+
+/** 管理者の一覧 */
+async function adminsOf(pid: string): Promise<string[]> {
+  return (await db.collection(`projects/${pid}/members`).where('role', '==', 'admin').get()).docs.map((d) => d.id);
+}
+
+/**
+ * 経緯から、お知らせを作る（画面の changeStatus・updateIssue・mergeIssue・restoreIssue と同じ宛先）。
+ * quiet の経緯（引き継ぎ・まとめて操作・元に戻す）は、1件ずつ知らせない
+ */
+async function noticesFromEvent(pid: string, iid: string, eid: string, d: DocumentData) {
+  if (d.quiet || (d.type !== 'status' && d.type !== 'edit')) return;
+  const issue = (await db.doc(`projects/${pid}/issues/${iid}`).get()).data();
+  if (!issue) return;
+  const about: NoticeAbout = { pid, iid, issueNumber: issue.number ?? null, issueTitle: String(issue.title ?? '') };
+  const by = String(d.by ?? '');
+  const reason = String(d.reason ?? '');
+  const src = 'ev-' + eid;
+  if (d.type === 'edit') {
+    const c = d.changes ?? {};
+    // 担当者が変わったら新しい担当者に、期限だけ変わったら担当者に（両方変わっても1通）
+    if (c.assigneeId?.to) return notifyFrom(src, about, by, [{ to: c.assigneeId.to, type: 'assigned', detail: reason }]);
+    if (c.dueAt) return notifyFrom(src, about, by, [{ to: issue.assigneeId, type: 'dueChanged', detail: reason }]);
+    return;
+  }
+  const { from, to } = d;
+  // 統合：統合元の担当者と提起者へ。2行目は統合先
+  if (to === 'merged') {
+    const m = issue.mergedInto;
+    const target = m?.iid ? (await db.doc(`projects/${pid}/issues/${m.iid}`).get()).data() : null;
+    const detail = m ? `#${m.number} ${target?.title ?? ''}` : '';
+    return notifyFrom(src, about, by, [
+      { to: issue.assigneeId, type: 'merged', detail }, { to: issue.reporterId, type: 'merged', detail },
+    ]);
+  }
+  // 復元：メンバーが戻したときだけ、管理者へ
+  if (from === 'deleted') {
+    if ((await db.doc(`projects/${pid}/members/${by}`).get()).get('role') === 'admin') return;
+    return notifyFrom(src, about, by, (await adminsOf(pid)).map((a) => ({ to: a, type: 'restored' })));
+  }
+  const rule = to === 'resolved' ? { to: issue.reporterId, type: 'resolved' }
+    : from === 'resolved' && to === 'in_progress' ? { to: issue.assigneeId, type: 'sentBack' }
+      : to === 'closed' ? { to: issue.assigneeId, type: 'closed' }
+        : to === 'rejected' ? { to: issue.reporterId, type: 'rejected' }
+          : null;
+  if (!rule) return;
+  // 解決のとき、提起者がもういなければ、確認の依頼は管理者へ（仕様メモ【9】「不在の場合は管理者」）
+  const admins = rule.type === 'resolved' && !(await db.doc(`projects/${pid}/members/${issue.reporterId}`).get()).exists
+    ? await adminsOf(pid) : [];
+  return notifyFrom(src, about, by, [
+    { to: rule.to, type: rule.type, detail: reason },
+    ...admins.map((a) => ({ to: a, type: rule.type, detail: reason })),
+    // ウォッチしている人にも。解決の確認依頼は提起者だけなので、ほかの人には「解決済みにしました」
+    ...watchersOf(issue).map((u) => ({ to: u, type: rule.type === 'resolved' ? 'watchResolved' : rule.type, detail: reason })),
+  ]);
+}
+
+/**
+ * 引き継ぎの管理ログから、受け取った人に1人1通（件数は issueNumber）。
+ * dests（だれに何件）はクライアントが書く値なので、件数の合計が記録の件数（moved）を超えるものは信じない
+ */
+async function handoverNotices(pid: string, lid: string, d: DocumentData) {
+  const dests = Object.entries((d.dests ?? {}) as Record<string, unknown>)
+    .filter((e): e is [string, number] => typeof e[1] === 'number' && Number.isInteger(e[1]) && e[1] > 0);
+  const total = dests.reduce((a, [, n]) => a + n, 0);
+  if (!dests.length || total > Number(d.moved ?? 0)) return;
+  await Promise.all(dests.map(([to, n]) => notifyFrom(`ho-${lid}`,
+    { pid, iid: null, issueNumber: n, issueTitle: '' }, String(d.by ?? ''),
+    [{ to, type: 'handover', detail: String(d.reason ?? '') }])));
+}
 
 // ---- プッシュ通知 ----
 
@@ -995,17 +1112,23 @@ export const imInvite = onCall({ region: 'asia-northeast1', secrets: [GMAIL_APP_
 
 /**
  * 招待が消えたら（取り消し・辞退・承諾・プロジェクトの削除）、その招待のお知らせも消す。
- * 取り消した招待のお知らせが残ると、押してもホームに招待はなく、プロジェクトの名前だけが相手の手元に残るため。
- * 招待メールは、送ったら取り消せない（送る前の確かめの画面で防ぐ）
+ * 承諾だったとき（その人が、たった今メンバーになっている）は、招待した人に「参加しました」を送る
  */
 export const imOnInvitationDeleted = onDocumentDeleted(
   { document: 'projects/{pid}/invitations/{email}', database: 'issuemanager', region: 'asia-northeast1' },
   async (event) => {
     const { pid, email } = event.params;
-    // 招待の文書の名前は、小文字にそろえたメールアドレス
+    const inv = event.data?.data();
     const account = await getAuth().getUserByEmail(email).catch(() => null);
     if (!account) return; // まだ登録していない人には、お知らせは届いていない（メールだけ）
-    // 同じ欄の「==」だけの組み合わせなので、複合の索引は要らない
+    // 承諾：メンバー文書が、この10分のうちにできている（前からのメンバーの招待を消しただけ、は除く）
+    const member = await db.doc(`projects/${pid}/members/${account.uid}`).get();
+    const joinedMs = (member.get('joinedAt') as Timestamp | undefined)?.toMillis() ?? 0;
+    if (inv?.invitedBy && member.exists && Date.now() - joinedMs < 10 * 60 * 1000) {
+      await notifyFrom(`join-${pid}-${account.uid}`, { pid, iid: null, issueNumber: null, issueTitle: '' },
+        account.uid, [{ to: inv.invitedBy, type: 'joined' }])
+        .catch((e) => logger.error('joined notice failed', { pid, error: String(e) }));
+    }
     const notes = await db.collection(`users/${account.uid}/notifications`)
       .where('type', '==', 'invited').where('pid', '==', pid).get();
     if (notes.empty) return;
@@ -1013,6 +1136,28 @@ export const imOnInvitationDeleted = onDocumentDeleted(
     notes.docs.forEach((d) => batch.delete(d.ref));
     await batch.commit();
     logger.info('invite notices removed', { pid, n: notes.size });
+  },
+);
+
+/** 依頼ができたら管理者全員へ。対応済み・見送りになったら、依頼した人へ */
+export const imOnRequestWritten = onDocumentWritten(
+  { document: 'projects/{pid}/requests/{rid}', database: 'issuemanager', region: 'asia-northeast1' },
+  async (event) => {
+    const before = event.data?.before.data();
+    const after = event.data?.after.data();
+    if (!after) return;
+    const { pid, rid } = event.params;
+    const about: NoticeAbout = { pid, iid: after.iid ?? null, issueNumber: after.number ?? null, issueTitle: String(after.title ?? '') };
+    if (!before) {
+      await notifyFrom('rq-' + rid, about, String(after.by ?? ''),
+        (await adminsOf(pid)).map((to) => ({ to, type: 'request', detail: String(after.reason ?? '') })));
+      return;
+    }
+    if (before.status === 'open' && (after.status === 'done' || after.status === 'declined')) {
+      await notifyFrom(`rq-${rid}-${after.status}`, about, String(after.handledBy ?? ''), [{
+        to: after.by, type: after.status === 'done' ? 'requestDone' : 'requestDeclined', detail: String(after.note ?? ''),
+      }]);
+    }
   },
 );
 
@@ -1149,7 +1294,7 @@ export const imDeleteAccount = onCall({ region: 'asia-northeast1' }, async (req)
         tx.update(s.ref, { assigneeId: to, updatedAt: FieldValue.serverTimestamp(), updatedBy: uid });
         tx.create(s.ref.collection('events').doc(), {
           type: 'edit', fields: ['assigneeId'], changes: { assigneeId: { from: uid, to } },
-          reason, by: uid, tz, at: FieldValue.serverTimestamp(),
+          reason, by: uid, tz, at: FieldValue.serverTimestamp(), quiet: true,
         });
         moved++;
       }
@@ -1220,6 +1365,18 @@ export const imOnSubtaskChanged = onDocumentWritten(
   async (event) => {
     const before = event.data?.before.data();
     const after = event.data?.after.data();
+    // 担当者が決まった・変わったら、新しい担当者に知らせる（した本人は notifyFrom が除く）。
+    // 名札に時刻を入れて、あとで同じ人にまた渡ったときも、改めて届くように
+    if (after && (!before || before.assigneeId !== after.assigneeId)) {
+      const { pid, iid, sid } = event.params;
+      const parent = (await db.doc(`projects/${pid}/issues/${iid}`).get()).data();
+      if (parent) {
+        await notifyFrom(`st-${sid}-${after.updatedAt?.toMillis?.() ?? Date.now()}`,
+          { pid, iid, issueNumber: parent.number ?? null, issueTitle: String(parent.title ?? '') },
+          String(after.updatedBy ?? ''), [{ to: after.assigneeId, type: 'subtaskAssigned', detail: String(after.title ?? '') }])
+          .catch((e) => logger.error('subtask notice failed', { pid, iid, sid, error: String(e) }));
+      }
+    }
     // 数に関係する変更（作った・消した・状態・切り出し）の瞬間だけ。タイトルやメモの直し、並べ替えでは何もしない
     // 担当者が変わったときも、「サブタスクの担当者の一覧」が変わるので、数え直す
     if (before && after && before.status === after.status && !!before.splitTo === !!after.splitTo
@@ -1279,9 +1436,14 @@ export const imOnEventCreated = onDocumentCreated(
   async (event) => {
     const d = event.data?.data();
     if (!d) return;
+    const { pid, iid, eid } = event.params;
     const data: DocumentData = { kind: 'event', by: d.by ?? '', at: d.at ?? FieldValue.serverTimestamp() };
     for (const k of ACTIVITY_FIELDS) if (d[k] !== undefined) data[k] = d[k];
-    await writeActivity(event.params.pid, event.params.iid, 'e_' + event.params.eid, data);
+    // 帳面に写すのと、お知らせを作るのは別々に（片方が失敗しても、もう片方は進める）
+    await Promise.all([
+      writeActivity(pid, iid, 'e_' + eid, data),
+      noticesFromEvent(pid, iid, eid, d).catch((e) => logger.error('event notices failed', { pid, iid, eid, error: String(e) })),
+    ]);
   },
 );
 
@@ -1291,10 +1453,24 @@ export const imOnCommentCreated = onDocumentCreated(
   async (event) => {
     const d = event.data?.data();
     if (!d) return;
-    await writeActivity(event.params.pid, event.params.iid, 'c_' + event.params.cid, {
-      kind: 'comment', by: d.by ?? '', at: d.at ?? FieldValue.serverTimestamp(),
-      body: String(d.body ?? '').slice(0, 120),
-    });
+    const { pid, iid, cid } = event.params;
+    await Promise.all([
+      writeActivity(pid, iid, 'c_' + cid, {
+        kind: 'comment', by: d.by ?? '', at: d.at ?? FieldValue.serverTimestamp(),
+        body: String(d.body ?? '').slice(0, 120),
+      }),
+      // メンションした人と、ウォッチしている人へ。両方に当たる人には、メンションの1通だけ（先に並べたほうが残る）
+      (async () => {
+        const issue = (await db.doc(`projects/${pid}/issues/${iid}`).get()).data();
+        if (!issue) return;
+        const detail = String(d.body ?? '').slice(0, 80);
+        await notifyFrom('cm-' + cid,
+          { pid, iid, issueNumber: issue.number ?? null, issueTitle: String(issue.title ?? '') }, String(d.by ?? ''), [
+            ...((d.mentions ?? []) as string[]).map((to) => ({ to, type: 'mention', detail })),
+            ...watchersOf(issue).map((to) => ({ to, type: 'comment', detail })),
+          ]);
+      })().catch((e) => logger.error('comment notices failed', { pid, iid, cid, error: String(e) })),
+    ]);
   },
 );
 
@@ -1310,8 +1486,11 @@ export const imOnAdminLog = onDocumentCreated(
   { document: 'projects/{pid}/adminLogs/{lid}', database: 'issuemanager', region: 'asia-northeast1' },
   async (event) => {
     const d = event.data?.data();
-    if (!d || !MEMBER_LOG_TYPES.includes(d.type)) return;
+    if (!d) return;
     const { pid, lid } = event.params;
+    // 引き継ぎ（だれに何件の書いてあるもの）は、受け取った人に1人1通
+    if (d.dests) await handoverNotices(pid, lid, d).catch((e) => logger.error('handover notices failed', { pid, lid, error: String(e) }));
+    if (!MEMBER_LOG_TYPES.includes(d.type)) return;
     const projectRef = db.doc(`projects/${pid}`);
     const project = await projectRef.get();
     if (!project.exists || project.get('deleting')) return;
@@ -1340,6 +1519,48 @@ export const imOnAdminLog = onDocumentCreated(
 );
 
 // ---- 添付 ----
+
+/**
+ * 添付のファイルから、鍵（ダウンロードのトークン）を外す。
+ * 鍵つきの URL はルールを通らずに開けるので、外しておけば、画面からはルールを通る読み方でしか開けない
+ */
+async function stripToken(path: string | undefined) {
+  if (!path) return;
+  await getStorage().bucket(BUCKET).file(path).setMetadata({ metadata: { firebaseStorageDownloadTokens: null } });
+}
+
+/** 課題（とコメント）の添付ができたら、そのファイルの鍵を外す */
+export const imOnAttachmentCreated = onDocumentCreated(
+  { document: 'projects/{pid}/issues/{iid}/attachments/{aid}', database: 'issuemanager', region: 'asia-northeast1' },
+  async (event) => {
+    await stripToken(event.data?.get('path')).catch((e) => logger.error('strip token failed', { error: String(e) }));
+  },
+);
+
+/** プロジェクトの概要の添付ができたら、そのファイルの鍵を外す */
+export const imOnProjectFileCreated = onDocumentCreated(
+  { document: 'projects/{pid}/files/{fid}', database: 'issuemanager', region: 'asia-northeast1' },
+  async (event) => {
+    await stripToken(event.data?.get('path')).catch((e) => logger.error('strip token failed', { error: String(e) }));
+  },
+);
+
+/** 鍵をまとめて外したかの印（中身を変えたら数を上げると、もう一度まとめて外す） */
+const TOKENS_VERSION = 1;
+
+/** 最初に1回だけ、今ある添付（projects/ の下）の鍵をまとめて外す。アイコン（users/ の下）は外さない */
+async function stripTokensOnce() {
+  const meta = mirrorDb.doc('imMeta/tokens');
+  if ((await meta.get()).get('version') === TOKENS_VERSION) return;
+  const [files] = await getStorage().bucket(BUCKET).getFiles({ prefix: 'projects/' });
+  for (let i = 0; i < files.length; i += 20) {
+    await Promise.all(files.slice(i, i + 20).map((f) =>
+      f.setMetadata({ metadata: { firebaseStorageDownloadTokens: null } })
+        .catch((e) => logger.error('strip token failed', { name: f.name, error: String(e) }))));
+  }
+  await meta.set({ version: TOKENS_VERSION, at: FieldValue.serverTimestamp(), files: files.length });
+  logger.info('tokens stripped', { files: files.length });
+}
 
 /**
  * 添付の一覧の文書が消えたら、ファイル本体も消す。

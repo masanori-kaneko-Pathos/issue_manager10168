@@ -9,6 +9,9 @@ import { AuthService } from '../auth/auth.service';
 import { I18nService } from '../../i18n/i18n';
 import { AppNotification, DailyGroup, NotificationType } from '../models';
 
+/** お知らせは関数が作る（S3）。画面の notice() は何も返さない */
+const NOTICES_BY_FUNCTIONS = true;
+
 const DAY = 24 * 60 * 60 * 1000;
 /**
  * 朝のまとめの、形ごとの並べる順番。人数を添える区分は、人数の入っている数の名前も
@@ -167,7 +170,9 @@ export class NotificationService {
    */
   notice(to: string | null | undefined, type: NotificationType, about: NoticeAbout, detail = '') {
     const me = auth.currentUser!.uid;
-    if (!to || to === me) return null;
+    // お知らせは関数が出来事から作る（画面からは書かない。ルールでも閉じている）。
+    // 呼ぶ側はどれも「返ってきたら書く」形なので、ここで止めれば1通も書かれない（呼ぶ側の片づけは提出のあと）
+    if (!to || to === me || NOTICES_BY_FUNCTIONS) return null;
     return {
       ref: doc(collection(db, 'users', to, 'notifications')),
       data: {

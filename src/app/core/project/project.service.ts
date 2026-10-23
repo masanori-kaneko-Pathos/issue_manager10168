@@ -361,7 +361,7 @@ export class ProjectService {
                 tx.update(s.ref, { assigneeId: to, updatedAt: serverTimestamp(), updatedBy: by });
                 tx.set(doc(collection(s.ref, 'events')), {
                     type: 'edit', fields: ['assigneeId'], changes: { assigneeId: { from: target.uid, to } },
-                    reason, by, tz, at: serverTimestamp(),
+                    reason, by, tz, at: serverTimestamp(), quiet: true,
                 });
                 movedTo[to] = (movedTo[to] ?? 0) + 1;
             });
@@ -385,6 +385,8 @@ export class ProjectService {
             tx.set(doc(collection(projectRef, 'adminLogs')), {
                 type: change?.kind ?? 'handover', by, target: target.uid, from: target.role,
                 to: change?.kind === 'role' ? change.role : null, moved, at: serverTimestamp(),
+                // 関数が、受け取った人に1人1通を送るため
+                dests: movedTo, reason: reason.slice(0, 200),
             });
             // 引き継いだ人に、1人1通（件数は issueNumber に入れる）
             for (const [to, n] of Object.entries(movedTo)) {

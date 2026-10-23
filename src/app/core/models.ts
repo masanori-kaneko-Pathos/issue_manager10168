@@ -278,6 +278,7 @@ export interface TimelineItem {
   reason?: string;
   body?: string;
   mentions?: string[];    // コメントでメンションした人（uid）。本文の「@名前」は見た目だけ
+  quiet?: boolean;        // 関数に1件ずつ知らせさせない（引き継ぎ・まとめて操作・元に戻す）
   by: string;
   tz?: string;  // 書いた人のタイムゾーン
   editedAt?: Timestamp;   // コメントを直した日時

@@ -596,6 +596,15 @@ export class IssueService {
       stopComments();
     };
   }
+
+  /** まとめて担当者を変えたことを、管理ログに残す。関数がこれを見て、受け取った人に1通（handover）を送る */
+  logBulkHandover(pid: string, uid: string, to: string, n: number, reason: string) {
+    return addDoc(collection(db, 'projects', pid, 'adminLogs'), {
+      type: 'handover', by: uid, target: uid, from: null, to: null, moved: n,
+      dests: { [to]: n }, reason: reason.slice(0, 200), at: serverTimestamp(),
+    });
+  }
+
   /** 編集：変えた項目だけを更新し、経緯に「何を、何から何へ、なぜ」を残す */
   /** notify＝false のときは通知を出さない（まとめて操作で、まとめて1通にするため） */
   async updateIssue(
@@ -628,6 +637,8 @@ export class IssueService {
       tx.update(ref, update);
       tx.set(doc(collection(ref, 'events')), {
         type: 'edit', fields: keys, changes, reason, by: uid, tz, at: serverTimestamp(),
+        // まとめて操作のときは、関数に1件ずつ知らせさせない（1通は管理ログから送る）
+        ...(notify ? {} : { quiet: true }),
       });
       notes.forEach((n) => tx.set(n.ref, n.data));
     });

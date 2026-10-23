@@ -2,8 +2,9 @@ import { Injectable } from '@angular/core';
 import {
   FirestoreError, Unsubscribe, collection, doc, onSnapshot, orderBy, query, serverTimestamp, writeBatch,
 } from 'firebase/firestore';
-import { db, firebaseApp } from '../firebase';
+import { db, firebaseApp, auth } from '../firebase';
 import { Attachment, MAX_FILE_BYTES } from '../models';
+import { onAuthStateChanged } from 'firebase/auth';
 
 /** 置ける種類（Storage のルールと同じにすること） */
 const TYPE_RE = /^(image\/(png|jpeg|gif|webp|heic|heif)|application\/pdf|text\/plain|text\/csv|application\/msword|application\/vnd\.ms-excel|application\/vnd\.ms-powerpoint|application\/vnd\.openxmlformats-officedocument\..*)$/;
@@ -62,6 +63,11 @@ export async function shrinkImage(f: File): Promise<File> {
 /** 添付：上げる・一覧を見張る・消す・開く */
 @Injectable({ providedIn: 'root' })
 export class AttachmentService {
+
+  constructor() {
+    onAuthStateChanged(auth, (u) => { if (!u) this.clearBlobs(); });
+  }
+
   /** 添付の一覧の置き場所：課題（iid あり）か、プロジェクトの概要（iid が null） */
   private col(pid: string, iid: string | null) {
     return iid
@@ -141,9 +147,29 @@ export class AttachmentService {
     return decode(await s.getBytes(s.ref(s.st, a.path)));
   }
 
-  /** 開くための URL（押したときだけ読む） */
-  async urlOf(a: Attachment) {
-    const s = await this.storage();
-    return s.getDownloadURL(s.ref(s.st, a.path));
+  /** 取った中身の一時的な URL（ファイルの置き場所 → URL）。同じファイルを何度も取りに行かないように */
+  private blobUrls = new Map<string, Promise<string>>();
+
+  /**
+   * 開くための URL。鍵つきの URL（getDownloadURL）は、ルールを通らずに開けて、メンバーから外れても使えてしまう。
+   * そこで、毎回ルールを通る読み方（getBlob）で中身を取り、この画面の中だけで使える一時的な URL にする。
+   * 取れなかったら（外された・消されたなど）、取っておかずに投げ直す（次に押したとき、もう一度試せるように）
+   */
+  urlOf(a: Attachment): Promise<string> {
+    const hit = this.blobUrls.get(a.path);
+    if (hit) return hit;
+    const p = (async () => {
+      const s = await this.storage();
+      return URL.createObjectURL(await s.getBlob(s.ref(s.st, a.path)));
+    })();
+    this.blobUrls.set(a.path, p);
+    p.catch(() => this.blobUrls.delete(a.path));
+    return p;
+  }
+
+  /** 取っておいた中身を捨てる（ログアウトしたとき。次の人が同じ端末で開いても、前の人の中身が残らないように） */
+  private clearBlobs() {
+    for (const p of this.blobUrls.values()) p.then((u) => URL.revokeObjectURL(u)).catch(() => undefined);
+    this.blobUrls.clear();
   }
 }

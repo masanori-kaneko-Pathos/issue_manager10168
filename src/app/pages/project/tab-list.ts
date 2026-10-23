@@ -715,7 +715,10 @@ export class TabList implements OnInit {
       }
     }
     // 担当者をまとめて変えたら、新しい担当者に1通だけ（「引き継ぎ」の知らせを使う）
-    if (a === 'assignee' && changed) await this.notifyHandover(this.bulkAssignee()!, changed, reason);
+    if (a === 'assignee' && changed) {
+      await this.issueService.logBulkHandover(pid, this.myUid, this.bulkAssignee()!, changed, reason)
+        .catch((e) => console.warn('まとめて変えた記録を残せませんでした', e));
+    }
     this.bulkResult.set({ key: a === 'delete' ? 'bulk.deleted' : 'bulk.done', n: changed, failed, tooMany });
     this.bulkAction.set(null);
     this.sel.clear();

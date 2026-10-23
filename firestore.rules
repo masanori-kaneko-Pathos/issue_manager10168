@@ -100,7 +100,8 @@ service cloud.firestore {
           && request.resource.data.read is bool
           && request.resource.data.get('pinned', false) is bool
           && (!('expireAt' in request.resource.data) || request.resource.data.expireAt is timestamp);
-        allow create: if request.auth != null && request.auth.uid != uid && validNotification();
+        // 作るのは関数だけ（出来事から作る）。画面から作らせると、ほかの人宛てに好きな名前・文面のお知らせを作れたため
+        allow create: if false;
       }  
       // プッシュ通知を受け取る端末（本人だけ。関数は Admin なので、これに関係なく読める）
       match /devices/{fid} {
@@ -774,7 +775,8 @@ service cloud.firestore {
           function validEvent() {
             let d = request.resource.data;
             return d.keys().hasOnly(['type', 'by', 'tz', 'at', 'from', 'to', 'reason', 'fields', 'changes',
-                     'fromPriority', 'toPriority', 'autoPriority', 'link', 'sub', 'merged', 'file', 'importId'])
+                     'fromPriority', 'toPriority', 'autoPriority', 'link', 'sub', 'merged', 'file', 'importId', 'quiet'])
+              && d.get('quiet', false) is bool
               && d.type in ['created', 'imported', 'status', 'edit', 'priority', 'link', 'merge', 'subtask',
                             'attachment']
               && d.by == request.auth.uid
